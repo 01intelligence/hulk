@@ -1,0 +1,38 @@
+[package]
+name = "hulk"
+version = "0.1.0"
+authors = ["01Intelligence, Inc."]
+edition = "2018"
+
+[dependencies]
+clap = "3.0.0-beta.2"
+lazy_static = "1.4.0"
+log = { version = "0.4.14", features = ["max_level_trace", "release_max_level_info"] }
+slog = { version = "2.7.0", features = ["max_level_trace", "release_max_level_info"] }
+async-std = { version = "1.9.0", features = ["attributes", "unstable"] }
+tokio = "1.6.1"
+serde = { version = "1.0.126", features = ["derive"] }
+serde_json = "1.0.64"
+anyhow = "1.0.40"
+thiserror = "1.0.25"
+crossbeam = "0.8.0"
+nix = "0.20.0"
+which = "4.1.0"
+actix-web = { version = "4.0.0-beta.6", features = ["rustls"] }
+openssl = { version = "0.10.34", features = ["v110"] }
+rustls = "0.19.1"
+notify = "5.0.0-pre.9"
+typetag = "0.1.7"
+strum = { version = "0.21.0", features = ["derive"] }
+opentelemetry = "0.14.0"
+opentelemetry-jaeger = "0.13.0"
+derivative = "2.2.0"
+backtrace = "0.3.59"
+chrono = "0.4.19"
+highway = "0.6.4"
+hex-literal = "0.3.1"
+byteorder = "1.4.3"
+hex = "0.4.3"
+
+[build-dependencies]
+time = "0.2.26"

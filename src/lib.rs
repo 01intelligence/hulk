@@ -5,6 +5,8 @@
 pub mod version;
 pub mod log;
 pub mod certs;
+pub mod config;
+pub mod auth;
 
 #[cfg(test)]
 mod tests {

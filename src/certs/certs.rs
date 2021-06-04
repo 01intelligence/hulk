@@ -2,16 +2,17 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use anyhow::anyhow;
 use log::error;
 use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
 use rustls::internal::pemfile::{certs as extract_certs, pkcs8_private_keys};
 use rustls::sign::{any_supported_type, CertifiedKey};
+use rustls::{ClientHello, ResolvesServerCert};
 
 struct Manager {
-    certs: Arc<std::sync::RwLock<HashMap<KeyCert, CertifiedKey>>>,
+    certs: Arc<RwLock<HashMap<KeyCert, CertifiedKey>>>,
     default_cert: KeyCert,
 }
 
@@ -22,6 +23,8 @@ struct KeyCert {
 }
 
 impl Manager {
+    pub fn new() {}
+
     fn watch_file_events(&mut self) -> anyhow::Result<()> {
         let certs = Arc::clone(&self.certs);
         let handler = move |res: notify::Result<notify::Event>| -> anyhow::Result<()> {
@@ -71,6 +74,23 @@ impl Manager {
             anyhow::bail!("watcher does not support or implement the PreciseEvents config");
         }
         watcher.watch(".", RecursiveMode::Recursive)?;
+        watcher.unwatch();
         Ok(())
+    }
+}
+
+struct ResolvesServerCertUsingSNI {
+    manager: &'static Manager,
+    resolver: rustls::ResolvesServerCertUsingSNI,
+}
+
+impl ResolvesServerCert for ResolvesServerCertUsingSNI {
+    fn resolve(&self, client_hello: ClientHello) -> Option<CertifiedKey> {
+        if let None = client_hello.server_name() {
+            let certs = self.manager.certs.read().unwrap();
+            Some(certs.get(&self.manager.default_cert).unwrap().clone())
+        } else {
+            self.resolver.resolve(client_hello)
+        }
     }
 }

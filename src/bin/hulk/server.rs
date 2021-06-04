@@ -12,7 +12,7 @@ impl<F, I, S, B> Server<F, I, S, B> {
         let mut config = ServerConfig::new(NoClientAuth::new());
         config.set_single_cert();
         let mut resolver = Arc::new(ResolvesServerCertUsingSNI::new());
-        resolver.add()
+        resolver.add();
         config.cert_resolver = resolver;
 
         let server = HttpServer::new().bind_rustls(&[""], config);

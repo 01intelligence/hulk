@@ -33,6 +33,12 @@ highway = "0.6.4"
 hex-literal = "0.3.1"
 byteorder = "1.4.3"
 hex = "0.4.3"
+slog-term = "2.8.0"
+slog-async = "2.6.0"
+slog-scope = "4.4.0"
+slog-stdlog = "4.1.0"
+dirs = "3.0.2"
+constant_time_eq = "0.1.5"
 
 [build-dependencies]
 time = "0.2.26"

@@ -1,16 +1,17 @@
-use std::sync::atomic::AtomicBool;
+use std::hash::Hasher;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::RwLock;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use chrono::{SecondsFormat, Utc};
+use highway::HighwayHash;
 use lazy_static::lazy_static;
+use log::{error, info, warn};
 use opentelemetry::Context;
 
 use crate::log::backtrace::{Backtrace, Inner::*};
 use crate::log::entry::{Api, Args, Entry, ErrKind, Trace};
 use crate::log::reqinfo::ReqInfoContextExt;
-use highway::HighwayHash;
-use std::hash::Hasher;
 
 // HighwayHash key for logging in anonymous mode
 const MAGIC_HIGHWAY_HASH_256_KEY: [u8; 32] =
@@ -40,7 +41,7 @@ pub fn set_deployment_id(deployment_id: String) {
     *id = deployment_id;
 }
 
-fn hash_string(input: String) -> String {
+fn hash_string(input: &str) -> String {
     let mut hasher = highway::HighwayHasher::new(*LOGGER_HIGHWAY_KEY);
     hasher.append(input.as_bytes());
     let hash = hasher.finalize256();
@@ -73,7 +74,7 @@ fn log_if<Err: std::error::Error>(ctx: Context, err: Err, err_kind: Option<ErrKi
         req.deployment_id.clone()
     };
 
-    let entry = Entry {
+    let mut entry = Entry {
         deployment_id,
         level: Level::Error.to_string(),
         log_kind: err_kind.to_string(),
@@ -97,6 +98,16 @@ fn log_if<Err: std::error::Error>(ctx: Context, err: Err, err_kind: Option<ErrKi
             variables: tags,
         }),
     };
+
+    if ANONYMOUS_FLAG.load(Ordering::Relaxed) {
+        let api = entry.api.as_mut().unwrap();
+        let args = api.args.as_mut().unwrap();
+        args.bucket = hash_string(&args.bucket);
+        args.object = hash_string(&args.object);
+        entry.remote_host = hash_string(&entry.remote_host);
+    }
+
+    error!("{:?}", entry);
 }
 
 // Creates and returns stack trace

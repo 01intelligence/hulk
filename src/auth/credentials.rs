@@ -1,5 +1,11 @@
+use std::ops::Add;
+
 use chrono::prelude::*;
+use chrono::serde::ts_seconds;
 use constant_time_eq::constant_time_eq;
+use lazy_static::lazy_static;
+use serde::Serialize;
+use thiserror::Error;
 
 // Minimum length for Hulk access key.
 const ACCESS_KEY_MIN_LEN: usize = 3;
@@ -33,14 +39,22 @@ pub fn is_secret_key_valid(secret_key: &str) -> bool {
     secret_key.len() >= SECRET_KEY_MIN_LEN
 }
 
-const TIME_SENTINEL: DateTime<Utc> =
-    DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc);
+lazy_static! {
+    static ref TIME_SENTINEL: DateTime<Utc> =
+        DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc);
+}
 const TIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S%.9f %z %Z";
 
 // ACCOUNT_ON indicates that credentials are enabled
 pub const ACCOUNT_ON: &str = "on";
 // ACCOUNT_OFF indicates that credentials are disabled
 pub const ACCOUNT_OFF: &str = "off";
+
+#[derive(Error, Debug)]
+pub enum AuthError {
+    #[error("invalid token expiry")]
+    InvalidExpiry,
+}
 
 // Credentials holds access and secret keys.
 #[derive(Serialize, Debug)]
@@ -88,7 +102,7 @@ impl Credentials {
 }
 
 fn datetime_is_zero(dt: &Option<DateTime<Utc>>) -> bool {
-    dt.filter(|e| e != TIME_SENTINEL).is_none()
+    dt.filter(|e| *e != *TIME_SENTINEL).is_none()
 }
 
 impl PartialEq for Credentials {
@@ -115,10 +129,42 @@ impl ToString for Credentials {
             s.push_str("\n");
             s.push_str(&self.session_token);
         }
-        if let Some(e) = &self.expiration.filter(|e| e != TIME_SENTINEL) {
+        if let Some(e) = &self.expiration.filter(|e| *e != *TIME_SENTINEL) {
             s.push_str("\n");
             s.push_str(&e.format(TIME_FORMAT).to_string());
         }
         s
+    }
+}
+
+#[derive(Serialize, Debug)]
+#[serde(untagged)]
+pub enum MetaDataValue {
+    String(String),
+    I64(i64),
+    U64(u64),
+    Isize(isize),
+    Usize(usize),
+    F64(f64),
+}
+
+pub fn exp_to_int64(exp: Option<MetaDataValue>) -> anyhow::Result<i64> {
+    use MetaDataValue::*;
+    let exp_at = if let Some(exp) = exp {
+        match exp {
+            String(v) => v.parse::<i64>().map_err(|_| AuthError::InvalidExpiry)?,
+            Isize(v) => v as i64,
+            Usize(v) => v as i64,
+            I64(v) => v as i64,
+            U64(v) => v as i64,
+            F64(v) => v as i64,
+        }
+    } else {
+        0
+    };
+    if exp_at < 0 {
+        Err(AuthError::InvalidExpiry)?
+    } else {
+        Ok(exp_at)
     }
 }

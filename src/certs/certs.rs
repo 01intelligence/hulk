@@ -11,7 +11,7 @@ use rustls::internal::pemfile::{certs as extract_certs, pkcs8_private_keys};
 use rustls::sign::{any_supported_type, CertifiedKey};
 use rustls::{ClientHello, ResolvesServerCert};
 
-struct Manager {
+pub struct Manager {
     certs: Arc<RwLock<HashMap<KeyCert, CertifiedKey>>>,
     default_cert: KeyCert,
 }
@@ -74,7 +74,7 @@ impl Manager {
             anyhow::bail!("watcher does not support or implement the PreciseEvents config");
         }
         watcher.watch(".", RecursiveMode::Recursive)?;
-        watcher.unwatch();
+        watcher.unwatch(".");
         Ok(())
     }
 }

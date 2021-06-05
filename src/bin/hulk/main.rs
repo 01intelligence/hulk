@@ -1,5 +1,5 @@
 // mod service;
-mod server;
+// mod server;
 mod common;
 
 use clap::{crate_authors, App, Arg};

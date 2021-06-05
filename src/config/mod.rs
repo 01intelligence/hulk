@@ -31,7 +31,7 @@ pub const ENV_WORD_DELIMITER: &str = "_";
 
 lazy_static! {
     // Default kvs for all sub-systems
-    static ref DEFAULT_KVS: Arc<RwLock<HashMap<String, KVS>> = Arc::new(RwLock::new(HashMap::new()));
+    static ref DEFAULT_KVS: Arc<RwLock<HashMap<String, KVS>>> = Arc::new(RwLock::new(HashMap::new()));
 }
 
 // Register default kvs. Should be called only once.
@@ -71,7 +71,7 @@ impl KVS {
 
     // Sets a key value pair.
     pub fn set(&mut self, key: String, value: String) {
-        match self.0.iter_mut().find(|&kv| kv.key == key) {
+        match self.0.iter_mut().find(|kv| kv.key == key) {
             Some(kv) => {
                 kv.value = value;
             }
@@ -84,7 +84,7 @@ impl KVS {
     }
 
     pub fn delete(&mut self, key: String) {
-        if let Some(i) = self.0.iter().position(|&kv| kv.key == key) {
+        if let Some(i) = self.0.iter().position(|kv| kv.key == key) {
             self.0.remove(i);
         }
     }

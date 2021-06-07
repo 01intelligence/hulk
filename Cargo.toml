@@ -40,10 +40,12 @@ slog-stdlog = "4.1.0"
 dirs = "3.0.2"
 constant_time_eq = "0.1.5"
 jsonwebtoken = "7.2.0"
+rand = "0.8.3"
+base64 = "0.13.0"
 
 [patch.crates-io]
-# jsonwebtoken = { git = 'https://github.com/01intelligence/jsonwebtoken', branch = 'master' }
-jsonwebtoken = { path = '../jsonwebtoken' }
+jsonwebtoken = { git = 'https://github.com/01intelligence/jsonwebtoken', branch = 'master' }
+# jsonwebtoken = { path = '../jsonwebtoken' }
 
 [build-dependencies]
 time = "0.2.26"

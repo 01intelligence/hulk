@@ -1,11 +1,17 @@
+use std::collections::HashMap;
 use std::ops::Add;
 
 use chrono::prelude::*;
 use chrono::serde::ts_seconds;
 use constant_time_eq::constant_time_eq;
+use jsonwebtoken::{encode, Algorithm, DecodingKey, EncodingKey, Header};
 use lazy_static::lazy_static;
+use rand::Rng;
 use serde::Serialize;
 use thiserror::Error;
+
+use crate::jwt;
+use crate::jwt::MapClaims;
 
 // Minimum length for Hulk access key.
 const ACCESS_KEY_MIN_LEN: usize = 3;
@@ -23,7 +29,7 @@ const SECRET_KEY_MIN_LEN: usize = 8;
 const SECRET_KEY_MAX_LEN: usize = 40;
 
 // Alpha numeric table used for generating access keys.
-const ALPHA_NUMERIC_TABLE: &str = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const ALPHA_NUMERIC_TABLE: &[u8] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ".as_bytes();
 
 // Total length of the alpha numeric table.
 const ALPHA_NUMERIC_TABLE_LEN: u8 = ALPHA_NUMERIC_TABLE.len() as u8;
@@ -52,27 +58,39 @@ pub const ACCOUNT_OFF: &str = "off";
 
 #[derive(Error, Debug)]
 pub enum AuthError {
+    #[error(
+        "access key length should be between {} and {}",
+        ACCESS_KEY_MIN_LEN,
+        ACCESS_KEY_MAX_LEN
+    )]
+    InvalidAccessKeyLen,
+    #[error(
+        "secret key length should be between {} and {}",
+        SECRET_KEY_MIN_LEN,
+        SECRET_KEY_MAX_LEN
+    )]
+    InvalidSecretKeyLen,
     #[error("invalid token expiry")]
     InvalidExpiry,
 }
 
 // Credentials holds access and secret keys.
-#[derive(Serialize, Debug)]
-struct Credentials {
+#[derive(Serialize, Default, Debug)]
+pub struct Credentials {
     #[serde(rename = "AccessKeyId")]
-    access_key: String,
+    pub access_key: String,
     #[serde(rename = "SecretAccessKey")]
-    secret_key: String,
+    pub secret_key: String,
     #[serde(rename = "Expiration")]
-    expiration: Option<DateTime<Utc>>,
+    pub expiration: Option<DateTime<Utc>>,
     #[serde(rename = "SessionToken")]
-    session_token: String,
+    pub session_token: String,
     #[serde(skip)]
-    status: String,
+    pub status: String,
     #[serde(skip)]
-    parent_user: String,
+    pub parent_user: String,
     #[serde(skip)]
-    groups: Vec<String>,
+    pub groups: Vec<String>,
 }
 
 impl Credentials {
@@ -148,6 +166,8 @@ pub enum MetaDataValue {
     F64(f64),
 }
 
+type MetaData = HashMap<String, MetaDataValue>;
+
 pub fn exp_to_int64(exp: Option<MetaDataValue>) -> anyhow::Result<i64> {
     use MetaDataValue::*;
     let exp_at = if let Some(exp) = exp {
@@ -167,4 +187,81 @@ pub fn exp_to_int64(exp: Option<MetaDataValue>) -> anyhow::Result<i64> {
     } else {
         Ok(exp_at)
     }
+}
+
+pub fn generate_credentials_with_metadata(
+    metadata: MetaData,
+    token: &str,
+) -> anyhow::Result<Credentials> {
+    let mut rng = rand::thread_rng();
+    let mut read_bytes = |size: usize| {
+        let mut data = vec![0u8; size];
+        rng.fill(&mut data[..]);
+        data
+    };
+
+    let mut key_bytes = read_bytes(ACCESS_KEY_MAX_LEN);
+    for b in &mut key_bytes {
+        *b = ALPHA_NUMERIC_TABLE[(*b % ALPHA_NUMERIC_TABLE_LEN) as usize];
+    }
+    let access_key = String::from_utf8(key_bytes)?;
+
+    let key_bytes = read_bytes(SECRET_KEY_MAX_LEN);
+    let mut secret_key_str = &base64::encode(&key_bytes)[..SECRET_KEY_MAX_LEN];
+    let secret_key = secret_key_str.replace("/", "+");
+
+    new_credentials_with_metadata(access_key, secret_key, metadata, token)
+}
+
+pub fn new_credentials_with_metadata(
+    access_key: String,
+    secret_key: String,
+    metadata: MetaData,
+    token: &str,
+) -> anyhow::Result<Credentials> {
+    if access_key.len() < ACCESS_KEY_MIN_LEN || access_key.len() > ACCESS_KEY_MAX_LEN {
+        Err(AuthError::InvalidAccessKeyLen)?
+    }
+    if secret_key.len() < SECRET_KEY_MIN_LEN || secret_key.len() > SECRET_KEY_MAX_LEN {
+        Err(AuthError::InvalidSecretKeyLen)?
+    }
+
+    let mut cred = Credentials {
+        access_key,
+        secret_key,
+        status: ACCOUNT_ON.into(),
+        ..Default::default()
+    };
+
+    if token.is_empty() {
+        cred.expiration = Some(TIME_SENTINEL.clone());
+        return Ok(cred);
+    }
+
+    cred.session_token = jwt_sign_with_access_key(&cred.access_key, metadata, token)?;
+
+    Ok(cred)
+}
+
+pub fn new_credentials(access_key: String, secret_key: String) -> anyhow::Result<Credentials> {
+    new_credentials_with_metadata(access_key, secret_key, Default::default(), "")
+}
+
+pub fn jwt_sign_with_access_key(
+    access_key: &str,
+    mut metadata: MetaData,
+    token: &str,
+) -> anyhow::Result<String> {
+    metadata.insert("accessKey".into(), MetaDataValue::String(access_key.into()));
+    Ok(encode(
+        &Header::new(Algorithm::HS512),
+        &metadata,
+        &EncodingKey::from_secret(token.as_bytes()),
+    )?)
+}
+
+pub fn extract_claims(token: &str, secret_key: &str) -> anyhow::Result<MapClaims> {
+    jwt::parse_with_claims(token, |_| {
+        DecodingKey::from_secret(secret_key.as_bytes()).into_static()
+    })
 }

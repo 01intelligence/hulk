@@ -20,7 +20,7 @@ pub fn parse_with_standard_claims(token: &str, key: &[u8]) -> anyhow::Result<Sta
     Ok(claims)
 }
 
-pub fn parse_with_claims<F: Fn(&MapClaims) -> DecodingKey>(
+pub fn parse_with_claims<F: FnOnce(&MapClaims) -> DecodingKey>(
     token: &str,
     key_fn: F,
 ) -> anyhow::Result<MapClaims> {

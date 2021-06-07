@@ -2,11 +2,12 @@
 #![feature(backtrace_frames)]
 #![feature(type_name_of_val)]
 
-pub mod version;
-pub mod log;
+pub mod auth;
 pub mod certs;
 pub mod config;
-pub mod auth;
+pub mod jwt;
+pub mod log;
+pub mod version;
 
 #[cfg(test)]
 mod tests {

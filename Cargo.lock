@@ -1182,6 +1182,7 @@ dependencies = [
  "opentelemetry",
  "opentelemetry-jaeger",
  "rand",
+ "regex",
  "rustls",
  "serde",
  "serde_json",

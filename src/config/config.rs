@@ -4,9 +4,12 @@ use std::sync::{Arc, RwLock};
 
 use anyhow::{anyhow, bail};
 use lazy_static::lazy_static;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 
+use super::constants::*;
 use super::help::HelpKVS;
+use crate::auth;
 use crate::strset::StringSet;
 
 pub const ENABLE_KEY: &str = "enable";
@@ -221,11 +224,123 @@ impl ToString for KVS {
     }
 }
 
+lazy_static! {
+    static ref DEFAULT_CREDENTIAL_KVS: KVS = KVS(vec![
+        KV {
+            key: ACCESS_KEY.to_owned(),
+            value: crate::auth::DEFAULT_ACCESS_KEY.to_owned()
+        },
+        KV {
+            key: SECRET_KEY.to_owned(),
+            value: crate::auth::DEFAULT_SECRET_KEY.to_owned()
+        },
+    ]);
+    static ref DEFAULT_REGION_KVS: KVS = KVS(vec![KV {
+        key: REGION_NAME.to_owned(),
+        value: "".to_owned(),
+    }]);
+}
+
+lazy_static! {
+    static ref validRegionRegex: Regex = Regex::new("^[a-zA-Z][a-zA-Z0-9-_-]+$").unwrap();
+}
+
+pub fn lookup_creds(kvs: &KVS) -> anyhow::Result<auth::Credentials> {
+    check_valid_keys(CREDENTIALS_SUB_SYS, kvs, &DEFAULT_CREDENTIAL_KVS)?;
+    let mut access_key = kvs.get(ACCESS_KEY);
+    let mut secret_key = kvs.get(SECRET_KEY);
+    if access_key.is_empty() || secret_key.is_empty() {
+        access_key = auth::DEFAULT_ACCESS_KEY;
+        secret_key = auth::DEFAULT_SECRET_KEY;
+    }
+    auth::new_credentials(access_key.to_owned(), secret_key.to_owned())
+}
+
+// Get current region.
+pub fn lookup_region(kvs: &KVS) -> anyhow::Result<String> {
+    check_valid_keys(REGION_SUB_SYS, kvs, &DEFAULT_REGION_KVS)?;
+    let region = std::env::var(ENV_REGION_NAME).unwrap_or(kvs.get(REGION_NAME).to_owned());
+    if !region.is_empty() {
+        if validRegionRegex.is_match(&region) {
+            return Ok(region);
+        }
+        bail!(
+            "region '{}' is invalid, expected simple characters such as [us-east-1, myregion...]",
+            region
+        );
+    }
+    Ok("".to_owned())
+}
+
+pub fn check_valid_keys(sub_sys: &str, kvs: &KVS, valid_kvs: &KVS) -> anyhow::Result<()> {
+    let mut nkvs = KVS::default();
+    for kv in kvs.iter() {
+        if kv.key == COMMON_KEY {
+            // Comment is a valid key, its also fully optional.
+            // Ignore it since it is a valid key for all sub-systems.
+            continue;
+        }
+        if valid_kvs.lookup(&kv.key).is_none() {
+            nkvs.0.push(kv.clone());
+        }
+    }
+    if !nkvs.is_empty() {
+        bail!("found invalid keys ({}) for '{}' sub-system, use 'hc admin config reset myhulk {}' to fix invalid keys", nkvs.to_string(), sub_sys, sub_sys)
+    }
+    Ok(())
+}
+
 // Config structure at server.
-struct Config(HashMap<String, HashMap<String, KVS>>);
+#[derive(Clone)]
+pub struct Config(HashMap<String, HashMap<String, KVS>>);
+
+pub struct Target {
+    pub sub_system: String,
+    pub kvs: KVS,
+}
+
+pub struct Targets(pub Vec<Target>);
 
 impl Config {
     pub fn del_from<T: std::io::Read>(&mut self, r: T) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    pub fn del_kvs(&mut self, s: &str) -> anyhow::Result<()> {
+        if s.is_empty() {
+            bail!("input arguments cannot be empty");
+        }
+        let inputs: Vec<&str> = s.split_whitespace().collect();
+        if inputs.len() != 1 {
+            bail!("invalid number of arguments '{}'", s);
+        }
+        let sub_system_value: Vec<&str> = inputs[0].splitn(2, SUB_SYSTEM_SEPARATOR).collect();
+        if sub_system_value.is_empty() {
+            bail!("invalid number of arguments '{}'", s);
+        }
+        let sub_sys: &str = sub_system_value[0];
+        if !SUB_SYSTEMS.contains(sub_sys) {
+            // Unknown sub-system found try to remove it anyways.
+            self.0.remove(sub_sys);
+            return Ok(());
+        }
+
+        let mut target = DEFAULT;
+        if sub_system_value.len() == 2 {
+            if sub_system_value[1].len() == 0 {
+                bail!("sub-system target cannot be empty: '{}'", s);
+            }
+            target = sub_system_value[1];
+        }
+
+        let kv_map = self
+            .0
+            .entry(sub_sys.to_string())
+            .or_insert(Default::default()); // insert default
+        if kv_map.remove(target).is_none() {
+            bail!("sub-system already deleted: '{}'", s);
+        }
+
         Ok(())
     }
 
@@ -242,7 +357,7 @@ impl Config {
             bail!("invalid number of arguments '{}'", s);
         }
 
-        let sub_sys: &str = &sub_system_value[0].to_string();
+        let sub_sys: &str = sub_system_value[0];
         if !SUB_SYSTEMS.contains(sub_sys) {
             bail!("unknown sub-system '{}'", sub_sys);
         }
@@ -252,10 +367,10 @@ impl Config {
         }
         let dynamic = SUB_SYSTEMS_DYNAMIC.contains(sub_sys);
 
-        let target: &str = &if sub_system_value.len() == 2 {
-            sub_system_value[1].to_string()
+        let target: &str = if sub_system_value.len() == 2 {
+            sub_system_value[1]
         } else {
-            DEFAULT.to_string()
+            DEFAULT
         };
 
         let default_kvs = default_kvs

@@ -8,6 +8,7 @@ pub mod config;
 pub mod jwt;
 pub mod log;
 pub mod version;
+pub mod strset;
 
 #[cfg(test)]
 mod tests {

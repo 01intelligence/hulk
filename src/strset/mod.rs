@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Clone)]
-struct StringSet(HashSet<String>);
+pub struct StringSet(HashSet<String>);
 
 impl StringSet {
     pub fn new() -> StringSet {

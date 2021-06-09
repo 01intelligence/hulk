@@ -242,7 +242,7 @@ lazy_static! {
 }
 
 lazy_static! {
-    static ref validRegionRegex: Regex = Regex::new("^[a-zA-Z][a-zA-Z0-9-_-]+$").unwrap();
+    static ref VALID_REGION_REGEX: Regex = Regex::new("^[a-zA-Z][a-zA-Z0-9-_-]+$").unwrap();
 }
 
 pub fn lookup_creds(kvs: &KVS) -> anyhow::Result<auth::Credentials> {
@@ -259,9 +259,9 @@ pub fn lookup_creds(kvs: &KVS) -> anyhow::Result<auth::Credentials> {
 // Get current region.
 pub fn lookup_region(kvs: &KVS) -> anyhow::Result<String> {
     check_valid_keys(REGION_SUB_SYS, kvs, &DEFAULT_REGION_KVS)?;
-    let region = std::env::var(ENV_REGION_NAME).unwrap_or(kvs.get(REGION_NAME).to_owned());
+    let region = std::env::var(ENV_REGION_NAME).unwrap_or_else(|_| kvs.get(REGION_NAME).to_owned());
     if !region.is_empty() {
-        if validRegionRegex.is_match(&region) {
+        if VALID_REGION_REGEX.is_match(&region) {
             return Ok(region);
         }
         bail!(
@@ -304,8 +304,42 @@ pub struct Target {
 pub struct Targets(pub Vec<Target>);
 
 impl Config {
-    pub fn merge_default(&mut self) {
-        todo!();
+    pub fn new() -> Self {
+        let mut config = Config(Default::default());
+        for k in SUB_SYSTEMS.as_slice() {
+            let m = config
+                .0
+                .entry(k.to_owned())
+                .or_insert_with(Default::default);
+            let default_kvs = DEFAULT_KVS.read().unwrap();
+            m.insert(
+                DEFAULT.to_owned(),
+                default_kvs.get(k).cloned().unwrap_or_default(),
+            );
+        }
+        config
+    }
+
+    // Merges a new config with all the
+    // missing values for default configs,
+    // returns a config.
+    pub fn merge_default(mut self) -> Self {
+        let mut nc = Self::new();
+        for (sub_sys, tgt_kv) in &mut self.0 {
+            for (tgt, ckvs) in tgt_kv {
+                if let Some(n_tgt_kv) = nc.0.get(sub_sys).map(|v| v.get(DEFAULT)).flatten() {
+                    for kv in &n_tgt_kv.0 {
+                        if ckvs.lookup(&kv.key).is_none() {
+                            ckvs.set(kv.key.to_owned(), kv.value.to_owned());
+                        }
+                    }
+                }
+                nc.0.entry(sub_sys.to_owned())
+                    .or_insert_with(Default::default)
+                    .insert(tgt.to_owned(), ckvs.clone());
+            }
+        }
+        nc
     }
 
     pub fn del_from<T: std::io::Read>(&mut self, r: T) -> anyhow::Result<()> {
@@ -348,10 +382,10 @@ impl Config {
             let kvss = self
                 .0
                 .entry(sub_sys.to_owned())
-                .or_insert(Default::default());
+                .or_insert_with(Default::default);
             let kvs = kvss
                 .get_mut(sub_system_value[1])
-                .ok_or(anyhow!("sub-system target not found: '{}'", s))?;
+                .ok_or_else(|| anyhow!("sub-system target not found: '{}'", s))?;
             if let Some(default_kvs) = default_kvs.get(sub_sys) {
                 for dkv in &default_kvs.0 {
                     if kvs.lookup(&dkv.key).is_none() {
@@ -365,7 +399,7 @@ impl Config {
             })
         } else {
             let mut hkvss = HELP_SUB_SYS_MAP.write().unwrap();
-            let hkvs = hkvss.entry("".to_owned()).or_insert(Default::default());
+            let hkvs = hkvss.entry("".to_owned()).or_insert_with(Default::default);
             // Use help for sub-system to preserve the order.
             for hkv in hkvs.iter() {
                 if !hkv.key.starts_with(sub_sys) {
@@ -374,14 +408,11 @@ impl Config {
                 let kvss = self
                     .0
                     .entry(hkv.key.to_owned())
-                    .or_insert(Default::default());
+                    .or_insert_with(Default::default);
                 if kvss.get(DEFAULT).is_none() {
                     targets.0.push(Target {
                         sub_system: hkv.key.to_owned(),
-                        kvs: default_kvs
-                            .get(&hkv.key)
-                            .cloned()
-                            .unwrap_or(Default::default()),
+                        kvs: default_kvs.get(&hkv.key).cloned().unwrap_or_default(),
                     })
                 }
                 for (k, kvs) in kvss {
@@ -437,7 +468,7 @@ impl Config {
         let kv_map = self
             .0
             .entry(sub_sys.to_string())
-            .or_insert(Default::default()); // insert default
+            .or_insert_with(Default::default); // insert default
         if kv_map.remove(target).is_none() {
             bail!("sub-system already deleted: '{}'", s);
         }
@@ -476,7 +507,7 @@ impl Config {
 
         let default_kvs = default_kvs
             .get(sub_sys)
-            .ok_or(anyhow!("default kvs not found"))?;
+            .ok_or_else(|| anyhow!("default kvs not found"))?;
         let default_keys = default_kvs.keys();
 
         let fields = kv_fields(inputs[1], &default_keys[..]);
@@ -513,7 +544,7 @@ impl Config {
         let curr_kvs = self
             .0
             .entry(sub_sys.to_string())
-            .or_insert(Default::default()) // insert default
+            .or_insert_with(Default::default) // insert default
             .entry(target.to_string())
             .and_modify(|kvs| {
                 // If any key in default_kvs is not found, insert its default kv.
@@ -523,7 +554,7 @@ impl Config {
                     }
                 }
             })
-            .or_insert(default_kvs.clone()); // if not found, insert default_kvs
+            .or_insert_with(|| default_kvs.clone()); // if not found, insert default_kvs
 
         for kv in &kvs.0 {
             if kv.key == COMMON_KEY {
@@ -540,7 +571,7 @@ impl Config {
         let mut help_kvss = HELP_SUB_SYS_MAP.write().unwrap();
         let help_kvs = help_kvss
             .entry(sub_sys.to_owned())
-            .or_insert(Default::default());
+            .or_insert_with(Default::default);
         for hkv in help_kvs.iter() {
             let enabled = if enable_required {
                 curr_kvs.get(ENABLE_KEY) == ENABLE_ON
@@ -568,6 +599,12 @@ impl Config {
         }
 
         Ok(dynamic)
+    }
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

@@ -63,6 +63,12 @@ impl StringSet {
     }
 }
 
+impl Default for StringSet {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ToString for StringSet {
     fn to_string(&self) -> String {
         format!("{:?}", self.as_slice())

@@ -14,7 +14,7 @@ pub fn parse_with_standard_claims(token: &str, key: &[u8]) -> anyhow::Result<Sta
     let claims = claims.claims;
 
     if claims.access_key.is_none() && claims.subject.is_none() {
-        Err(JwtError::Other("accessKey/sub missing".into()))?;
+        return Err(JwtError::Other("accessKey/sub missing".into()).into());
     }
 
     Ok(claims)
@@ -36,7 +36,7 @@ pub fn parse_with_claims<F: FnOnce(&MapClaims) -> DecodingKey>(
     let claims = claims.claims;
 
     if claims.lookup("accessKey").is_null() && claims.lookup("sub").is_null() {
-        Err(JwtError::Other("accessKey/sub missing".into()))?;
+        return Err(JwtError::Other("accessKey/sub missing".into()).into());
     }
 
     Ok(claims)

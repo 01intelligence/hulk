@@ -141,14 +141,14 @@ impl ToString for Credentials {
     fn to_string(&self) -> String {
         let mut s = String::new();
         s.push_str(&self.access_key);
-        s.push_str(":");
+        s.push(':');
         s.push_str(&self.secret_key);
         if !self.session_token.is_empty() {
-            s.push_str("\n");
+            s.push('\n');
             s.push_str(&self.session_token);
         }
         if let Some(e) = &self.expiration.filter(|e| *e != *TIME_SENTINEL) {
-            s.push_str("\n");
+            s.push('\n');
             s.push_str(&e.format(TIME_FORMAT).to_string());
         }
         s
@@ -183,7 +183,7 @@ pub fn exp_to_int64(exp: Option<MetaDataValue>) -> anyhow::Result<i64> {
         0
     };
     if exp_at < 0 {
-        Err(AuthError::InvalidExpiry)?
+        Err(AuthError::InvalidExpiry.into())
     } else {
         Ok(exp_at)
     }
@@ -220,10 +220,10 @@ pub fn new_credentials_with_metadata(
     token: &str,
 ) -> anyhow::Result<Credentials> {
     if access_key.len() < ACCESS_KEY_MIN_LEN || access_key.len() > ACCESS_KEY_MAX_LEN {
-        Err(AuthError::InvalidAccessKeyLen)?
+        return Err(AuthError::InvalidAccessKeyLen.into());
     }
     if secret_key.len() < SECRET_KEY_MIN_LEN || secret_key.len() > SECRET_KEY_MAX_LEN {
-        Err(AuthError::InvalidSecretKeyLen)?
+        return Err(AuthError::InvalidSecretKeyLen.into());
     }
 
     let mut cred = Credentials {
@@ -234,7 +234,7 @@ pub fn new_credentials_with_metadata(
     };
 
     if token.is_empty() {
-        cred.expiration = Some(TIME_SENTINEL.clone());
+        cred.expiration = Some(*TIME_SENTINEL);
         return Ok(cred);
     }
 

@@ -11,7 +11,7 @@ export HULK_BUILD_GIT_BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD 2> /dev/
 # Almost all the rules in this Makefile are PHONY
 # Declaring a rule as PHONY could improve correctness
 # But probably instead just improves performance by a little bit
-.PHONY: clean all build
+.PHONY: clean all build check
 
 default: build
 
@@ -23,3 +23,6 @@ all: build
 build: export HULK_PROFILE=debug
 build:
 	cargo build --no-default-features
+
+check:
+	cargo clippy

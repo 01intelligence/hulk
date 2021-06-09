@@ -23,7 +23,9 @@ struct KeyCert {
 }
 
 impl Manager {
-    pub fn new() {}
+    pub fn new() -> Self {
+        todo!()
+    }
 
     fn watch_file_events(&mut self) -> anyhow::Result<()> {
         let certs = Arc::clone(&self.certs);
@@ -32,10 +34,14 @@ impl Manager {
                 Ok(event) => match event.kind {
                     notify::EventKind::Create(notify::event::CreateKind::File)
                     | notify::EventKind::Modify(notify::event::ModifyKind::Data(_)) => {
-                        let path = event.paths.last().ok_or(anyhow!("empty path"))?.as_path();
+                        let path = event
+                            .paths
+                            .last()
+                            .ok_or_else(|| anyhow!("empty path"))?
+                            .as_path();
                         let mut certs = certs.write().unwrap();
                         let mut new_certs = HashMap::new();
-                        for (pair, _) in &*certs {
+                        for pair in certs.keys() {
                             if path != Path::new(&pair.key_file)
                                 && path != Path::new(&pair.cert_file)
                             {
@@ -45,11 +51,11 @@ impl Manager {
                             let key_file = &mut BufReader::new(File::open(&pair.key_file)?);
                             let cert_chain =
                                 extract_certs(cert_file).map_err(|_| anyhow!("invalid certs"))?;
-                            cert_chain.first().ok_or(anyhow!("invalid certs"))?;
+                            cert_chain.first().ok_or_else(|| anyhow!("invalid certs"))?;
                             let mut keys = pkcs8_private_keys(key_file)
                                 .map_err(|_| anyhow!("invalid private key"))?;
                             let key = any_supported_type(
-                                keys.first().ok_or(anyhow!("invalid private key"))?,
+                                keys.first().ok_or_else(|| anyhow!("invalid private key"))?,
                             )
                             .map_err(|_| anyhow!("invalid private key"))?;
                             new_certs
@@ -86,7 +92,7 @@ struct ResolvesServerCertUsingSNI {
 
 impl ResolvesServerCert for ResolvesServerCertUsingSNI {
     fn resolve(&self, client_hello: ClientHello) -> Option<CertifiedKey> {
-        if let None = client_hello.server_name() {
+        if client_hello.server_name().is_none() {
             let certs = self.manager.certs.read().unwrap();
             Some(certs.get(&self.manager.default_cert).unwrap().clone())
         } else {

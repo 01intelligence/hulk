@@ -124,7 +124,7 @@ lazy_static! {
     // Default kvs for all sub-systems
     pub static ref DEFAULT_KVS: Arc<RwLock<HashMap<String, KVS>>> = Arc::new(RwLock::new(HashMap::new()));
 
-    pub static ref HELP_SUB_SYS_MAP: Arc<RwLock<HelpKVS>> = Arc::new(RwLock::new(HelpKVS::default()));
+    pub static ref HELP_SUB_SYS_MAP: Arc<RwLock<HashMap<String, HelpKVS>>> = Arc::new(RwLock::new(HashMap::new()));
 }
 
 // Register default kvs. Should be called only once.
@@ -133,7 +133,7 @@ pub fn register_default_kvs(kvs_map: HashMap<String, KVS>) {
     *kvs = kvs_map;
 }
 
-pub fn register_help_sub_sys(help_kvs_map: HelpKVS) {
+pub fn register_help_sub_sys(help_kvs_map: HashMap<String, HelpKVS>) {
     let mut kvs = HELP_SUB_SYS_MAP.write().unwrap();
     *kvs = help_kvs_map;
 }
@@ -294,16 +294,117 @@ pub fn check_valid_keys(sub_sys: &str, kvs: &KVS, valid_kvs: &KVS) -> anyhow::Re
 #[derive(Clone)]
 pub struct Config(HashMap<String, HashMap<String, KVS>>);
 
+#[derive(Default)]
 pub struct Target {
     pub sub_system: String,
     pub kvs: KVS,
 }
 
+#[derive(Default)]
 pub struct Targets(pub Vec<Target>);
 
 impl Config {
+    pub fn merge_default(&mut self) {
+        todo!();
+    }
+
     pub fn del_from<T: std::io::Read>(&mut self, r: T) -> anyhow::Result<()> {
-        Ok(())
+        todo!();
+    }
+
+    pub fn get_kvs(
+        &mut self,
+        s: &str,
+        default_kvs: &HashMap<String, KVS>,
+    ) -> anyhow::Result<Targets> {
+        if s.is_empty() {
+            bail!("input arguments cannot be empty");
+        }
+        let inputs: Vec<&str> = s.split_whitespace().collect();
+        if inputs.len() != 1 {
+            bail!("invalid number of arguments '{}'", s);
+        }
+        let sub_system_value: Vec<&str> = inputs[0].splitn(2, SUB_SYSTEM_SEPARATOR).collect();
+        if sub_system_value.is_empty() {
+            bail!("invalid number of arguments '{}'", s);
+        }
+        let sub_sys: &str = sub_system_value[0];
+        let mut found = SUB_SYSTEMS.contains(sub_sys);
+        if !found {
+            // Check for sub-prefix only if the input value is only a
+            // single value, this rejects invalid inputs if any.
+            found = !SUB_SYSTEMS.match_fn(|s| s.starts_with(sub_sys)).is_empty()
+                && sub_system_value.len() == 1;
+        }
+        if !found {
+            bail!("unknown sub-system '{}'", sub_sys);
+        }
+
+        let mut targets = Targets::default();
+        if sub_system_value.len() == 2 {
+            if sub_system_value[1].is_empty() {
+                bail!("sub-system target cannot be empty: '{}'", s);
+            }
+            let kvss = self
+                .0
+                .entry(sub_sys.to_owned())
+                .or_insert(Default::default());
+            let kvs = kvss
+                .get_mut(sub_system_value[1])
+                .ok_or(anyhow!("sub-system target not found: '{}'", s))?;
+            if let Some(default_kvs) = default_kvs.get(sub_sys) {
+                for dkv in &default_kvs.0 {
+                    if kvs.lookup(&dkv.key).is_none() {
+                        kvs.set(dkv.key.to_owned(), dkv.value.to_owned());
+                    }
+                }
+            }
+            targets.0.push(Target {
+                sub_system: inputs[0].to_owned(),
+                kvs: kvs.clone(),
+            })
+        } else {
+            let mut hkvss = HELP_SUB_SYS_MAP.write().unwrap();
+            let hkvs = hkvss.entry("".to_owned()).or_insert(Default::default());
+            // Use help for sub-system to preserve the order.
+            for hkv in hkvs.iter() {
+                if !hkv.key.starts_with(sub_sys) {
+                    continue;
+                }
+                let kvss = self
+                    .0
+                    .entry(hkv.key.to_owned())
+                    .or_insert(Default::default());
+                if kvss.get(DEFAULT).is_none() {
+                    targets.0.push(Target {
+                        sub_system: hkv.key.to_owned(),
+                        kvs: default_kvs
+                            .get(&hkv.key)
+                            .cloned()
+                            .unwrap_or(Default::default()),
+                    })
+                }
+                for (k, kvs) in kvss {
+                    if let Some(default_kvs) = default_kvs.get(&hkv.key) {
+                        for dkv in &default_kvs.0 {
+                            if kvs.lookup(&dkv.key).is_none() {
+                                kvs.set(dkv.key.to_owned(), dkv.value.to_owned());
+                            }
+                        }
+                    }
+                    targets.0.push(Target {
+                        sub_system: if k != DEFAULT {
+                            hkv.key.to_owned() + SUB_SYSTEM_SEPARATOR + k
+                        } else {
+                            hkv.key.to_owned()
+                        },
+                        kvs: kvs.clone(),
+                    })
+                }
+            }
+        }
+
+        Ok(targets)
     }
 
     pub fn del_kvs(&mut self, s: &str) -> anyhow::Result<()> {
@@ -327,7 +428,7 @@ impl Config {
 
         let mut target = DEFAULT;
         if sub_system_value.len() == 2 {
-            if sub_system_value[1].len() == 0 {
+            if sub_system_value[1].is_empty() {
                 bail!("sub-system target cannot be empty: '{}'", s);
             }
             target = sub_system_value[1];
@@ -436,7 +537,10 @@ impl Config {
             curr_kvs.set(COMMON_KEY.to_owned(), v.to_owned());
         }
 
-        let help_kvs = HELP_SUB_SYS_MAP.read().unwrap();
+        let mut help_kvss = HELP_SUB_SYS_MAP.write().unwrap();
+        let help_kvs = help_kvss
+            .entry(sub_sys.to_owned())
+            .or_insert(Default::default());
         for hkv in help_kvs.iter() {
             let enabled = if enable_required {
                 curr_kvs.get(ENABLE_KEY) == ENABLE_ON

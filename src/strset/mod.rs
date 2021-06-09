@@ -36,17 +36,11 @@ impl StringSet {
         self.0.contains(s)
     }
 
-    pub fn match_fn<F>(&self, match_fn: F, match_str: &str) -> StringSet
+    pub fn match_fn<F>(&self, mut match_fn: F) -> StringSet
     where
-        F: Fn(&str, &str) -> bool,
+        F: FnMut(&str) -> bool,
     {
-        StringSet(
-            self.0
-                .iter()
-                .filter(|&s| match_fn(s, match_str))
-                .cloned()
-                .collect(),
-        )
+        StringSet(self.0.iter().filter(|&s| match_fn(s)).cloned().collect())
     }
 
     pub fn apply_fn<F>(&self, apply_fn: F) -> StringSet

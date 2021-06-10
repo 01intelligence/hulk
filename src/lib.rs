@@ -5,10 +5,11 @@
 pub mod auth;
 pub mod certs;
 pub mod config;
+pub mod dsync;
 pub mod jwt;
 pub mod log;
-pub mod version;
 pub mod strset;
+pub mod version;
 
 #[cfg(test)]
 mod tests {

@@ -1161,6 +1161,7 @@ dependencies = [
  "actix-web",
  "anyhow",
  "async-std",
+ "async-trait",
  "backtrace",
  "base64 0.13.0",
  "byteorder",
@@ -1170,6 +1171,7 @@ dependencies = [
  "crossbeam",
  "derivative",
  "dirs",
+ "futures",
  "hex",
  "hex-literal",
  "highway",
@@ -1192,6 +1194,7 @@ dependencies = [
  "slog-stdlog",
  "slog-term",
  "strum",
+ "term",
  "thiserror",
  "time 0.2.26",
  "tokio",
@@ -2362,11 +2365,24 @@ dependencies = [
  "libc",
  "memchr",
  "mio",
+ "num_cpus",
  "once_cell",
  "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
+ "tokio-macros",
  "winapi",
+]
+
+[[package]]
+name = "tokio-macros"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c49e3df43841dafb86046472506755d8501c5615673955f6aa17181125d13c37"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

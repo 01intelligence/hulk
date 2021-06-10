@@ -17,7 +17,7 @@ pub struct HelpKV {
 }
 
 #[derive(Default)]
-pub struct HelpKVS(Vec<HelpKV>);
+pub struct HelpKVS(pub Vec<HelpKV>);
 
 impl HelpKVS {
     pub fn lookup(&self, key: &str) -> Option<&HelpKV> {

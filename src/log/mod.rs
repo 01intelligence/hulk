@@ -1,8 +1,8 @@
+mod backtrace;
+mod drain;
 mod entry;
 mod logger;
 mod reqinfo;
-mod backtrace;
-mod drain;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 

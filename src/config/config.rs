@@ -285,7 +285,12 @@ pub fn check_valid_keys(sub_sys: &str, kvs: &KVS, valid_kvs: &KVS) -> anyhow::Re
         }
     }
     if !nkvs.is_empty() {
-        bail!("found invalid keys ({}) for '{}' sub-system, use 'hc admin config reset myhulk {}' to fix invalid keys", nkvs.to_string(), sub_sys, sub_sys)
+        bail!(
+            "found invalid keys ({}) for '{}' sub-system, use 'hc admin config reset myhulk {}' to fix invalid keys",
+            nkvs.to_string(),
+            sub_sys,
+            sub_sys
+        )
     }
     Ok(())
 }

@@ -1,9 +1,9 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::borrow::Cow;
 
-use serde::Serialize;
 use derivative::Derivative;
+use serde::Serialize;
 
 #[derive(Serialize, Debug)]
 pub struct Entry {

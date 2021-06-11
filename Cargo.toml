@@ -46,6 +46,8 @@ regex = "1.5.4"
 term = "0.7.0"
 async-trait = "0.1.50"
 futures = "0.3.15"
+cc = "1.0.68"
+tokio-util = "0.6.7"
 
 [patch.crates-io]
 jsonwebtoken = { git = 'https://github.com/01intelligence/jsonwebtoken', branch = 'master' }

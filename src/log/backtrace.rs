@@ -304,7 +304,10 @@ impl fmt::Display for Backtrace {
         let (frames, style) = if full {
             (&capture.frames[..], backtrace::PrintFmt::Full)
         } else {
-            (&capture.frames[capture.actual_start..], backtrace::PrintFmt::Short)
+            (
+                &capture.frames[capture.actual_start..],
+                backtrace::PrintFmt::Short,
+            )
         };
 
         // When printing paths we try to strip the cwd if it exists, otherwise

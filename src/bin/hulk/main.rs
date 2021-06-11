@@ -17,41 +17,37 @@ fn main() {
             Arg::new("certs-dir")
                 .short('s')
                 .long("certs-dir")
-                .about("Sets the certs directory")
+                .about("Sets the certs directory"),
         )
         .arg(
             Arg::new("quiet")
                 .short('q')
                 .long("quiet")
-                .about("Disable startup information")
+                .about("Disable startup information"),
         )
         .arg(
             Arg::new("anonymous")
                 .short('a')
                 .long("anonymous")
-                .about("Hide sensitive information from logging")
+                .about("Hide sensitive information from logging"),
         )
         .arg(
             Arg::new("no-s3-compatibility")
                 .long("no-s3-compatibility")
                 .about("Disable strict S3 compatibility by turning on certain performance optimizations")
-                .hidden(true)
+                .hidden(true),
         )
-        .help_template("\
+        .help_template(
+            "\
             {before-help}{bin} - {about}\n\
             {version}\n\n\
             {usage-heading}\n    {usage}\n\
             \n\
             {all-args}{after-help}\
-        ")
-        .subcommand(
-            App::new("server")
-                .about("Run object storage server")
+        ",
         )
-        .subcommand(
-            App::new("gateway")
-                .about("Run object storage gateway")
-        )
+        .subcommand(App::new("server").about("Run object storage server"))
+        .subcommand(App::new("gateway").about("Run object storage gateway"))
         .get_matches();
 
     match matches.subcommand() {

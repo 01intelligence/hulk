@@ -1165,6 +1165,7 @@ dependencies = [
  "backtrace",
  "base64 0.13.0",
  "byteorder",
+ "cc",
  "chrono",
  "clap",
  "constant_time_eq",
@@ -1198,6 +1199,7 @@ dependencies = [
  "thiserror",
  "time 0.2.26",
  "tokio",
+ "tokio-util",
  "typetag",
  "which",
 ]

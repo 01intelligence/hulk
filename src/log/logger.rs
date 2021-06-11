@@ -9,7 +9,8 @@ use lazy_static::lazy_static;
 use log::{error, info, warn};
 use opentelemetry::Context;
 
-use crate::log::backtrace::{Backtrace, Inner::*};
+use crate::log::backtrace::Backtrace;
+use crate::log::backtrace::Inner::*;
 use crate::log::entry::{Api, Args, Entry, ErrKind, Trace};
 use crate::log::reqinfo::ReqInfoContextExt;
 

@@ -2,14 +2,12 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use anyhow::anyhow;
-use futures::{FutureExt, TryFutureExt};
 use log::trace;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use tokio::select;
 use tokio::sync::mpsc::channel;
 use tokio::sync::RwLock;
-use tokio::task::JoinHandle;
 use tokio::time::{timeout, timeout_at, Duration, Instant};
 use tokio_util::sync::CancellationToken;
 
@@ -36,6 +34,8 @@ const LOCK_RETRY_INTERVAL: Duration = Duration::from_secs(1);
 pub struct DRWLock<L: NetLocker + Send + Sync + 'static, D: Dsync<L>> {
     pub names: Vec<String>,
     dsync: D,
+    lockers: Vec<Arc<RwLock<L>>>,
+    owner: String,
     write_locks: Arc<RwLock<Vec<String>>>, // Array of nodes that granted a write lock
     readers_locks: Arc<RwLock<Vec<Vec<String>>>>, // Array of array of nodes that granted reader locks
     token: CancellationToken,
@@ -55,11 +55,14 @@ pub struct Granted {
 
 impl<L: NetLocker + Send + Sync + 'static, D: Dsync<L>> DRWLock<L, D> {
     pub fn new(dsync: D, names: Vec<String>) -> DRWLock<L, D> {
-        let (lockers, _) = dsync.get_lockers();
+        let (lockers, owner) = dsync.get_lockers();
+        let write_locks = Arc::new(RwLock::new(vec!["".to_owned(); lockers.len()]));
         DRWLock {
             names,
             dsync,
-            write_locks: Arc::new(RwLock::new(vec!["".to_owned(); lockers.len()])),
+            lockers,
+            owner,
+            write_locks,
             readers_locks: Default::default(),
             token: CancellationToken::new(),
             _phantom: Default::default(),
@@ -103,10 +106,60 @@ impl<L: NetLocker + Send + Sync + 'static, D: Dsync<L>> DRWLock<L, D> {
 
     pub async fn unlock(&mut self) {
         self.token.cancel();
+
+        // Check if minimally a single bool is set in the write_locks array
+        let write_locks = self.write_locks.read().await;
+        let lock_found = write_locks.iter().any(|l| is_locked(l));
+        if !lock_found {
+            panic!("Trying to unlock while no lock is active");
+        }
+        let mut locks = Arc::new(RwLock::new(write_locks.clone()));
+
+        // Tolerance is not set, defaults to half of the locker clients.
+        let tolerance = self.lockers.len() / 2;
+
+        let mut rng = rng();
+        while !release_all(
+            tolerance,
+            &self.owner,
+            &mut locks,
+            false,
+            &self.lockers,
+            &self.names,
+        )
+        .await
+        {
+            tokio::time::sleep(LOCK_RETRY_INTERVAL.mul_f64(rng.gen::<f64>())).await;
+        }
     }
 
     pub async fn runlock(&mut self) {
         self.token.cancel();
+
+        let mut readers_locks = self.readers_locks.write().await;
+        if readers_locks.is_empty() {
+            panic!("Trying to runlock while no rlock is active");
+        }
+        // Take away and remove first element from array.
+        let locks = readers_locks.remove(0);
+        let mut locks = Arc::new(RwLock::new(locks));
+
+        // Tolerance is not set, defaults to half of the locker clients.
+        let tolerance = self.lockers.len() / 2;
+
+        let mut rng = rng();
+        while !release_all(
+            tolerance,
+            &self.owner,
+            &mut locks,
+            true,
+            &self.lockers,
+            &self.names,
+        )
+        .await
+        {
+            tokio::time::sleep(LOCK_RETRY_INTERVAL.mul_f64(rng.gen::<f64>())).await;
+        }
     }
 
     async fn lock_blocking<F: FnOnce() + Send + 'static>(
@@ -119,12 +172,7 @@ impl<L: NetLocker + Send + Sync + 'static, D: Dsync<L>> DRWLock<L, D> {
     ) -> bool {
         let (lockers, _) = self.dsync.get_lockers();
 
-        let mut rng = StdRng::seed_from_u64(
-            SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
-        );
+        let mut rng = rng();
 
         trace!(
             "lock_blocking {}/{} for {:?}: lock type {}, additional opts: {:?}",
@@ -178,10 +226,11 @@ impl<L: NetLocker + Send + Sync + 'static, D: Dsync<L>> DRWLock<L, D> {
                     )
                     .await;
                     if locked {
+                        let locks = locks.read().await.clone();
                         if is_read_lock {
-                            readers_locks.write().await.push(locks.read().await.clone());
+                            readers_locks.write().await.push(locks);
                         } else {
-                            *write_locks.write().await = locks.read().await.clone();
+                            *write_locks.write().await = locks;
                         }
 
                         trace!("lock_blocking {}/{} for {:?}: granted", &id, &source, names,);
@@ -219,7 +268,7 @@ impl<L: NetLocker + Send + Sync + 'static, D: Dsync<L>> DRWLock<L, D> {
         }
     }
 
-    async fn start_continuous_lock_refresh<F: FnOnce() + Send + 'static>(
+    fn start_continuous_lock_refresh<F: FnOnce() + Send + 'static>(
         &mut self,
         lock_loss_callback: Option<F>,
         lockers: Vec<Arc<RwLock<L>>>,
@@ -279,7 +328,7 @@ async fn refresh<L: NetLocker + Send + Sync + 'static>(
     id: &str,
     source: &str,
     quorum: usize,
-    lock_names: &Vec<String>,
+    lock_names: &[String],
 ) -> anyhow::Result<bool> {
     // Create buffered channel of size equal to total number of nodes.
     let (tx, mut rx) = channel(lockers.len());
@@ -291,7 +340,7 @@ async fn refresh<L: NetLocker + Send + Sync + 'static>(
         let owner = owner.to_owned();
         let id = id.to_owned();
         let source = source.to_owned();
-        let lock_names = lock_names.clone();
+        let lock_names = Vec::from(lock_names);
         let tx = tx.clone();
         let token = token.child_token();
         handles.push(tokio::spawn(async move {
@@ -407,6 +456,7 @@ async fn refresh<L: NetLocker + Send + Sync + 'static>(
     Ok(refresh_quorum)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn lock<L: NetLocker + Send + Sync + 'static>(
     lockers: Vec<Arc<RwLock<L>>>,
     owner: &str,
@@ -416,7 +466,7 @@ async fn lock<L: NetLocker + Send + Sync + 'static>(
     is_read_lock: bool,
     tolerance: usize,
     quorum: usize,
-    lock_names: &Vec<String>,
+    lock_names: &[String],
     deadline: Instant,
 ) -> bool {
     let mut wlocks = locks.write().await;
@@ -432,7 +482,7 @@ async fn lock<L: NetLocker + Send + Sync + 'static>(
         let id = id.to_owned();
         let source = source.to_owned();
         let owner = owner.to_owned();
-        let lock_names = lock_names.clone();
+        let lock_names = Vec::from(lock_names);
         let tx = tx.clone();
         let locker = locker.clone();
         handles.push(tokio::spawn(async move {
@@ -487,7 +537,7 @@ async fn lock<L: NetLocker + Send + Sync + 'static>(
         lock_deadline = deadline;
     }
     // Loop until we acquired all locks
-    for i in 0..lockers.len() {
+    for _ in 0..lockers.len() {
         let grant = timeout_at(lock_deadline, rx.recv()).await;
         match grant {
             Ok(grant) => {
@@ -530,7 +580,7 @@ async fn lock<L: NetLocker + Send + Sync + 'static>(
     }
 
     // We may have some unused results in channel, release them async.
-    let lock_names = lock_names.clone();
+    let lock_names = Vec::from(lock_names);
     let owner = owner.to_owned();
     tokio::spawn(async move {
         for r in futures::future::join_all(handles).await {
@@ -560,15 +610,15 @@ async fn release_all<L: NetLocker + Send + Sync + 'static>(
     owner: &str,
     locks: &mut Arc<RwLock<Vec<String>>>,
     is_read_lock: bool,
-    lockers: &Vec<Arc<RwLock<L>>>,
-    names: &Vec<String>,
+    lockers: &[Arc<RwLock<L>>],
+    names: &[String],
 ) -> bool {
     let mut handles = Vec::new();
     for (lock_id, locker) in lockers.iter().enumerate() {
         let locks = locks.clone();
         let locker = locker.clone();
         let owner = owner.to_owned();
-        let names = names.clone();
+        let names = Vec::from(names);
         handles.push(tokio::spawn(async move {
             let mut locks = locks.write().await;
             let lock = &mut locks[lock_id];
@@ -592,12 +642,12 @@ async fn send_release<L: NetLocker + Send + Sync + 'static>(
     owner: &str,
     uid: &str,
     is_read_lock: bool,
-    names: &Vec<String>,
+    names: &[String],
 ) -> bool {
     let args = LockArgs {
         owner: owner.to_owned(),
         uid: uid.to_owned(),
-        resources: names.clone(),
+        resources: Vec::from(names),
         ..Default::default()
     };
 
@@ -619,7 +669,7 @@ async fn send_release<L: NetLocker + Send + Sync + 'static>(
                 return unlocked;
             }
             Err(e) => {
-                err = e.into();
+                err = e;
             }
         },
         Err(e) => {
@@ -651,4 +701,13 @@ fn check_failed_unlocks(locks: &[String], tolerance: usize) -> bool {
     } else {
         unlocks_failed > tolerance
     }
+}
+
+fn rng() -> StdRng {
+    StdRng::seed_from_u64(
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    )
 }

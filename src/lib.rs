@@ -5,6 +5,7 @@
 pub mod auth;
 pub mod certs;
 pub mod config;
+pub mod disk;
 pub mod dsync;
 pub mod jwt;
 pub mod log;

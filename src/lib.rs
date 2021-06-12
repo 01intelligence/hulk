@@ -11,6 +11,7 @@ pub mod jwt;
 pub mod log;
 pub mod strset;
 pub mod version;
+pub mod wildcard;
 
 #[cfg(test)]
 mod tests {

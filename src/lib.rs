@@ -10,6 +10,7 @@ pub mod dsync;
 pub mod jwt;
 pub mod log;
 pub mod strset;
+pub mod trie;
 pub mod version;
 pub mod wildcard;
 

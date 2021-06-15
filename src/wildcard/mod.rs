@@ -1,5 +1,3 @@
-use std::str::Chars;
-
 // Finds whether the text matches/satisfies the pattern string.
 // supports only '*' wildcard in the pattern.
 // considers a file system path as a flat name space.

@@ -1,8 +1,8 @@
 // Policy statement effect Allow or Deny.
 pub type Effect<'a> = &'a str;
 
-const ALLOW: Effect = "Allow"; // allow effect
-const DENY: Effect = "Deny"; // deny effect
+pub const ALLOW: Effect = "Allow"; // allow effect
+pub const DENY: Effect = "Deny"; // deny effect
 
 impl<'a> super::Allowed for Effect<'a> {
     fn is_allowed(&self, b: bool) -> bool {

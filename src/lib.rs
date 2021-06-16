@@ -8,6 +8,7 @@ pub mod config;
 pub mod disk;
 pub mod dsync;
 pub mod ellipses;
+pub mod etag;
 pub mod jwt;
 pub mod log;
 pub mod strset;

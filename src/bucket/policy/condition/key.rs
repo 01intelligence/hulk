@@ -3,14 +3,14 @@ use std::fmt::Formatter;
 
 use lazy_static::lazy_static;
 use serde::de::{self, Deserialize, Deserializer, Visitor};
-use serde::ser::{Error, Serialize, Serializer};
+use serde::ser::{Serialize, Serializer};
 
-use crate::bucket::policy::Valid;
+use crate::bucket::policy::{ToVec, Valid};
 
 // Conditional key which is used to fetch values for any condition.
 // Refer https://docs.aws.amazon.com/IAM/latest/UserGuide/list_s3.html
 // for more information about available condition keys.
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub struct Key<'a>(pub &'a str);
 
 // S3X_AMZ_COPY_SOURCE - key representing x-amz-copy-source HTTP header applicable to PutObject API only.
@@ -180,12 +180,12 @@ impl<'a> Key<'a> {
         let name = self.0;
         if name.starts_with("aws:") {
             name.strip_prefix("aws:").unwrap().to_owned()
-        } else if name.starts_with("aws:") {
-            name.strip_prefix("aws:").unwrap().to_owned()
-        } else if name.starts_with("aws:") {
-            name.strip_prefix("aws:").unwrap().to_owned()
-        } else if name.starts_with("aws:") {
-            name.strip_prefix("aws:").unwrap().to_owned()
+        } else if name.starts_with("jwt:") {
+            name.strip_prefix("jwt:").unwrap().to_owned()
+        } else if name.starts_with("ldap:") {
+            name.strip_prefix("ldap:").unwrap().to_owned()
+        } else if name.starts_with("s3:") {
+            name.strip_prefix("s3:").unwrap().to_owned()
         } else {
             name.to_owned()
         }
@@ -203,6 +203,7 @@ impl<'a> Serialize for Key<'a> {
     where
         S: Serializer,
     {
+        use serde::ser::Error;
         if !self.is_valid() {
             return Err(S::Error::custom(format!(
                 "unknown condition key '{}'",
@@ -238,7 +239,7 @@ impl<'de, 'a> Deserialize<'de> for Key<'a> {
             }
         }
 
-        deserializer.deserialize_newtype_struct("Key", KeyVisitor)
+        deserializer.deserialize_str(KeyVisitor)
     }
 }
 
@@ -247,5 +248,72 @@ type KeySet<'a> = HashSet<Key<'a>>;
 impl<'a> super::super::ToVec<Key<'a>> for KeySet<'a> {
     fn to_vec(&self) -> Vec<Key<'a>> {
         self.iter().cloned().collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_key_is_valid() {
+        let cases = [
+            (S3X_AMZ_COPY_SOURCE, true),
+            (AWS_REFERER, true),
+            (Key("foo"), false),
+        ];
+        for (key, expected_result) in cases.iter() {
+            assert_eq!(
+                key.is_valid(),
+                *expected_result,
+                "key: '{:?}', expected: {}, got: {}",
+                key,
+                expected_result,
+                key.is_valid()
+            );
+        }
+    }
+
+    #[test]
+    fn test_key_serialize_json() {
+        let cases: [(Key, &str, bool); 2] = [
+            (S3X_AMZ_COPY_SOURCE, "\"s3:x-amz-copy-source\"", false),
+            (Key("foo"), "", true),
+        ];
+        for (key, expected_result, expected_err) in cases.iter() {
+            let result = serde_json::to_string(key);
+            match result {
+                Ok(result) => assert_eq!(&result, *expected_result),
+                Err(_) => assert!(expected_err),
+            }
+        }
+    }
+
+    #[test]
+    fn test_key_deserialize_json() {
+        let cases: [(&str, Key, bool); 3] = [
+            ("\"s3:x-amz-copy-source\"", S3X_AMZ_COPY_SOURCE, false),
+            ("", Key("foo"), true),
+            ("\"foo\"", Key("foo"), true),
+        ];
+        for (data, expected_key, expected_err) in cases.iter() {
+            let result: serde_json::Result<Key> = serde_json::from_str(*data);
+            println!("result: {:?}", result);
+            match result {
+                Ok(result) => assert_eq!(&result, expected_key),
+                Err(_) => assert!(expected_err),
+            }
+        }
+    }
+
+    #[test]
+    fn test_key_name() {
+        let cases = [
+            (S3X_AMZ_COPY_SOURCE, "x-amz-copy-source"),
+            (AWS_REFERER, "Referer"),
+        ];
+        for (key, name) in cases.iter() {
+            assert_eq!(key.name(), *name);
+        }
     }
 }

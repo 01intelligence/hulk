@@ -17,11 +17,3 @@ pub mod strset;
 pub mod trie;
 pub mod version;
 pub mod wildcard;
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
-    }
-}

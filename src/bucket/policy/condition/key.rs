@@ -1,7 +1,17 @@
+use std::collections::HashSet;
+use std::fmt::Formatter;
+
+use lazy_static::lazy_static;
+use serde::de::{self, Deserialize, Deserializer, Visitor};
+use serde::ser::{Error, Serialize, Serializer};
+
+use crate::bucket::policy::Valid;
+
 // Conditional key which is used to fetch values for any condition.
 // Refer https://docs.aws.amazon.com/IAM/latest/UserGuide/list_s3.html
 // for more information about available condition keys.
-pub struct Key<'a>(&'a str);
+#[derive(Clone, Eq, PartialEq)]
+pub struct Key<'a>(pub &'a str);
 
 // S3X_AMZ_COPY_SOURCE - key representing x-amz-copy-source HTTP header applicable to PutObject API only.
 const S3X_AMZ_COPY_SOURCE: Key = Key("s3:x-amz-copy-source");
@@ -92,3 +102,150 @@ const S3_SIGNATURE_VERSION: Key = Key("s3:signatureversion");
 
 // S3_AUTH_TYPE - optionally use this condition key to restrict incoming requests to use a specific authentication method.
 const S3_AUTH_TYPE: Key = Key("s3:authType");
+
+lazy_static! {
+    // List of all all supported keys.
+    pub static ref ALL_SUPPORTED_KEYS: Vec<Key<'static>> = {
+        let mut keys = vec![
+            S3X_AMZ_COPY_SOURCE,
+            S3X_AMZ_SERVER_SIDE_ENCRYPTION,
+            S3X_AMZ_SERVER_SIDE_ENCRYPTION_CUSTOMER_ALGORITHM,
+            S3X_AMZ_METADATA_DIRECTIVE,
+            S3X_AMZ_CONTENT_SHA256,
+            S3X_AMZ_STORAGE_CLASS,
+            S3_LOCATION_CONSTRAINT,
+            S3_PREFIX,
+            S3_DELIMITER,
+            S3_VERSION_ID,
+            S3_MAX_KEYS,
+            S3_OBJECT_LOCK_REMAINING_RETENTION_DAYS,
+            S3_OBJECT_LOCK_MODE,
+            S3_OBJECT_LOCK_RETAIN_UNTIL_DATE,
+            S3_OBJECT_LOCK_LEGAL_HOLD,
+            AWS_REFERER,
+            AWS_SOURCE_IP,
+            AWS_USER_AGENT,
+            AWS_SECURE_TRANSPORT,
+            AWS_CURRENT_TIME,
+            AWS_EPOCH_TIME,
+            AWS_PRINCIPAL_TYPE,
+            AWS_USER_ID,
+            AWS_USERNAME,
+            S3_SIGNATURE_VERSION,
+            S3_AUTH_TYPE,
+        ];
+        keys.extend(super::JWT_KEYS.iter().cloned());
+        keys
+    };
+
+    // List of all common condition keys.
+    pub static ref COMMON_KEYS: Vec<Key<'static>> = {
+        let mut keys = vec![
+            S3_SIGNATURE_VERSION,
+            S3_AUTH_TYPE,
+            S3X_AMZ_CONTENT_SHA256,
+            S3_LOCATION_CONSTRAINT,
+            AWS_REFERER,
+            AWS_SOURCE_IP,
+            AWS_USER_AGENT,
+            AWS_SECURE_TRANSPORT,
+            AWS_CURRENT_TIME,
+            AWS_EPOCH_TIME,
+            AWS_PRINCIPAL_TYPE,
+            AWS_USER_ID,
+            AWS_USERNAME,
+        ];
+        keys.extend(super::JWT_KEYS.iter().cloned());
+        keys
+    };
+
+    // List of all admin supported keys.
+    pub static ref ALL_SUPPORTED_ADMIN_KEYS: Vec<Key<'static>> = vec![
+        AWS_REFERER,
+        AWS_SOURCE_IP,
+        AWS_USER_AGENT,
+        AWS_SECURE_TRANSPORT,
+        AWS_CURRENT_TIME,
+        AWS_EPOCH_TIME,
+    ];
+}
+
+impl<'a> Key<'a> {
+    // Returns variable key name, such as "${aws:username}"
+    pub fn var_name(&self) -> String {
+        format!("${{{}}}", self.0)
+    }
+
+    pub fn name(&self) -> String {
+        let name = self.0;
+        if name.starts_with("aws:") {
+            name.strip_prefix("aws:").unwrap().to_owned()
+        } else if name.starts_with("aws:") {
+            name.strip_prefix("aws:").unwrap().to_owned()
+        } else if name.starts_with("aws:") {
+            name.strip_prefix("aws:").unwrap().to_owned()
+        } else if name.starts_with("aws:") {
+            name.strip_prefix("aws:").unwrap().to_owned()
+        } else {
+            name.to_owned()
+        }
+    }
+}
+
+impl<'a> Valid for Key<'a> {
+    fn is_valid(&self) -> bool {
+        ALL_SUPPORTED_KEYS.iter().any(|k| k == self)
+    }
+}
+
+impl<'a> Serialize for Key<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if !self.is_valid() {
+            return Err(S::Error::custom(format!(
+                "unknown condition key '{}'",
+                self.0
+            )));
+        }
+        serializer.serialize_newtype_struct("Key", &self.0)
+    }
+}
+
+impl<'de, 'a> Deserialize<'de> for Key<'a> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct KeyVisitor;
+        impl<'de> Visitor<'de> for KeyVisitor {
+            type Value = Key<'static>;
+
+            fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
+                formatter.write_str("a condition key string")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                ALL_SUPPORTED_KEYS
+                    .iter()
+                    .find(|&k| k.0 == v)
+                    .cloned()
+                    .ok_or(E::custom(format!("invalid condition key '{}'", v)))
+            }
+        }
+
+        deserializer.deserialize_newtype_struct("Key", KeyVisitor)
+    }
+}
+
+type KeySet<'a> = HashSet<Key<'a>>;
+
+impl<'a> super::super::ToVec<Key<'a>> for KeySet<'a> {
+    fn to_vec(&self) -> Vec<Key<'a>> {
+        self.iter().cloned().collect()
+    }
+}

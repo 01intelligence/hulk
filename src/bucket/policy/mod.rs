@@ -1,10 +1,10 @@
-mod id;
-mod effect;
-mod resource;
 pub mod condition;
+mod effect;
+mod id;
+mod resource;
 
-pub use id::*;
 pub use effect::*;
+pub use id::*;
 pub use resource::*;
 
 pub trait Valid {
@@ -15,4 +15,24 @@ pub trait Valid {
 pub trait Allowed {
     // Returns if given check is allowed or not.
     fn is_allowed(&self, b: bool) -> bool;
+}
+
+pub trait ToSlice<T> {
+    fn to_slice(&self) -> &[T];
+}
+
+impl<T> ToSlice<T> for T {
+    fn to_slice(&self) -> &[T] {
+        unsafe { std::slice::from_raw_parts(self as *const T, 1) }
+    }
+}
+
+impl<T> ToSlice<T> for [T] {
+    fn to_slice(&self) -> &[T] {
+        self
+    }
+}
+
+pub trait ToVec<T> {
+    fn to_vec(&self) -> Vec<T>;
 }

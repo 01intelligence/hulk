@@ -1281,9 +1281,11 @@ dependencies = [
  "hex",
  "hex-literal",
  "highway",
+ "http",
  "jsonwebtoken",
  "lazy_static",
  "log",
+ "maplit",
  "nix 0.20.0",
  "notify",
  "openssl",
@@ -1306,6 +1308,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "typetag",
+ "validator",
  "which",
 ]
 
@@ -1487,6 +1490,12 @@ checksum = "b823e83b2affd8f40a9ee8c29dbc56404c1e34cd2710921f2801e2cf29527afa"
 dependencies = [
  "libc",
 ]
+
+[[package]]
+name = "maplit"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3e2e65a1a2e43cfcb47a895c4c8b10d1f4a61097f9f254f183aee60cad9c651d"
 
 [[package]]
 name = "matches"
@@ -2681,6 +2690,28 @@ dependencies = [
  "matches",
  "percent-encoding",
 ]
+
+[[package]]
+name = "validator"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be110dc66fa015b8b1d2c4eae40c495a27fae55f82b9cae3efb8178241ed20eb"
+dependencies = [
+ "idna",
+ "lazy_static",
+ "regex",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "url",
+ "validator_types",
+]
+
+[[package]]
+name = "validator_types"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ad9680608df133af2c1ddd5eaf1ddce91d60d61b6bc51494ef326458365a470a"
 
 [[package]]
 name = "value-bag"

@@ -1,9 +1,12 @@
 use std::collections::HashSet;
 use std::fmt;
 
+use anyhow::bail;
 use serde::de::{self, Deserializer, SeqAccess, Visitor};
 use serde::ser::{self, SerializeSeq, Serializer};
 use serde::{Deserialize, Serialize};
+
+use super::*;
 
 #[derive(Serialize, Deserialize, Hash, Eq, PartialEq, Clone, Debug)]
 pub enum Value {
@@ -102,5 +105,29 @@ impl<'de> de::Deserialize<'de> for ValueSet {
         }
 
         deserializer.deserialize_seq(ValueSetVisitor)
+    }
+}
+
+pub(super) fn values_to_string_slice(name: Name, values: ValueSet) -> anyhow::Result<Vec<String>> {
+    let mut ss = Vec::new();
+    for value in values.0 {
+        if let Value::String(s) = value {
+            ss.push(s);
+        } else {
+            bail!("value must be a string for {} condition", name);
+        }
+    }
+    Ok(ss)
+}
+
+// Splits an incoming path into bucket and object components.
+pub(super) fn path_to_bucket_and_object(path: &str) -> (&str, &str) {
+    // Skip the first element if it is '/', split the rest.
+    let parts: Vec<&str> = path.trim_start_matches('/').splitn(2, '/').collect();
+
+    match parts.len() {
+        2 => (parts[0], parts[1]),
+        1 => (parts[0], ""),
+        _ => ("", ""),
     }
 }

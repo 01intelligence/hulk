@@ -1,3 +1,4 @@
+mod binaryequalsfunc;
 mod boolfunc;
 mod func;
 mod jwt;
@@ -5,6 +6,7 @@ mod key;
 mod name;
 mod value;
 
+pub use binaryequalsfunc::*;
 pub use boolfunc::*;
 pub use func::*;
 pub use jwt::*;

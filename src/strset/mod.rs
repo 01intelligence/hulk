@@ -1,4 +1,6 @@
 use std::collections::HashSet;
+use std::fmt;
+use std::fmt::Formatter;
 
 use serde::{Deserialize, Serialize};
 
@@ -12,6 +14,10 @@ impl StringSet {
 
     pub fn from_slice(ss: &[&str]) -> StringSet {
         StringSet(ss.iter().map(|&s| s.into()).collect())
+    }
+
+    pub fn from_vec(ss: Vec<String>) -> StringSet {
+        StringSet(ss.into_iter().collect())
     }
 
     pub fn as_slice(&self) -> Vec<&str> {
@@ -69,8 +75,11 @@ impl Default for StringSet {
     }
 }
 
-impl ToString for StringSet {
-    fn to_string(&self) -> String {
-        format!("{:?}", self.as_slice())
+impl fmt::Display for StringSet {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let slice = self.as_slice();
+        write!(f, "[")?;
+        write!(f, "{}", slice.join(","))?;
+        write!(f, "]")
     }
 }

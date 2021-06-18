@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use lazy_static::lazy_static;
@@ -56,7 +56,8 @@ pub const S3_MAX_KEYS: Key = Key("s3:max-keys");
 // Enables enforcement of an object relative to the remaining retention days, you can set
 // minimum and maximum allowable retention periods for a bucket using a bucket policy.
 // This key are specific for s3:PutObjectRetention API.
-pub const S3_OBJECT_LOCK_REMAINING_RETENTION_DAYS: Key = Key("s3:object-lock-remaining-retention-days");
+pub const S3_OBJECT_LOCK_REMAINING_RETENTION_DAYS: Key =
+    Key("s3:object-lock-remaining-retention-days");
 
 // S3_OBJECT_LOCK_MODE - key representing object-lock-mode
 // Enables enforcement of the specified object retention mode
@@ -168,6 +169,22 @@ lazy_static! {
         AWS_CURRENT_TIME,
         AWS_EPOCH_TIME,
     ];
+}
+
+pub(super) fn subst_func_from_values(
+    values: HashMap<String, Vec<String>>,
+) -> Box<dyn Fn(&str) -> String> {
+    Box::new(move |v: &str| -> String {
+        for key in COMMON_KEYS.iter() {
+            // Empty values are not supported for policy variables.
+            if let Some(rvalues) = values.get(key.name()) {
+                if !rvalues.is_empty() && !rvalues[0].is_empty() {
+                    return v.replace(&key.var_name(), &rvalues[0]);
+                }
+            }
+        }
+        v.to_owned()
+    })
 }
 
 impl<'a> Key<'a> {

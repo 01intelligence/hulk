@@ -54,6 +54,7 @@ http = "0.2.4"
 maplit = "1.0.2"
 bstr = "0.2.16"
 unicase = "2.6.0"
+ipnet = "2.3.1"
 
 [patch.crates-io]
 jsonwebtoken = { git = 'https://github.com/01intelligence/jsonwebtoken', branch = 'master' }

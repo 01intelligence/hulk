@@ -1,9 +1,10 @@
 use std::collections::HashMap;
+use std::fmt;
 
 use anyhow::bail;
 use serde::{Deserialize, Serialize};
 
-use crate::bucket::policy::Valid;
+use super::Valid;
 
 // Resource ARN prefix as per AWS S3 specification.
 pub const RESOURCE_ARN_PREFIX: &str = "arn:aws:s3:::";
@@ -31,9 +32,21 @@ impl Resource {
     }
 
     // Matches object name with resource pattern.
-    pub fn is_match(&self, resource: &str, condition_values: HashMap<String, Vec<String>>) -> bool {
+    pub fn is_match(
+        &self,
+        resource: &str,
+        condition_values: &HashMap<String, Vec<String>>,
+    ) -> bool {
         let mut pattern = self.pattern.clone();
-        todo!()
+        for key in super::condition::COMMON_KEYS.iter() {
+            // Empty values are not supported for policy variables.
+            if let Some(rvalues) = condition_values.get(key.name()) {
+                if !rvalues.is_empty() && rvalues[0] != "" {
+                    pattern = pattern.replace(&key.var_name(), &rvalues[0])
+                }
+            }
+        }
+        crate::wildcard::match_wildcard(&pattern, resource)
     }
 
     // Validates resource is for given bucket or not.
@@ -56,14 +69,14 @@ impl Resource {
     }
 }
 
-impl super::Valid for Resource {
+impl Valid for Resource {
     fn is_valid(&self) -> bool {
         !self.bucket_name.is_empty() && !self.pattern.is_empty()
     }
 }
 
-impl ToString for Resource {
-    fn to_string(&self) -> String {
-        RESOURCE_ARN_PREFIX.to_owned() + &self.pattern
+impl fmt::Display for Resource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}{}", RESOURCE_ARN_PREFIX, self.pattern)
     }
 }

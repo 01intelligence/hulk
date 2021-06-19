@@ -4,6 +4,7 @@ mod func;
 mod jwt;
 mod key;
 mod name;
+mod stringequalsfunc;
 mod value;
 
 pub use binaryequalsfunc::*;
@@ -12,6 +13,7 @@ pub use func::*;
 pub use jwt::*;
 pub use key::*;
 pub use name::*;
+pub use stringequalsfunc::*;
 pub use value::*;
 
 pub(self) fn canonical_key(key: &str) -> String {

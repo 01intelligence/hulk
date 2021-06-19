@@ -7,18 +7,23 @@ use super::super::Valid;
 use super::*;
 use crate::strset::StringSet;
 
-pub(super) struct BinaryEqualsFunc<'a> {
+// String equals function. It checks whether value by Key in given
+// values map is in condition values.
+// For example,
+//   - if values = ["mybucket/foo"], at evaluate() it returns whether string
+//     in value map for Key is in values.
+pub(super) struct StringEqualsFunc<'a> {
     key: Key<'a>,
     values: StringSet,
 }
 
-impl<'a> fmt::Display for BinaryEqualsFunc<'a> {
+impl<'a> fmt::Display for StringEqualsFunc<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}:{}", BINARY_EQUALS, self.key, self.values)
+        write!(f, "{}:{}:{}", STRING_EQUALS, self.key, self.values)
     }
 }
 
-impl<'a> Function for BinaryEqualsFunc<'a> {
+impl<'a> Function for StringEqualsFunc<'a> {
     fn evaluate(&self, values: &HashMap<String, Vec<String>>) -> bool {
         let mut v = values.get(&canonical_key(self.key.name()));
         if v.is_none() {
@@ -40,7 +45,7 @@ impl<'a> Function for BinaryEqualsFunc<'a> {
     }
 
     fn name(&self) -> Name<'a> {
-        BINARY_EQUALS
+        STRING_EQUALS
     }
 
     fn to_map(&self) -> HashMap<Key<'a>, ValueSet> {
@@ -52,7 +57,7 @@ impl<'a> Function for BinaryEqualsFunc<'a> {
             self.values
                 .as_slice()
                 .iter()
-                .map(|&v| Value::String(base64::encode(v)))
+                .map(|&v| Value::String(v.to_owned()))
                 .collect(),
         );
         map.insert(self.key.clone(), values);
@@ -60,26 +65,62 @@ impl<'a> Function for BinaryEqualsFunc<'a> {
     }
 }
 
-pub(super) fn new_binary_equals_func(
+// String not equals function. It checks whether value by Key in
+// given values is NOT in condition values.
+// For example,
+//   - if values = ["mybucket/foo"], at evaluate() it returns whether string
+//     in value map for Key is NOT in values.
+pub(super) struct StringNotEqualsFunc<'a>(StringEqualsFunc<'a>);
+
+impl<'a> fmt::Display for StringNotEqualsFunc<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}:{}", STRING_NOT_EQUALS, self.0.key, self.0.values)
+    }
+}
+
+impl<'a> Function for StringNotEqualsFunc<'a> {
+    fn evaluate(&self, values: &HashMap<String, Vec<String>>) -> bool {
+        !self.0.evaluate(values)
+    }
+
+    fn key(&self) -> Key<'_> {
+        self.0.key()
+    }
+
+    fn name(&self) -> Name<'_> {
+        STRING_NOT_EQUALS
+    }
+
+    fn to_map(&self) -> HashMap<Key<'_>, ValueSet> {
+        self.0.to_map()
+    }
+}
+
+pub(super) fn new_string_equals_func(
     key: Key,
     values: ValueSet,
 ) -> anyhow::Result<Box<dyn Function + '_>> {
-    let value_strs = values_to_string_slice(BINARY_EQUALS, values)?;
+    let value_strs = values_to_string_slice(STRING_EQUALS, values)?;
     let mut set = StringSet::from_vec(value_strs);
-    validate_binary_equals_values(BINARY_EQUALS, key.clone(), &mut set)?;
-    Ok(Box::new(BinaryEqualsFunc { key, values: set }))
+    validate_string_equals_values(STRING_EQUALS, key.clone(), &set)?;
+    Ok(Box::new(StringEqualsFunc { key, values: set }))
 }
 
-fn validate_binary_equals_values(
-    name: Name,
+pub(super) fn new_string_not_equals_func(
     key: Key,
-    values: &mut StringSet,
-) -> anyhow::Result<()> {
-    for s in values.to_vec() {
-        let s_bytes = base64::decode(&s)?;
-        values.remove(&s);
-        let s = std::str::from_utf8(&s_bytes)?;
+    values: ValueSet,
+) -> anyhow::Result<Box<dyn Function + '_>> {
+    let value_strs = values_to_string_slice(STRING_NOT_EQUALS, values)?;
+    let mut set = StringSet::from_vec(value_strs);
+    validate_string_equals_values(STRING_NOT_EQUALS, key.clone(), &set)?;
+    Ok(Box::new(StringNotEqualsFunc(StringEqualsFunc {
+        key,
+        values: set,
+    })))
+}
 
+fn validate_string_equals_values(name: Name, key: Key, values: &StringSet) -> anyhow::Result<()> {
+    for s in values.as_slice() {
         match key {
             S3X_AMZ_COPY_SOURCE => {
                 let (bucket, object) = path_to_bucket_and_object(s);
@@ -124,8 +165,6 @@ fn validate_binary_equals_values(
             }
             _ => {}
         }
-
-        values.add(s.to_owned());
     }
     Ok(())
 }

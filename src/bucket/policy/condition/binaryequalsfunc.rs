@@ -65,15 +65,21 @@ pub(super) fn new_binary_equals_func(
     values: ValueSet,
 ) -> anyhow::Result<Box<dyn Function + '_>> {
     let value_strs = values_to_string_slice(BINARY_EQUALS, values)?;
-    let set = StringSet::from_vec(value_strs);
-    validate_binary_equals_values(BINARY_EQUALS, key.clone(), &set)?;
+    let mut set = StringSet::from_vec(value_strs);
+    validate_binary_equals_values(BINARY_EQUALS, key.clone(), &mut set)?;
     Ok(Box::new(BinaryEqualsFunc { key, values: set }))
 }
 
-fn validate_binary_equals_values(name: Name, key: Key, values: &StringSet) -> anyhow::Result<()> {
-    for s in values.as_slice() {
-        let s = base64::decode(s)?;
-        let s = std::str::from_utf8(&s)?;
+fn validate_binary_equals_values(
+    name: Name,
+    key: Key,
+    values: &mut StringSet,
+) -> anyhow::Result<()> {
+    for s in values.to_vec() {
+        let s_bytes = base64::decode(&s)?;
+        values.remove(&s);
+        let s = std::str::from_utf8(&s_bytes)?;
+
         match key {
             S3X_AMZ_COPY_SOURCE => {
                 let (bucket, object) = path_to_bucket_and_object(s);
@@ -85,10 +91,41 @@ fn validate_binary_equals_values(name: Name, key: Key, values: &StringSet) -> an
                         name
                     );
                 }
-                // todo
+                crate::s3utils::check_valid_bucket_name(bucket)?;
+            }
+            S3X_AMZ_SERVER_SIDE_ENCRYPTION | S3X_AMZ_SERVER_SIDE_ENCRYPTION_CUSTOMER_ALGORITHM => {
+                if s != "AES256" {
+                    bail!(
+                        "invalid value '{}' for '{}' for {} condition",
+                        s,
+                        S3X_AMZ_SERVER_SIDE_ENCRYPTION,
+                        name
+                    );
+                }
+            }
+            S3X_AMZ_METADATA_DIRECTIVE => {
+                if s != "COPY" && s != "REPLACE" {
+                    bail!(
+                        "invalid value '{}' for '{}' for {} condition",
+                        s,
+                        S3X_AMZ_METADATA_DIRECTIVE,
+                        name
+                    );
+                }
+            }
+            S3X_AMZ_CONTENT_SHA256 => {
+                if s.is_empty() {
+                    bail!(
+                        "invalid empty value for '{}' for {} condition",
+                        S3X_AMZ_CONTENT_SHA256,
+                        name
+                    );
+                }
             }
             _ => {}
         }
+
+        values.add(s.to_owned());
     }
     Ok(())
 }

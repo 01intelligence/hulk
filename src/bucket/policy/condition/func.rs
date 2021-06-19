@@ -143,6 +143,7 @@ type NewFunction = fn(Key, ValueSet) -> anyhow::Result<Box<dyn Function + '_>>;
 
 lazy_static! {
     static ref CONDITION_FUNC_MAP: HashMap<Name<'static>, NewFunction> = maplit::hashmap! {
-        STRING_EQUALS => new_boolean_func as NewFunction,
+        BOOLEAN => new_boolean_func as NewFunction,
+        BINARY_EQUALS => new_binary_equals_func as NewFunction,
     };
 }

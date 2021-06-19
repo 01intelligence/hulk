@@ -13,6 +13,7 @@ pub mod etag;
 pub mod iam;
 pub mod jwt;
 pub mod log;
+pub mod s3utils;
 pub mod strset;
 pub mod trie;
 pub mod version;

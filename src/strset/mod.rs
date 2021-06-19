@@ -26,6 +26,12 @@ impl StringSet {
         ss
     }
 
+    pub fn to_vec(&self) -> Vec<String> {
+        let mut ss: Vec<String> = self.0.iter().cloned().collect();
+        ss.sort_unstable();
+        ss
+    }
+
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }

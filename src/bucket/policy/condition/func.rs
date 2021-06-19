@@ -154,5 +154,7 @@ lazy_static! {
         BINARY_EQUALS => new_binary_equals_func as NewFunction,
         IP_ADDRESS => new_ip_address_func as NewFunction,
         NOT_IP_ADDRESS => new_not_ip_address_func as NewFunction,
+        NUMERIC_EQUALS => new_numeric_equals_func as NewFunction,
+        NUMERIC_NOT_EQUALS => new_numeric_not_equals_func as NewFunction,
     };
 }

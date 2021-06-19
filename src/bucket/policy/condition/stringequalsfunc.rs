@@ -101,7 +101,7 @@ pub(super) fn new_string_equals_func(
     values: ValueSet,
 ) -> anyhow::Result<Box<dyn Function + '_>> {
     let value_strs = values_to_string_slice(STRING_EQUALS, values)?;
-    let mut set = StringSet::from_vec(value_strs);
+    let set = StringSet::from_vec(value_strs);
     validate_string_equals_values(STRING_EQUALS, key.clone(), &set)?;
     Ok(Box::new(StringEqualsFunc { key, values: set }))
 }
@@ -111,7 +111,7 @@ pub(super) fn new_string_not_equals_func(
     values: ValueSet,
 ) -> anyhow::Result<Box<dyn Function + '_>> {
     let value_strs = values_to_string_slice(STRING_NOT_EQUALS, values)?;
-    let mut set = StringSet::from_vec(value_strs);
+    let set = StringSet::from_vec(value_strs);
     validate_string_equals_values(STRING_NOT_EQUALS, key.clone(), &set)?;
     Ok(Box::new(StringNotEqualsFunc(StringEqualsFunc {
         key,
@@ -119,7 +119,7 @@ pub(super) fn new_string_not_equals_func(
     })))
 }
 
-fn validate_string_equals_values(name: Name, key: Key, values: &StringSet) -> anyhow::Result<()> {
+pub(super) fn validate_string_equals_values(name: Name, key: Key, values: &StringSet) -> anyhow::Result<()> {
     for s in values.as_slice() {
         match key {
             S3X_AMZ_COPY_SOURCE => {

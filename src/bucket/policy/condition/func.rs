@@ -147,6 +147,8 @@ lazy_static! {
         STRING_NOT_EQUALS => new_string_not_equals_func as NewFunction,
         STRING_EQUALS_IGNORE_CASE => new_string_equals_ignore_case_func as NewFunction,
         STRING_NOT_EQUALS_IGNORE_CASE => new_string_not_equals_ignore_case_func as NewFunction,
+        STRING_LIKE => new_string_like_func as NewFunction,
+        STRING_NOT_LIKE => new_string_not_like_func as NewFunction,
         BOOLEAN => new_boolean_func as NewFunction,
         BINARY_EQUALS => new_binary_equals_func as NewFunction,
     };

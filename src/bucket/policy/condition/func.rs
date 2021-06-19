@@ -150,6 +150,7 @@ lazy_static! {
         STRING_LIKE => new_string_like_func as NewFunction,
         STRING_NOT_LIKE => new_string_not_like_func as NewFunction,
         BOOLEAN => new_boolean_func as NewFunction,
+        NULL => new_null_func as NewFunction,
         BINARY_EQUALS => new_binary_equals_func as NewFunction,
         IP_ADDRESS => new_ip_address_func as NewFunction,
         NOT_IP_ADDRESS => new_not_ip_address_func as NewFunction,

@@ -7,7 +7,6 @@ use ipnet::IpNet;
 
 use super::super::Valid;
 use super::*;
-use crate::strset::StringSet;
 
 // IP address function. It checks whether value by Key in given
 // values is in IP network.  Here Key must be AWSSourceIP.

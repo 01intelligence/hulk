@@ -63,13 +63,15 @@ pub(super) fn new_boolean_func(
         );
     }
     if values.len() != 1 {
-        bail!("only one value is allowed for boolean condition");
+        bail!("only one value is allowed for {} condition", BOOLEAN);
     }
     let value = match values.0.into_iter().next().unwrap() {
         Value::Bool(v) => Value::Bool(v),
-        Value::String(s) => Value::Bool(parse_bool(&s)?),
+        Value::String(s) => Value::Bool(parse_bool(&s).map_err(|_| {
+            anyhow::anyhow!("value must be a boolean string for {} condition", BOOLEAN)
+        })?),
         _ => {
-            bail!("value must be a boolean for boolean condition");
+            bail!("value must be a boolean for {} condition", BOOLEAN);
         }
     };
 
@@ -79,7 +81,7 @@ pub(super) fn new_boolean_func(
     }))
 }
 
-fn parse_bool(s: &str) -> anyhow::Result<bool> {
+pub(super) fn parse_bool(s: &str) -> anyhow::Result<bool> {
     match s {
         "1" | "t" | "T" | "true" | "TRUE" | "True" => Ok(true),
         "0" | "f" | "F" | "false" | "FALSE" | "False" => Ok(false),

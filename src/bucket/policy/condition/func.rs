@@ -156,5 +156,9 @@ lazy_static! {
         NOT_IP_ADDRESS => new_not_ip_address_func as NewFunction,
         NUMERIC_EQUALS => new_numeric_equals_func as NewFunction,
         NUMERIC_NOT_EQUALS => new_numeric_not_equals_func as NewFunction,
+        NUMERIC_LESS_THAN => new_numeric_less_than_func as NewFunction,
+        NUMERIC_LESS_THAN_EQUALS => new_numeric_less_than_equals_func as NewFunction,
+        NUMERIC_GREATER_THAN => new_numeric_greater_than_func as NewFunction,
+        NUMERIC_GREATER_THAN_EQUALS => new_numeric_greater_than_equals_func as NewFunction,
     };
 }

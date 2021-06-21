@@ -1,5 +1,8 @@
 mod binaryequalsfunc;
 mod boolfunc;
+mod dateequalsfunc;
+mod dategreaterthanfunc;
+mod datelessthanfunc;
 mod func;
 mod ipaddressfunc;
 mod jwt;
@@ -16,6 +19,9 @@ mod value;
 
 pub use binaryequalsfunc::*;
 pub use boolfunc::*;
+pub use dateequalsfunc::*;
+pub use dategreaterthanfunc::*;
+pub use datelessthanfunc::*;
 pub use func::*;
 pub use ipaddressfunc::*;
 pub use jwt::*;

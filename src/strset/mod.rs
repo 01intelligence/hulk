@@ -1,10 +1,10 @@
 use std::collections::HashSet;
 use std::fmt;
-use std::fmt::Formatter;
 
-use serde::{Deserialize, Serialize};
+use serde::de::{self, Deserialize, Deserializer, SeqAccess, Visitor};
+use serde::ser::{Serialize, SerializeSeq, Serializer};
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub struct StringSet(HashSet<String>);
 
 impl StringSet {
@@ -30,6 +30,10 @@ impl StringSet {
         let mut ss: Vec<String> = self.0.iter().cloned().collect();
         ss.sort_unstable();
         ss
+    }
+
+    pub fn iter(&self) -> std::collections::hash_set::Iter<'_, String> {
+        self.0.iter()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -88,4 +92,66 @@ impl fmt::Display for StringSet {
         write!(f, "{}", slice.join(","))?;
         write!(f, "]")
     }
+}
+
+impl<'a> Serialize for StringSet {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        use serde::ser::Error;
+        let mut seq = serializer.serialize_seq(Some(self.0.len()))?;
+        for v in &self.0 {
+            seq.serialize_element(v)?;
+        }
+        seq.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for StringSet {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct StringSetVisitor;
+        impl<'de> Visitor<'de> for StringSetVisitor {
+            type Value = StringSet;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a string array or a string")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(crate::string_set!(v.to_owned()))
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                use serde::de::Error;
+                let mut set = StringSet::default();
+                while let Some(v) = seq.next_element()? {
+                    set.add(v);
+                }
+                Ok(set)
+            }
+        }
+
+        deserializer.deserialize_any(StringSetVisitor)
+    }
+}
+
+#[macro_export]
+macro_rules! string_set {
+    ($($e:expr),*) => {{
+        let mut set = StringSet::default();
+        $(
+            set.add($e);
+        )*
+        set
+    }};
 }

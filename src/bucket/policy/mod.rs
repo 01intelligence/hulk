@@ -1,3 +1,4 @@
+mod action;
 pub mod condition;
 mod effect;
 mod id;
@@ -5,6 +6,7 @@ mod principal;
 mod resource;
 mod statement;
 
+pub use action::*;
 pub use effect::*;
 pub use id::*;
 pub use principal::*;

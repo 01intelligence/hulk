@@ -274,6 +274,29 @@ impl<'a> super::super::ToVec<Key<'a>> for KeySet<'a> {
     }
 }
 
+#[macro_export]
+macro_rules! keyset {
+    ($($e:expr),*) => {{
+        let mut set = HashSet::new();
+        $(
+            let _ = set.insert($e);
+        )*
+        KeySet(set)
+    }};
+}
+
+#[macro_export]
+macro_rules! keyset_extend {
+    ($($e:expr,)+) => { keyset_extend!($($e),+) };
+    ($ks:expr, $($e:expr),*) => {{
+        let mut ks = $ks;
+        $(
+            let _ = ks.insert($e);
+        )+
+        ks
+    }};
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -160,5 +160,11 @@ lazy_static! {
         NUMERIC_LESS_THAN_EQUALS => new_numeric_less_than_equals_func as NewFunction,
         NUMERIC_GREATER_THAN => new_numeric_greater_than_func as NewFunction,
         NUMERIC_GREATER_THAN_EQUALS => new_numeric_greater_than_equals_func as NewFunction,
+        DATE_EQUALS => new_date_equals_func as NewFunction,
+        DATE_NOT_EQUALS => new_date_not_equals_func as NewFunction,
+        DATE_LESS_THAN => new_date_less_than_func as NewFunction,
+        DATE_LESS_THAN_EQUALS => new_date_less_than_equals_func as NewFunction,
+        DATE_GREATER_THAN => new_date_greater_than_func as NewFunction,
+        DATE_GREATER_THAN_EQUALS => new_date_greater_than_equals_func as NewFunction,
     };
 }

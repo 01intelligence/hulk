@@ -120,7 +120,7 @@ impl<'de> Deserialize<'de> for Resource {
     }
 }
 
-fn parse_resource(s: &str) -> anyhow::Result<Resource> {
+pub fn parse_resource(s: &str) -> anyhow::Result<Resource> {
     if !s.starts_with(RESOURCE_ARN_PREFIX) {
         bail!("invalid resource '{}'", s);
     }

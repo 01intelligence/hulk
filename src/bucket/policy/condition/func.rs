@@ -27,7 +27,7 @@ pub trait Function: fmt::Display + DynClone {
 dyn_clone::clone_trait_object!(Function);
 
 // List of functions.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Functions(Vec<Box<dyn Function>>);
 
 impl Functions {

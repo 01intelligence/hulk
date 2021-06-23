@@ -120,12 +120,16 @@ impl<'a, 'b> Serialize for Statement<'a, 'b> {
             return Err(S::Error::custom("invalid statement"));
         }
         let mut p = serializer.serialize_struct("Statement", 6)?;
-        p.serialize_field("Sid", &self.sid)?;
+        if !self.sid.is_empty() {
+            p.serialize_field("Sid", &self.sid)?;
+        }
         p.serialize_field("Effect", &self.effect)?;
         p.serialize_field("Principal", &self.principal)?;
         p.serialize_field("Action", &self.actions)?;
         p.serialize_field("Resource", &self.resources)?;
-        p.serialize_field("Condition", &self.conditions)?;
+        if !self.conditions.is_empty() {
+            p.serialize_field("Condition", &self.conditions)?;
+        }
         p.end()
     }
 }
@@ -183,12 +187,12 @@ impl<'de, 'a, 'b> Deserialize<'de> for Statement<'a, 'b> {
                     }
                 }
                 Ok(Statement {
-                    sid: sid.ok_or_else(|| A::Error::missing_field("Sid"))?,
+                    sid: sid.unwrap_or("".to_owned()),
                     effect: effect.ok_or_else(|| A::Error::missing_field("Effect"))?,
                     principal: principal.ok_or_else(|| A::Error::missing_field("Principal"))?,
                     actions: actions.ok_or_else(|| A::Error::missing_field("Action"))?,
                     resources: resources.ok_or_else(|| A::Error::missing_field("Resource"))?,
-                    conditions: conditions.ok_or_else(|| A::Error::missing_field("Condition"))?,
+                    conditions: conditions.unwrap_or(condition::Functions::default()),
                 })
             }
         }

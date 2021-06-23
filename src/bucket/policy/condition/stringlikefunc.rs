@@ -12,6 +12,7 @@ use crate::strset::StringSet;
 // For example,
 //   - if values = ["mybucket/foo*"], at evaluate() it returns whether string
 //     in value map for Key is wildcard matching in values.
+#[derive(Clone)]
 pub(super) struct StringLikeFunc<'a> {
     key: Key<'a>,
     values: StringSet,
@@ -76,6 +77,7 @@ impl<'a> Function for StringLikeFunc<'a> {
 // For example,
 //   - if values = ["mybucket/foo*"], at evaluate() it returns whether string
 //     in value map for Key is NOT wildcard matching in values.
+#[derive(Clone)]
 pub(super) struct StringNotLikeFunc<'a>(StringLikeFunc<'a>);
 
 impl<'a> fmt::Display for StringNotLikeFunc<'a> {

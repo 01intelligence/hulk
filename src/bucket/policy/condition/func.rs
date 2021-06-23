@@ -1,15 +1,16 @@
 use std::collections::HashMap;
 use std::fmt;
 
+use dyn_clone::DynClone;
 use lazy_static::lazy_static;
 use serde::de::{self, Deserialize, Deserializer, MapAccess, Visitor};
 use serde::ser::{Serialize, SerializeMap, Serializer};
 
+use super::super::Valid;
 use super::*;
-use crate::bucket::policy::Valid;
 
 // Condition function trait.
-pub trait Function: fmt::Display {
+pub trait Function: fmt::Display + DynClone {
     // Evaluates this condition function with given values.
     fn evaluate(&self, values: &HashMap<String, Vec<String>>) -> bool;
 
@@ -23,7 +24,10 @@ pub trait Function: fmt::Display {
     fn to_map(&self) -> HashMap<Key, ValueSet>;
 }
 
+dyn_clone::clone_trait_object!(Function);
+
 // List of functions.
+#[derive(Clone)]
 pub struct Functions(Vec<Box<dyn Function>>);
 
 impl Functions {
@@ -41,6 +45,10 @@ impl Functions {
     pub fn keys(&self) -> KeySet {
         self.0.iter().map(|f| f.key()).collect()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
 }
 
 impl PartialEq for Functions {
@@ -51,6 +59,8 @@ impl PartialEq for Functions {
             .all(|f| other.0.iter().any(|g| g.to_string() == f.to_string()))
     }
 }
+
+impl std::cmp::Eq for Functions {}
 
 impl std::fmt::Display for Functions {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

@@ -1,16 +1,17 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{hash_map, hash_set, HashMap, HashSet};
 use std::fmt;
+use std::fmt::Formatter;
 
 use lazy_static::lazy_static;
-use serde::de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
-use serde::ser::{Serialize, SerializeStruct, Serializer};
+use serde::de::{self, Deserialize, Deserializer, SeqAccess, Visitor};
+use serde::ser::{Serialize, SerializeSeq, Serializer};
 
 use super::*;
 
 // Policy action.
 // Refer https://docs.aws.amazon.com/IAM/latest/UserGuide/list_amazons3.html
 // for more information about available actions.
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Clone, Debug)]
 pub struct Action<'a>(&'a str);
 
 // ABORT_MULTIPART_UPLOAD_ACTION - AbortMultipartUpload Rest API action.
@@ -249,7 +250,8 @@ lazy_static! {
         RESTORE_OBJECT_ACTION,
         RESET_BUCKET_REPLICATION_STATE_ACTION,
     };
-    static ref ACTION_CONDITION_KEY_MAP: HashMap<Action<'static>, condition::KeySet<'static>> = {
+    // Holds mapping of supported condition key for an action.
+    pub(super) static ref ACTION_CONDITION_KEY_MAP: HashMap<Action<'static>, condition::KeySet<'static>> = {
         use condition::*;
 
         use crate::keyset_extend;
@@ -355,7 +357,7 @@ lazy_static! {
 }
 
 impl<'a> Action<'a> {
-    fn is_object_action(&self) -> bool {
+    pub fn is_object_action(&self) -> bool {
         SUPPORTED_OBJECT_ACTIONS.contains(self)
     }
 }
@@ -363,6 +365,12 @@ impl<'a> Action<'a> {
 impl<'a> Valid for Action<'a> {
     fn is_valid(&self) -> bool {
         SUPPORTED_ACTIONS.contains(self)
+    }
+}
+
+impl<'a> fmt::Display for Action<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -408,4 +416,117 @@ impl<'de, 'a> Deserialize<'de> for Action<'a> {
     }
 }
 
+// Set of actions.
+#[derive(Eq, PartialEq, Clone, Debug)]
 pub struct ActionSet<'a>(HashSet<Action<'a>>);
+
+impl<'a> ActionSet<'a> {
+    pub fn intersection(
+        &'a self,
+        other: &'a ActionSet<'a>,
+    ) -> hash_set::Intersection<'a, Action<'a>, hash_map::RandomState> {
+        self.0.intersection(&other.0)
+    }
+
+    pub fn insert(&mut self, value: Action<'a>) -> bool {
+        self.0.insert(value)
+    }
+
+    pub fn contains(&self, value: &Action<'a>) -> bool {
+        self.0.contains(value)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn iter(&self) -> hash_set::Iter<'_, Action<'a>> {
+        self.0.iter()
+    }
+}
+
+impl<'a> super::ToVec<Action<'a>> for ActionSet<'a> {
+    fn to_vec(&self) -> Vec<Action<'a>> {
+        self.0.iter().cloned().collect()
+    }
+}
+
+impl<'a> fmt::Display for ActionSet<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut actions: Vec<&Action> = self.0.iter().collect();
+        actions.sort_unstable();
+        write!(f, "[")?;
+        if !actions.is_empty() {
+            let last = actions.len() - 1;
+            for &a in &actions[..last] {
+                write!(f, "{},", a.0)?;
+            }
+            write!(f, "{}", actions[last].0)?;
+        }
+        write!(f, "]")
+    }
+}
+
+impl<'a> Serialize for ActionSet<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        use serde::ser::Error;
+        if self.is_empty() {
+            return Err(S::Error::custom("empty actions"));
+        }
+        let mut seq = serializer.serialize_seq(Some(self.0.len()))?;
+        for e in &self.0 {
+            seq.serialize_element(e)?;
+        }
+        seq.end()
+    }
+}
+
+impl<'de, 'a> Deserialize<'de> for ActionSet<'a> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct ActionSetVisitor;
+        impl<'de> Visitor<'de> for ActionSetVisitor {
+            type Value = ActionSet<'static>;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("an action array")
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                use serde::de::Error;
+                let mut set = ActionSet(HashSet::new());
+                while let Some(v) = seq.next_element()? {
+                    if set.contains(&v) {
+                        return Err(A::Error::custom(format!("duplicate value found '{}'", v.0)));
+                    }
+                    set.insert(v);
+                }
+                if set.is_empty() {
+                    return Err(A::Error::custom("empty actions"));
+                }
+                Ok(set)
+            }
+        }
+
+        deserializer.deserialize_seq(ActionSetVisitor)
+    }
+}
+
+#[macro_export]
+macro_rules! actionset {
+    ($($e:expr),*) => {{
+        let mut set = ActionSet(HashSet::new());
+        $(
+            set.insert($e);
+        )*
+        set
+    }};
+}

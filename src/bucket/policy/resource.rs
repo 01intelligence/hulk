@@ -170,6 +170,20 @@ impl ResourceSet {
         }
         Ok(())
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    // Checks if at least one bucket resource exists in the set.
+    pub(super) fn bucket_resource_exists(&self) -> bool {
+        self.0.iter().any(|r| r.is_bucket_pattern())
+    }
+
+    // Checks if at least one object resource exists in the set.
+    pub(super) fn object_resource_exists(&self) -> bool {
+        self.0.iter().any(|r| r.is_object_pattern())
+    }
 }
 
 impl fmt::Display for ResourceSet {

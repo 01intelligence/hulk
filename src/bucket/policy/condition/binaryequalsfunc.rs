@@ -7,6 +7,7 @@ use super::super::Valid;
 use super::*;
 use crate::strset::StringSet;
 
+#[derive(Clone)]
 pub(super) struct BinaryEqualsFunc<'a> {
     key: Key<'a>,
     values: StringSet,

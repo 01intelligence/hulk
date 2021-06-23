@@ -2,6 +2,7 @@ mod action;
 pub mod condition;
 mod effect;
 mod id;
+mod policy;
 mod principal;
 mod resource;
 mod statement;
@@ -9,6 +10,7 @@ mod statement;
 pub use action::*;
 pub use effect::*;
 pub use id::*;
+pub use policy::*;
 pub use principal::*;
 pub use resource::*;
 pub use statement::*;
@@ -23,18 +25,18 @@ pub trait Allowed {
     fn is_allowed(&self, b: bool) -> bool;
 }
 
-pub trait ToSlice<T> {
-    fn to_slice(&self) -> &[T];
+pub trait AsSlice<T> {
+    fn as_slice(&self) -> &[T];
 }
 
-impl<T> ToSlice<T> for T {
-    fn to_slice(&self) -> &[T] {
+impl<T> AsSlice<T> for T {
+    fn as_slice(&self) -> &[T] {
         unsafe { std::slice::from_raw_parts(self as *const T, 1) }
     }
 }
 
-impl<T> ToSlice<T> for [T] {
-    fn to_slice(&self) -> &[T] {
+impl<T> AsSlice<T> for [T] {
+    fn as_slice(&self) -> &[T] {
         self
     }
 }

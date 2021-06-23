@@ -12,6 +12,7 @@ use crate::strset::StringSet;
 // For example,
 //   - if values = ["mybucket/foo"], at evaluate() it returns whether string
 //     in value map for Key is in values.
+#[derive(Clone)]
 pub(super) struct StringEqualsFunc<'a> {
     key: Key<'a>,
     values: StringSet,
@@ -70,6 +71,7 @@ impl<'a> Function for StringEqualsFunc<'a> {
 // For example,
 //   - if values = ["mybucket/foo"], at evaluate() it returns whether string
 //     in value map for Key is NOT in values.
+#[derive(Clone)]
 pub(super) struct StringNotEqualsFunc<'a>(StringEqualsFunc<'a>);
 
 impl<'a> fmt::Display for StringNotEqualsFunc<'a> {

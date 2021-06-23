@@ -12,6 +12,7 @@ use crate::strset::StringSet;
 // For example,
 //   - if values = ["mybucket/foo"], at evaluate() it returns whether string
 //     in value map for Key is in values.
+#[derive(Clone)]
 pub(super) struct StringEqualsIgnoreCaseFunc<'a> {
     key: Key<'a>,
     values: StringSet,
@@ -80,6 +81,7 @@ impl<'a> Function for StringEqualsIgnoreCaseFunc<'a> {
 // For example,
 //   - if values = ["mybucket/foo"], at evaluate() it returns whether string
 //     in value map for Key is NOT in values.
+#[derive(Clone)]
 pub(super) struct StringNotEqualsIgnoreCaseFunc<'a>(StringEqualsIgnoreCaseFunc<'a>);
 
 impl<'a> fmt::Display for StringNotEqualsIgnoreCaseFunc<'a> {

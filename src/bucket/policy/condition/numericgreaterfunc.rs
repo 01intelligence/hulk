@@ -12,6 +12,7 @@ use super::*;
 // For example,
 //   - if values = ["mybucket/foo"], at evaluate() it returns whether string
 //     in value map for Key is in values.
+#[derive(Clone)]
 pub(super) struct NumericGreaterThanFunc<'a> {
     key: Key<'a>,
     value: isize,
@@ -69,6 +70,7 @@ impl<'a> Function for NumericGreaterThanFunc<'a> {
 // For example,
 //   - if values = ["mybucket/foo"], at evaluate() it returns whether string
 //     in value map for Key is NOT in values.
+#[derive(Clone)]
 pub(super) struct NumericGreaterThanEqualsFunc<'a>(NumericGreaterThanFunc<'a>);
 
 impl<'a> fmt::Display for NumericGreaterThanEqualsFunc<'a> {

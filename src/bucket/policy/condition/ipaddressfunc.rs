@@ -13,6 +13,7 @@ use super::*;
 // For example,
 //   - if values = [192.168.1.0/24], at evaluate() it returns whether IP address
 //     in value map for AWSSourceIP falls in the network 192.168.1.10/24.
+#[derive(Clone)]
 pub(super) struct IpAddressFunc<'a> {
     key: Key<'a>,
     values: Vec<IpNet>,
@@ -81,6 +82,7 @@ impl<'a> Function for IpAddressFunc<'a> {
 // For example,
 //   - if values = [192.168.1.0/24], at evaluate() it returns whether IP address
 //     in value map for AWSSourceIP does not fall in the network 192.168.1.10/24.
+#[derive(Clone)]
 pub(super) struct NotIpaddressFunc<'a>(IpAddressFunc<'a>);
 
 impl<'a> fmt::Display for NotIpaddressFunc<'a> {

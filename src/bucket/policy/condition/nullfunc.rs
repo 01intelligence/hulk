@@ -14,6 +14,7 @@ use super::*;
 //   2. if Key = S3XAmzCopySource and Value = false, at evaluate() it returns whether
 //      S3XAmzCopySource is in given value map or not.
 // https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_condition_operators.html#Conditions_Null
+#[derive(Clone)]
 pub(super) struct NullFunc<'a> {
     key: Key<'a>,
     value: bool,

@@ -8,6 +8,7 @@ use super::*;
 
 // Bool condition function. It checks whether Key is true or false.
 // https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_condition_operators.html#Conditions_Boolean
+#[derive(Clone)]
 pub(super) struct BooleanFunc<'a> {
     key: Key<'a>,
     value: String,

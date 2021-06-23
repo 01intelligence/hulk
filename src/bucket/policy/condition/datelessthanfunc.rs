@@ -14,6 +14,7 @@ use super::*;
 // For example,
 //   - if values = ["mybucket/foo"], at evaluate() it returns whether string
 //     in value map for Key is in values.
+#[derive(Clone)]
 pub(super) struct DateLessThanFunc<'a> {
     key: Key<'a>,
     value: DateTime<Utc>,
@@ -79,6 +80,7 @@ impl<'a> Function for DateLessThanFunc<'a> {
 // For example,
 //   - if values = ["mybucket/foo"], at evaluate() it returns whether string
 //     in value map for Key is NOT in values.
+#[derive(Clone)]
 pub(super) struct DateLessThanEqualsFunc<'a>(DateLessThanFunc<'a>);
 
 impl<'a> fmt::Display for DateLessThanEqualsFunc<'a> {

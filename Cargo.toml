@@ -57,9 +57,11 @@ unicase = "2.6.0"
 ipnet = "2.3.1"
 dyn-clone = "1.0.4"
 path-clean = "0.1.0"
+reed-solomon-erasure = { version = "4.0.2", features = [ "simd-accel" ] }
 
 [patch.crates-io]
 jsonwebtoken = { git = 'https://github.com/01intelligence/jsonwebtoken', branch = 'master' }
+reed-solomon-erasure = { git = 'https://github.com/01intelligence/reed-solomon-erasure', branch = 'master' }
 
 [build-dependencies]
 time = "0.2.26"

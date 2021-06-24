@@ -1313,6 +1313,7 @@ dependencies = [
  "opentelemetry-jaeger",
  "path-clean",
  "rand",
+ "reed-solomon-erasure",
  "regex",
  "rustls",
  "serde",
@@ -2003,6 +2004,16 @@ checksum = "528532f3d801c87aec9def2add9ca802fe569e44a544afe633765267840abe64"
 dependencies = [
  "getrandom",
  "redox_syscall",
+]
+
+[[package]]
+name = "reed-solomon-erasure"
+version = "4.0.2"
+source = "git+https://github.com/01intelligence/reed-solomon-erasure?branch=master#442a12d3eb4d5f4d7581808e98b42a2162950fac"
+dependencies = [
+ "cc",
+ "libc",
+ "smallvec",
 ]
 
 [[package]]

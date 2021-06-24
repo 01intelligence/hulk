@@ -9,6 +9,18 @@ use crate::bucket::policy::{condition, Valid};
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub struct AdminAction<'a>(&'a str);
 
+impl<'a> std::convert::From<Action<'a>> for AdminAction<'a> {
+    fn from(a: Action<'a>) -> Self {
+        AdminAction(a.0)
+    }
+}
+
+impl<'a> std::convert::From<&'a Action<'a>> for AdminAction<'a> {
+    fn from(a: &'a Action<'a>) -> Self {
+        AdminAction(a.0)
+    }
+}
+
 // HEAL_ADMIN_ACTION - allows heal command
 pub const HEAL_ADMIN_ACTION: AdminAction = AdminAction("admin:Heal");
 

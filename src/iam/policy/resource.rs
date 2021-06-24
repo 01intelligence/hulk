@@ -106,7 +106,7 @@ impl ResourceSet {
             .any(|r| r.is_match(resource, condition_values))
     }
 
-    pub fn validate(&self, bucket_name: &str) -> anyhow::Result<()> {
+    pub fn validate(&self) -> anyhow::Result<()> {
         for r in &self.0 {
             r.validate()?;
         }

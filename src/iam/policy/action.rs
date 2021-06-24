@@ -2,6 +2,7 @@ use std::collections::{hash_map, hash_set, HashMap, HashSet};
 use std::fmt;
 use std::fmt::Formatter;
 
+use anyhow::bail;
 use lazy_static::lazy_static;
 use serde::de::{self, Deserialize, Deserializer, SeqAccess, Visitor};
 use serde::ser::{Serialize, SerializeSeq, Serializer};
@@ -13,7 +14,7 @@ use crate::bucket::policy::{condition, Valid};
 // Refer https://docs.aws.amazon.com/IAM/latest/UserGuide/list_amazons3.html
 // for more information about available actions.
 #[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Clone, Debug)]
-pub struct Action<'a>(&'a str);
+pub struct Action<'a>(pub(super) &'a str);
 
 // ABORT_MULTIPART_UPLOAD_ACTION - AbortMultipartUpload Rest API action.
 pub const ABORT_MULTIPART_UPLOAD_ACTION: Action = Action("s3:AbortMultipartUpload");
@@ -381,6 +382,17 @@ lazy_static! {
     };
 }
 
+pub(super) fn action_condition_keyset(action: &Action) -> condition::KeySet<'static> {
+    let mut ks_merged: condition::KeySet<'static> =
+        condition::COMMON_KEYS.iter().cloned().collect();
+    for (a, ks) in IAM_ACTION_CONDITION_KEY_MAP.iter() {
+        if action.is_match(a) {
+            ks_merged.extend(ks.iter().cloned());
+        }
+    }
+    ks_merged
+}
+
 impl<'a> Action<'a> {
     pub(super) fn is_object_action(&self) -> bool {
         SUPPORTED_OBJECT_ACTIONS.iter().any(|a| self.is_match(a))
@@ -460,6 +472,10 @@ impl<'a> ActionSet<'a> {
         self.0.insert(value)
     }
 
+    pub fn contains(&self, value: &Action<'a>) -> bool {
+        self.0.contains(value)
+    }
+
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -475,6 +491,24 @@ impl<'a> ActionSet<'a> {
             // means GetObject is enabled implicitly. 
             (a == &GET_OBJECT_VERSION_ACTION && action == &GET_OBJECT_ACTION)
         })
+    }
+
+    pub fn validate(&self) -> anyhow::Result<()> {
+        for a in self.iter() {
+            if !a.is_valid() {
+                bail!("invalid action '{}'", a);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn validate_admin(&self) -> anyhow::Result<()> {
+        for a in self.iter() {
+            if !AdminAction::from(a).is_valid() {
+                bail!("invalid action '{}'", a);
+            }
+        }
+        Ok(())
     }
 }
 

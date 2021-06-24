@@ -4,7 +4,6 @@ use anyhow::bail;
 use lazy_static::lazy_static;
 use reed_solomon_erasure::galois_8::ReedSolomon;
 use reed_solomon_erasure::Error::*;
-use reed_solomon_erasure::ReconstructShard;
 
 pub struct Erasure {
     encoder: Lazy<ReedSolomon, Box<dyn FnOnce() -> ReedSolomon>>,

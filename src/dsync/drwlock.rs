@@ -1,10 +1,7 @@
 use std::sync::Arc;
-use std::time::SystemTime;
 
 use anyhow::anyhow;
 use log::trace;
-use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
 use tokio::select;
 use tokio::sync::mpsc::channel;
 use tokio::sync::RwLock;
@@ -13,6 +10,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::*;
 use crate::dsync::Dsync;
+use crate::utils::{rng_seed_now, sleep, sleep_until};
 
 // Tolerance limit to wait for lock acquisition before.
 const DRW_MUTEX_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(1);
@@ -118,7 +116,7 @@ impl<L: NetLocker + Send + Sync + 'static, D: Dsync<L>> DRWLock<L, D> {
         // Tolerance is not set, defaults to half of the locker clients.
         let tolerance = self.lockers.len() / 2;
 
-        let mut rng = rng();
+        let mut rng = rng_seed_now();
         while !release_all(
             tolerance,
             &self.owner,
@@ -129,7 +127,7 @@ impl<L: NetLocker + Send + Sync + 'static, D: Dsync<L>> DRWLock<L, D> {
         )
         .await
         {
-            tokio::time::sleep(LOCK_RETRY_INTERVAL.mul_f64(rng.gen::<f64>())).await;
+            sleep(LOCK_RETRY_INTERVAL, Some(&mut rng)).await;
         }
     }
 
@@ -147,7 +145,7 @@ impl<L: NetLocker + Send + Sync + 'static, D: Dsync<L>> DRWLock<L, D> {
         // Tolerance is not set, defaults to half of the locker clients.
         let tolerance = self.lockers.len() / 2;
 
-        let mut rng = rng();
+        let mut rng = rng_seed_now();
         while !release_all(
             tolerance,
             &self.owner,
@@ -158,7 +156,7 @@ impl<L: NetLocker + Send + Sync + 'static, D: Dsync<L>> DRWLock<L, D> {
         )
         .await
         {
-            tokio::time::sleep(LOCK_RETRY_INTERVAL.mul_f64(rng.gen::<f64>())).await;
+            sleep(LOCK_RETRY_INTERVAL, Some(&mut rng)).await;
         }
     }
 
@@ -172,7 +170,7 @@ impl<L: NetLocker + Send + Sync + 'static, D: Dsync<L>> DRWLock<L, D> {
     ) -> bool {
         let (lockers, _) = self.dsync.get_lockers();
 
-        let mut rng = rng();
+        let mut rng = rng_seed_now();
 
         trace!(
             "lock_blocking {}/{} for {:?}: lock type {}, additional opts: {:?}",
@@ -255,11 +253,7 @@ impl<L: NetLocker + Send + Sync + 'static, D: Dsync<L>> DRWLock<L, D> {
                         );
                         return locked;
                     }
-                    let sleep_deadline =
-                        Instant::now() + LOCK_RETRY_INTERVAL.mul_f64(rng.gen::<f64>());
-                    if sleep_deadline < deadline {
-                        tokio::time::sleep_until(sleep_deadline).await;
-                    }
+                    sleep_until(deadline, LOCK_RETRY_INTERVAL, Some(&mut rng)).await;
                 }
                 Err(_) => {
                     return false;
@@ -701,13 +695,4 @@ fn check_failed_unlocks(locks: &[String], tolerance: usize) -> bool {
     } else {
         unlocks_failed > tolerance
     }
-}
-
-fn rng() -> StdRng {
-    StdRng::seed_from_u64(
-        SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_secs(),
-    )
 }

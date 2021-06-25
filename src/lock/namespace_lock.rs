@@ -1,4 +1,7 @@
+use std::collections::HashMap;
+
 use async_trait::async_trait;
+use tokio::time::{timeout_at, Duration, Instant};
 
 use super::*;
 use crate::dsync::{DRWLock, Dsync, NetLocker};
@@ -9,6 +12,23 @@ pub trait RWLocker {
     async fn unlock(&mut self);
     async fn rlock(&mut self, timeout: DynamicTimeout) -> anyhow::Result<()>;
     async fn runlock(&mut self);
+}
+
+struct NamespaceLock {
+    refs: u32,
+    lock: TimedRWLock,
+}
+
+struct NamespaceLockMap {
+    // Indicates if namespace is part of a distributed setup.
+    is_dist_erasure: bool,
+    lock_map: HashMap<String, NamespaceLock>,
+}
+
+impl NamespaceLockMap {
+    fn lock(volume: &str, path: &str, lock_source: &str, ops_id: &str, read_lock: bool, timeout: Duration) {
+        let resource = crate::object::path_join(&[volume, path]);
+    }
 }
 
 // Distributed lock instance from dsync.
@@ -44,6 +64,10 @@ struct LocalLockInstance {
 #[async_trait]
 impl RWLocker for LocalLockInstance {
     async fn lock(&mut self, timeout: DynamicTimeout) -> anyhow::Result<()> {
+        let lock_source = get_source();
+        let start = Instant::now();
+        let read_lock = false;
+        for path in &self.paths {}
         Ok(())
     }
 

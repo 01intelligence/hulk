@@ -1,6 +1,9 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use async_trait::async_trait;
+use log::error;
+use tokio::sync::Mutex;
 use tokio::time::{timeout_at, Duration, Instant};
 
 use super::*;
@@ -14,20 +17,84 @@ pub trait RWLocker {
     async fn runlock(&mut self);
 }
 
+#[derive(Default)]
 struct NamespaceLock {
-    refs: u32,
-    lock: TimedRWLock,
+    refs: i32,
+    lock: Arc<Mutex<TimedRWLock>>,
 }
 
 struct NamespaceLockMap {
     // Indicates if namespace is part of a distributed setup.
     is_dist_erasure: bool,
-    lock_map: HashMap<String, NamespaceLock>,
+    lock_map: Mutex<HashMap<String, NamespaceLock>>,
 }
 
 impl NamespaceLockMap {
-    fn lock(volume: &str, path: &str, lock_source: &str, ops_id: &str, read_lock: bool, timeout: Duration) {
+    async fn lock(
+        &self,
+        volume: &str,
+        path: &str,
+        lock_source: &str,
+        ops_id: &str,
+        read_lock: bool,
+        timeout: Duration,
+    ) {
         let resource = crate::object::path_join(&[volume, path]);
+        let lock;
+        {
+            let mut lock_map = self.lock_map.lock().await;
+            let ns_lock = lock_map
+                .entry(resource.clone())
+                .or_insert(NamespaceLock::default());
+            ns_lock.refs += 1;
+            lock = ns_lock.lock.clone();
+            // Drop MutexGuard
+        }
+
+        let locked = if read_lock {
+            lock.lock().await.rlock(timeout).await
+        } else {
+            lock.lock().await.lock(timeout).await
+        };
+
+        if !locked {
+            // Decrement ref count since we failed to get the lock.
+            let mut lock_map = self.lock_map.lock().await;
+            let ns_lock = lock_map.get_mut(&resource).unwrap();
+            ns_lock.refs -= 1;
+            if ns_lock.refs < 0 {
+                error!("resource reference count was lower than 0");
+            }
+            if ns_lock.refs == 0 {
+                // Remove from the map if there are no more references.
+                lock_map.remove(&resource);
+            }
+            // Drop MutexGuard
+        }
+    }
+
+    async fn unlock(&self, volume: &str, path: &str, read_lock: bool) {
+        let resource = crate::object::path_join(&[volume, path]);
+        let mut lock_map = self.lock_map.lock().await;
+        let ns_lock = match lock_map.get_mut(&resource) {
+            None => {
+                return;
+            }
+            Some(ns_lock) => ns_lock,
+        };
+        if read_lock {
+            ns_lock.lock.lock().await.runlock();
+        } else {
+            ns_lock.lock.lock().await.unlock();
+        }
+        ns_lock.refs -= 1;
+        if ns_lock.refs < 0 {
+            error!("resource reference count was lower than 0");
+        }
+        if ns_lock.refs == 0 {
+            // Remove from the map if there are no more references.
+            lock_map.remove(&resource);
+        }
     }
 }
 

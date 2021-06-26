@@ -4,6 +4,7 @@ use crate::utils::{rng_seed_now, sleep_until};
 
 const LOCK_RETRY_INTERVAL: Duration = Duration::from_millis(50);
 
+#[derive(Default)]
 pub struct TimedRWLock {
     is_write_lock: bool,
     refs: u32,

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::ops::Sub;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -8,12 +9,13 @@ use tokio::time::{timeout_at, Duration, Instant};
 
 use super::*;
 use crate::dsync::{DRWLock, Dsync, NetLocker};
+use crate::object;
 
 #[async_trait]
 pub trait RWLocker {
-    async fn lock(&mut self, timeout: DynamicTimeout) -> anyhow::Result<()>;
+    async fn lock(&mut self, timeout: &mut DynamicTimeout) -> anyhow::Result<()>;
     async fn unlock(&mut self);
-    async fn rlock(&mut self, timeout: DynamicTimeout) -> anyhow::Result<()>;
+    async fn rlock(&mut self, timeout: &mut DynamicTimeout) -> anyhow::Result<()>;
     async fn runlock(&mut self);
 }
 
@@ -30,6 +32,12 @@ struct NamespaceLockMap {
 }
 
 impl NamespaceLockMap {
+    pub async fn new_namespace_lock<L: RWLocker>(&mut self) -> L {
+        let ops_id = uuid::Uuid::new_v4().to_string();
+        if self.is_dist_erasure {}
+        todo!()
+    }
+
     async fn lock(
         &self,
         volume: &str,
@@ -38,7 +46,7 @@ impl NamespaceLockMap {
         ops_id: &str,
         read_lock: bool,
         timeout: Duration,
-    ) {
+    ) -> bool {
         let resource = crate::object::path_join(&[volume, path]);
         let lock;
         {
@@ -71,6 +79,8 @@ impl NamespaceLockMap {
             }
             // Drop MutexGuard
         }
+
+        locked
     }
 
     async fn unlock(&self, volume: &str, path: &str, read_lock: bool) {
@@ -108,43 +118,104 @@ struct DistLockInstance<L: NetLocker + Send + Sync + 'static, D: Dsync<L> + Send
 impl<L: NetLocker + Send + Sync + 'static, D: Dsync<L> + Send + Sync + 'static> RWLocker
     for DistLockInstance<L, D>
 {
-    async fn lock(&mut self, timeout: DynamicTimeout) -> anyhow::Result<()> {
+    async fn lock(&mut self, timeout: &mut DynamicTimeout) -> anyhow::Result<()> {
         let lock_source = get_source();
         Ok(())
     }
 
     async fn unlock(&mut self) {}
 
-    async fn rlock(&mut self, timeout: DynamicTimeout) -> anyhow::Result<()> {
+    async fn rlock(&mut self, timeout: &mut DynamicTimeout) -> anyhow::Result<()> {
         Ok(())
     }
 
     async fn runlock(&mut self) {}
 }
 
-struct LocalLockInstance {
+struct LocalLockInstance<'a> {
+    ns: &'a mut NamespaceLockMap,
     volume: String,
     paths: Vec<String>,
     ops_id: String,
 }
 
 #[async_trait]
-impl RWLocker for LocalLockInstance {
-    async fn lock(&mut self, timeout: DynamicTimeout) -> anyhow::Result<()> {
+impl<'a> RWLocker for LocalLockInstance<'a> {
+    async fn lock(&mut self, timeout: &mut DynamicTimeout) -> anyhow::Result<()> {
         let lock_source = get_source();
         let start = Instant::now();
         let read_lock = false;
-        for path in &self.paths {}
+        let mut success = Vec::new();
+        for (i, path) in self.paths.iter().enumerate() {
+            if !self
+                .ns
+                .lock(
+                    &self.volume,
+                    path,
+                    &lock_source,
+                    &self.ops_id,
+                    read_lock,
+                    timeout.timeout(),
+                )
+                .await
+            {
+                timeout.log_failure();
+                for si in success {
+                    self.ns
+                        .unlock(&self.volume, &self.paths[si] as &str, read_lock);
+                }
+                return Err(object::ApiError::OperationTimedOut.into());
+            }
+            success.push(i);
+        }
+        timeout.log_success(Instant::now().sub(start));
         Ok(())
     }
 
-    async fn unlock(&mut self) {}
+    async fn unlock(&mut self) {
+        let read_lock = false;
+        for path in &self.paths {
+            self.ns.unlock(&self.volume, path, read_lock);
+        }
+    }
 
-    async fn rlock(&mut self, timeout: DynamicTimeout) -> anyhow::Result<()> {
+    async fn rlock(&mut self, timeout: &mut DynamicTimeout) -> anyhow::Result<()> {
+        let lock_source = get_source();
+        let start = Instant::now();
+        let read_lock = true;
+        let mut success = Vec::new();
+        for (i, path) in self.paths.iter().enumerate() {
+            if !self
+                .ns
+                .lock(
+                    &self.volume,
+                    path,
+                    &lock_source,
+                    &self.ops_id,
+                    read_lock,
+                    timeout.timeout(),
+                )
+                .await
+            {
+                timeout.log_failure();
+                for si in success {
+                    self.ns
+                        .unlock(&self.volume, &self.paths[si] as &str, read_lock);
+                }
+                return Err(object::ApiError::OperationTimedOut.into());
+            }
+            success.push(i);
+        }
+        timeout.log_success(Instant::now().sub(start));
         Ok(())
     }
 
-    async fn runlock(&mut self) {}
+    async fn runlock(&mut self) {
+        let read_lock = true;
+        for path in &self.paths {
+            self.ns.unlock(&self.volume, path, read_lock);
+        }
+    }
 }
 
 fn get_source() -> String {

@@ -2,6 +2,7 @@
 #![feature(backtrace_frames)]
 #![feature(type_name_of_val)]
 #![feature(once_cell)]
+#![feature(duration_constants)]
 
 pub mod auth;
 pub mod bucket;

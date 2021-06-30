@@ -1,44 +1,44 @@
-use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use chrono::Duration;
 use lazy_static::lazy_static;
 use tokio::sync::Mutex;
+use tokio::time::Duration;
 
 const DYNAMIC_TIMEOUT_INCREASE_THRESHOLD_PCT: f64 = 0.33; // Upper threshold for failures in order to increase timeout
 const DYNAMIC_TIMEOUT_DECREASE_THRESHOLD_PCT: f64 = 0.10; // Lower threshold for failures in order to decrease timeout
 const DYNAMIC_TIMEOUT_LOG_SIZE: usize = 16;
 
 lazy_static! {
-    static ref MAX_DURATION: Duration = Duration::max_value();
-    static ref MAX_DYNAMIC_TIMEOUT: Duration = Duration::hours(24); // Never set timeout bigger than this.
+    static ref MAX_DURATION: Duration = Duration::MAX;
+    static ref MAX_DYNAMIC_TIMEOUT: Duration = Duration::from_secs(24 * 60 * 60); // Never set timeout bigger than this.
 }
 
 pub struct DynamicTimeout {
-    timeout: Arc<AtomicI64>,
-    minimum: i64,
+    timeout: Arc<AtomicU64>,
+    minimum: u64,
     entries: Arc<AtomicUsize>,
     logs: Mutex<[Duration; DYNAMIC_TIMEOUT_LOG_SIZE]>,
 }
 
 impl DynamicTimeout {
     pub fn new(timeout: Duration, mut minimum: Duration) -> DynamicTimeout {
-        if timeout <= Duration::zero() || minimum <= Duration::zero() {
+        if timeout <= Duration::ZERO || minimum <= Duration::ZERO {
             panic!("negative or zero timeout");
         }
         if minimum > timeout {
             minimum = timeout;
         }
         DynamicTimeout {
-            timeout: Arc::new(AtomicI64::new(timeout.num_nanoseconds().unwrap())),
-            minimum: minimum.num_nanoseconds().unwrap(),
+            timeout: Arc::new(AtomicU64::new(timeout.as_nanos() as u64)),
+            minimum: minimum.as_nanos() as u64,
             entries: Default::default(),
-            logs: Mutex::new([Duration::zero(); DYNAMIC_TIMEOUT_LOG_SIZE]),
+            logs: Mutex::new([Duration::ZERO; DYNAMIC_TIMEOUT_LOG_SIZE]),
         }
     }
 
     pub fn timeout(&self) -> Duration {
-        Duration::nanoseconds(self.timeout.load(Ordering::Relaxed))
+        Duration::from_nanos(self.timeout.load(Ordering::Relaxed))
     }
 
     pub async fn log_success(&mut self, duration: Duration) {
@@ -50,7 +50,7 @@ impl DynamicTimeout {
     }
 
     async fn log_entry(&mut self, duration: Duration) {
-        if duration < Duration::zero() {
+        if duration < Duration::ZERO {
             return;
         }
         let entries = self.entries.fetch_add(1, Ordering::SeqCst) + 1;
@@ -73,7 +73,7 @@ impl DynamicTimeout {
 
     fn adjust(&mut self, logs: [Duration; DYNAMIC_TIMEOUT_LOG_SIZE]) {
         let mut failures = 0;
-        let mut max = Duration::zero();
+        let mut max = Duration::ZERO;
         for &dur in &logs {
             if dur == *MAX_DURATION {
                 failures += 1;
@@ -86,13 +86,13 @@ impl DynamicTimeout {
         if fail_percent > DYNAMIC_TIMEOUT_INCREASE_THRESHOLD_PCT {
             // We are hitting the timeout too often, so increase the timeout by 25%
             let mut timeout = self.timeout.load(Ordering::Relaxed) * 125 / 100;
-            timeout = timeout.max(MAX_DYNAMIC_TIMEOUT.num_nanoseconds().unwrap());
+            timeout = timeout.max(MAX_DYNAMIC_TIMEOUT.as_nanos() as u64);
             timeout = timeout.min(self.minimum);
             self.timeout.store(timeout, Ordering::Relaxed);
         } else if fail_percent < DYNAMIC_TIMEOUT_DECREASE_THRESHOLD_PCT {
             // We are hitting the timeout relatively few times,
             // so decrease the timeout towards 25 % of maximum time spent.
-            let max = (max * 125 / 100).num_nanoseconds().unwrap();
+            let max = (max * 125 / 100).as_nanos() as u64;
             let mut timeout = self.timeout.load(Ordering::Relaxed);
             if max < timeout {
                 // Move 50% toward the max.

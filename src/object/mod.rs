@@ -1,6 +1,8 @@
+mod api_errors;
 mod api_interface;
 mod api_utils;
 
+pub use api_errors::*;
 pub use api_interface::*;
 pub use api_utils::*;
 

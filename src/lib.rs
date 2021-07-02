@@ -3,6 +3,7 @@
 #![feature(type_name_of_val)]
 #![feature(once_cell)]
 #![feature(duration_constants)]
+#![feature(destructuring_assignment)]
 
 pub mod auth;
 pub mod bucket;

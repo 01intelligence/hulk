@@ -1,4 +1,5 @@
 use std::any::Any;
+use std::fmt;
 
 use colored::*;
 use lazy_static::lazy_static;
@@ -6,12 +7,27 @@ use thiserror::Error;
 
 use crate::config::*;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Error, Clone, Debug, Default)]
 pub struct UiError {
     msg: String,
     action: String,
     hint: String,
     detail: Option<String>,
+}
+
+impl fmt::Display for UiError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.detail {
+            Some(ref detail) => write!(f, "{}", detail),
+            None => {
+                if !self.msg.is_empty() {
+                    write!(f, "{}", self.msg)
+                } else {
+                    write!(f, "<None>")
+                }
+            }
+        }
+    }
 }
 
 impl UiError {

@@ -43,8 +43,8 @@ pub enum TypedError {
     #[error("Server times are too far apart")]
     ServerTimeMismatch,
 
-    // errInvalidBucketName - bucket name is reserved for MinIO, usually
-    // returned for 'minio', '.minio.sys', buckets with capital letters.
+    // errInvalidBucketName - bucket name is reserved for hulk, usually
+    // returned for 'hulk', '.hulk.sys', buckets with capital letters.
     #[error("The specified bucket is not valid")]
     InvalidBucketName,
 

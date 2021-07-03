@@ -92,10 +92,10 @@ pub const AWS_EPOCH_TIME: Key = Key("aws:EpochTime");
 // AWS_PRINCIPAL_TYPE - user principal type currently supported values are "User" and "Anonymous".
 pub const AWS_PRINCIPAL_TYPE: Key = Key("aws:principaltype");
 
-// AWS_USER_ID - user unique ID, in MinIO this value is same as your user Access Key.
+// AWS_USER_ID - user unique ID, in hulk this value is same as your user Access Key.
 pub const AWS_USER_ID: Key = Key("aws:userid");
 
-// AWS_USERNAME - user friendly name, in MinIO this value is same as your user Access Key.
+// AWS_USERNAME - user friendly name, in hulk this value is same as your user Access Key.
 pub const AWS_USERNAME: Key = Key("aws:username");
 
 // S3_SIGNATURE_VERSION - identifies the version of AWS Signature that you want to support for authenticated requests.

@@ -23,11 +23,11 @@ pub const CLASS_RRS: &str = "rrs";
 pub const CLASS_DMA: &str = "dma";
 
 // Reduced redundancy storage class environment variable
-pub const RRS_ENV: &str = "MINIO_STORAGE_CLASS_RRS";
+pub const RRS_ENV: &str = "HULK_STORAGE_CLASS_RRS";
 // Standard storage class environment variable
-pub const STANDARD_ENV: &str = "MINIO_STORAGE_CLASS_STANDARD";
+pub const STANDARD_ENV: &str = "HULK_STORAGE_CLASS_STANDARD";
 // DMA storage class environment variable
-pub const DMA_ENV: &str = "MINIO_STORAGE_CLASS_DMA";
+pub const DMA_ENV: &str = "HULK_STORAGE_CLASS_DMA";
 
 // Supported storage class scheme is EC
 const SCHEME_PREFIX: &str = "EC";

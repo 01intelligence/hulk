@@ -1,6 +1,7 @@
 use anyhow::{anyhow, bail};
 use lazy_static::lazy_static;
 use regex::Regex;
+use std::slice::Iter;
 
 lazy_static! {
     // Regex to extract ellipses syntax inputs.
@@ -32,6 +33,10 @@ impl ArgPattern {
             labels.push(v.expand());
         }
         arg_expander(&labels)
+    }
+
+    pub fn iter(&self) -> Iter<'_, Pattern> {
+        self.0.iter()
     }
 }
 

@@ -25,7 +25,7 @@ pub const CREATE_BUCKET_ACTION: Action = Action("s3:CreateBucket");
 // DELETE_BUCKET_ACTION - DeleteBucket Rest API action.
 pub const DELETE_BUCKET_ACTION: Action = Action("s3:DeleteBucket");
 
-// FORCE_DELETE_BUCKET_ACTION - DeleteBucket Rest API action when x-minio-force-delete flag
+// FORCE_DELETE_BUCKET_ACTION - DeleteBucket Rest API action when x-hulk-force-delete flag
 // is specified.
 pub const FORCE_DELETE_BUCKET_ACTION: Action = Action("s3:ForceDeleteBucket");
 
@@ -47,7 +47,7 @@ pub const GET_BUCKET_POLICY_ACTION: Action = Action("s3:GetBucketPolicy");
 // GET_OBJECT_ACTION - GetObject Rest API action.
 pub const GET_OBJECT_ACTION: Action = Action("s3:GetObject");
 
-// HEAD_BUCKET_ACTION - HeadBucket Rest API action. This action is unused in minio.
+// HEAD_BUCKET_ACTION - HeadBucket Rest API action. This action is unused in hulk.
 pub const HEAD_BUCKET_ACTION: Action = Action("s3:HeadBucket");
 
 // LIST_ALL_MY_BUCKETS_ACTION - ListAllMyBuckets (List buckets) Rest API action.
@@ -66,11 +66,11 @@ pub const LIST_BUCKET_MULTIPART_UPLOADS_ACTION: Action = Action("s3:ListBucketMu
 pub const LIST_BUCKET_VERSIONS_ACTION: Action = Action("s3:ListBucketVersions");
 
 // LISTEN_NOTIFICATION_ACTION - ListenNotification Rest API action.
-// This is MinIO extension.
+// This is hulk extension.
 pub const LISTEN_NOTIFICATION_ACTION: Action = Action("s3:ListenNotification");
 
 // LISTEN_BUCKET_NOTIFICATION_ACTION - ListenBucketNotification Rest API action.
-// This is MinIO extension.
+// This is hulk extension.
 pub const LISTEN_BUCKET_NOTIFICATION_ACTION: Action = Action("s3:ListenBucketNotification");
 
 // LIST_MULTIPART_UPLOAD_PARTS_ACTION - ListParts Rest API action.

@@ -1,8 +1,12 @@
-mod ellipses;
-
 use std::fmt;
 
+mod ellipses;
+mod net;
+mod setup_type;
+
 pub use ellipses::*;
+pub use net::*;
+pub use setup_type::*;
 
 pub enum EndpointType {
     Path,
@@ -46,4 +50,12 @@ impl fmt::Display for Endpoint {
             write!(f, "{}", self.url.to_string())
         }
     }
+}
+
+pub(self) fn create_endpoints(
+    server_addr: &str,
+    found_local: bool,
+    args: &[&str],
+) -> anyhow::Result<(Endpoints, SetupType)> {
+    todo!()
 }

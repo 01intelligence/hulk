@@ -127,7 +127,7 @@ lazy_static! {
     pub static ref UiErrorOverlappingDomainValue: UiError = UiError::new(
         "Overlapping domain values",
         "Please check the passed value",
-        "MINIO_DOMAIN only accepts non-overlapping domain values",
+        "HULK_DOMAIN only accepts non-overlapping domain values",
     );
 
     pub static ref UiErrorInvalidDomainValue: UiError = UiError::new(
@@ -151,73 +151,73 @@ lazy_static! {
     pub static ref UiErrorInvalidCacheDrivesValue: UiError = UiError::new(
         "Invalid cache drive value",
         "Please check the value in this ENV variable",
-        "MINIO_CACHE_DRIVES: Mounted drives or directories are delimited by `,`",
+        "HULK_CACHE_DRIVES: Mounted drives or directories are delimited by `,`",
     );
 
     pub static ref UiErrorInvalidCacheExcludesValue: UiError = UiError::new(
         "Invalid cache excludes value",
         "Please check the passed value",
-        "MINIO_CACHE_EXCLUDE: Cache exclusion patterns are delimited by `,`",
+        "HULK_CACHE_EXCLUDE: Cache exclusion patterns are delimited by `,`",
     );
 
     pub static ref UiErrorInvalidCacheExpiryValue: UiError = UiError::new(
         "Invalid cache expiry value",
         "Please check the passed value",
-        "MINIO_CACHE_EXPIRY: Valid cache expiry duration must be in days",
+        "HULK_CACHE_EXPIRY: Valid cache expiry duration must be in days",
     );
 
     pub static ref UiErrorInvalidCacheQuota: UiError = UiError::new(
         "Invalid cache quota value",
         "Please check the passed value",
-        "MINIO_CACHE_QUOTA: Valid cache quota value must be between 0-100",
+        "HULK_CACHE_QUOTA: Valid cache quota value must be between 0-100",
     );
 
     pub static ref UiErrorInvalidCacheAfter: UiError = UiError::new(
         "Invalid cache after value",
         "Please check the passed value",
-        "MINIO_CACHE_AFTER: Valid cache after value must be 0 or greater",
+        "HULK_CACHE_AFTER: Valid cache after value must be 0 or greater",
     );
 
     pub static ref UiErrorInvalidCacheWatermarkLow: UiError = UiError::new(
         "Invalid cache low watermark value",
         "Please check the passed value",
-        "MINIO_CACHE_WATERMARK_LOW: Valid cache low watermark value must be between 0-100",
+        "HULK_CACHE_WATERMARK_LOW: Valid cache low watermark value must be between 0-100",
     );
 
     pub static ref UiErrorInvalidCacheWatermarkHigh: UiError = UiError::new(
         "Invalid cache high watermark value",
         "Please check the passed value",
-        "MINIO_CACHE_WATERMARK_HIGH: Valid cache high watermark value must be between 0-100",
+        "HULK_CACHE_WATERMARK_HIGH: Valid cache high watermark value must be between 0-100",
     );
 
     pub static ref UiErrorInvalidCacheEncryptionKey: UiError = UiError::new(
         "Invalid cache encryption master key value",
         "Please check the passed value",
-        "MINIO_CACHE_ENCRYPTION_MASTER_KEY: For more information, please refer to https://docs.min.io/docs/minio-disk-cache-guide",
+        "HULK_CACHE_ENCRYPTION_MASTER_KEY: For more information, please refer to",
     );
 
     pub static ref UiErrorInvalidCacheRange: UiError = UiError::new(
         "Invalid cache range value",
         "Please check the passed value",
-        "MINIO_CACHE_RANGE: Valid expected value is `on` or `off`",
+        "HULK_CACHE_RANGE: Valid expected value is `on` or `off`",
     );
 
     pub static ref UiErrorInvalidCacheCommitValue: UiError = UiError::new(
         "Invalid cache commit value",
         "Please check the passed value",
-        "MINIO_CACHE_COMMIT: Valid expected value is `writeback` or `writethrough`",
+        "HULK_CACHE_COMMIT: Valid expected value is `writeback` or `writethrough`",
     );
 
     pub static ref UiErrorInvalidCacheSetting: UiError = UiError::new(
         "Incompatible cache setting",
         "Please check the passed value",
-        "MINIO_CACHE_AFTER cannot be used with MINIO_CACHE_COMMIT setting",
+        "HULK_CACHE_AFTER cannot be used with HULK_CACHE_COMMIT setting",
     );
 
     pub static ref UiErrorInvalidCredentialsBackendEncrypted: UiError = UiError::new(
         "Invalid credentials",
         "Please set correct credentials in the environment for decryption",
-        "Detected encrypted config backend, correct access and secret keys should be specified via environment variables MINIO_ROOT_USER and MINIO_ROOT_PASSWORD to be able to decrypt the MinIO config, user IAM and policies",
+        "Detected encrypted config backend, correct access and secret keys should be specified via environment variables HULK_ROOT_USER and HULK_ROOT_PASSWORD to be able to decrypt the hulk config, user IAM and policies",
     );
 
     pub static ref UiErrorInvalidCredentials: UiError = UiError::new(
@@ -229,50 +229,50 @@ lazy_static! {
     pub static ref UiErrorMissingEnvCredentialRootUser: UiError = UiError::new(
         &format!("Missing credential environment variable, \"{}\"", ENV_ROOT_USER),
         &format!("Environment variable \"{}\" is missing", ENV_ROOT_USER),
-        "Root user name (access key) and root password (secret key) are expected to be specified via environment variables MINIO_ROOT_USER and MINIO_ROOT_PASSWORD respectively",
+        "Root user name (access key) and root password (secret key) are expected to be specified via environment variables HULK_ROOT_USER and HULK_ROOT_PASSWORD respectively",
     );
 
     pub static ref UiErrorMissingEnvCredentialRootPassword: UiError = UiError::new(
         &format!("Missing credential environment variable, \"{}\"", ENV_ROOT_PASSWORD),
         &format!("Environment variable \"{}\" is missing", ENV_ROOT_PASSWORD),
-        "Root user name (access key) and root password (secret key) are expected to be specified via environment variables MINIO_ROOT_USER and MINIO_ROOT_PASSWORD respectively",
+        "Root user name (access key) and root password (secret key) are expected to be specified via environment variables HULK_ROOT_USER and HULK_ROOT_PASSWORD respectively",
     );
 
     pub static ref UiErrorMissingEnvCredentialAccessKey: UiError = UiError::new(
         &format!("Missing credential environment variable, \"{}\"", ENV_ACCESS_KEY),
         &format!("Environment variables \"{}\" and \"{}\" are deprecated", ENV_ACCESS_KEY, ENV_SECRET_KEY),
-        "Root user name (access key) and root password (secret key) are expected to be specified via environment variables MINIO_ROOT_USER and MINIO_ROOT_PASSWORD respectively",
+        "Root user name (access key) and root password (secret key) are expected to be specified via environment variables HULK_ROOT_USER and HULK_ROOT_PASSWORD respectively",
     );
 
     pub static ref UiErrorMissingEnvCredentialSecretKey: UiError = UiError::new(
         &format!("Missing credential environment variable, \"{}\"", ENV_SECRET_KEY),
         &format!("Environment variables \"{}\" and \"{}\" are deprecated", ENV_SECRET_KEY, ENV_ACCESS_KEY),
-        "Root user name (access key) and root password (secret key) are expected to be specified via environment variables MINIO_ROOT_USER and MINIO_ROOT_PASSWORD respectively",
+        "Root user name (access key) and root password (secret key) are expected to be specified via environment variables HULK_ROOT_USER and HULK_ROOT_PASSWORD respectively",
     );
 
     pub static ref UiErrorInvalidErasureEndpoints: UiError = UiError::new(
         "Invalid endpoint(s) in erasure mode",
         "Please provide correct combination of local/remote paths",
-        "For more information, please refer to https://docs.min.io/docs/minio-erasure-code-quickstart-guide",
+        "For more information, please refer to",
     );
 
     pub static ref UiErrorInvalidNumberOfErasureEndpoints: UiError = UiError::new(
         "Invalid total number of endpoints for erasure mode",
         "Please provide an even number of endpoints greater or equal to 4",
-        "For more information, please refer to https://docs.min.io/docs/minio-erasure-code-quickstart-guide",
+        "For more information, please refer to",
     );
 
     pub static ref UiErrorStorageClassValue: UiError = UiError::new(
         "Invalid storage class value",
         "Please check the value",
-        r#"MINIO_STORAGE_CLASS_STANDARD: Format "EC:<Default_Parity_Standard_Class>" (e.g. "EC:3"). This sets the number of parity disks for MinIO server in Standard mode. Objects are stored in Standard mode, if storage class is not defined in Put request
-MINIO_STORAGE_CLASS_RRS: Format "EC:<Default_Parity_Reduced_Redundancy_Class>" (e.g. "EC:3"). This sets the number of parity disks for MinIO server in Reduced Redundancy mode. Objects are stored in Reduced Redundancy mode, if Put request specifies RRS storage class
-Refer to the link https://github.com/minio/minio/tree/master/docs/erasure/storage-class for more information"#,
+        r#"HULK_STORAGE_CLASS_STANDARD: Format "EC:<Default_Parity_Standard_Class>" (e.g. "EC:3"). This sets the number of parity disks for hulk server in Standard mode. Objects are stored in Standard mode, if storage class is not defined in Put request
+HULK_STORAGE_CLASS_RRS: Format "EC:<Default_Parity_Reduced_Redundancy_Class>" (e.g. "EC:3"). This sets the number of parity disks for hulk server in Reduced Redundancy mode. Objects are stored in Reduced Redundancy mode, if Put request specifies RRS storage class
+Refer to the link for more information"#,
     );
 
     pub static ref UiErrorUnexpectedBackendVersion: UiError = UiError::new(
         "Backend version seems to be too recent",
-        "Please update to the latest MinIO version",
+        "Please update to the latest hulk version",
         "",
     );
 
@@ -290,7 +290,7 @@ Refer to the link https://github.com/minio/minio/tree/master/docs/erasure/storag
         "Please check the FS endpoint",
         r"FS mode requires only one writable disk path
 Example 1:
-   $ minio server /data/minio/",
+   $ hulk server /data/hulk/",
     );
 
     pub static ref UiErrorUnsupportedBackend: UiError = UiError::new(
@@ -301,8 +301,8 @@ Example 1:
 
     pub static ref UiErrorUnableToWriteInBackend: UiError = UiError::new(
         "Unable to write to the backend",
-        "Please ensure MinIO binary has write permissions for the backend",
-        "Verify if MinIO binary is running as the same user who has write permissions for the backend",
+        "Please ensure hulk binary has write permissions for the backend",
+        "Verify if hulk binary is running as the same user who has write permissions for the backend",
     );
 
     pub static ref UiErrorPortAlreadyInUse: UiError = UiError::new(
@@ -313,8 +313,8 @@ Example 1:
 
     pub static ref UiErrorPortAccess: UiError = UiError::new(
         "Unable to use specified port",
-        "Please ensure MinIO binary has 'cap_net_bind_service=+ep' permissions",
-        "Use 'sudo setcap cap_net_bind_service=+ep /path/to/minio' to provide sufficient permissions",
+        "Please ensure hulk binary has 'cap_net_bind_service=+ep' permissions",
+        "Use 'sudo setcap cap_net_bind_service=+ep /path/to/hulk' to provide sufficient permissions",
     );
 
     pub static ref UiErrorSSLUnexpectedError: UiError = UiError::new(
@@ -331,14 +331,14 @@ Example 1:
 
     pub static ref UiErrorSSLNoPassword: UiError = UiError::new(
         "Missing TLS password",
-        "Please set the password to environment variable `MINIO_CERT_PASSWD` so that the private key can be decrypted",
+        "Please set the password to environment variable `HULK_CERT_PASSWD` so that the private key can be decrypted",
         "",
     );
 
     pub static ref UiErrorNoCertsAndHTTPSEndpoints: UiError = UiError::new(
         "HTTPS specified in endpoints, but no TLS certificate is found on the local machine",
         "Please add TLS certificate or use HTTP endpoints only",
-        "Refer to https://docs.min.io/docs/how-to-secure-access-to-minio-server-with-tls for information about how to load a TLS certificate in your server",
+        "Refer to for information about how to load a TLS certificate in your server",
     );
 
     pub static ref UiErrorCertsAndHTTPEndpoints: UiError = UiError::new(
@@ -349,37 +349,37 @@ Example 1:
 
     pub static ref UiErrorSSLWrongPassword: UiError = UiError::new(
         "Unable to decrypt the private key using the provided password",
-        "Please set the correct password in environment variable `MINIO_CERT_PASSWD`",
+        "Please set the correct password in environment variable `HULK_CERT_PASSWD`",
         "",
     );
 
     pub static ref UiErrorUnexpectedError: UiError = UiError::new(
         "Unexpected error",
-        "Please contact MinIO at https://slack.min.io",
+        "Please contact hulk at",
         "",
     );
 
     pub static ref UiErrorInvalidCompressionIncludesValue: UiError = UiError::new(
         "Invalid compression include value",
         "Please check the passed value",
-        "Compress extensions/mime-types are delimited by `,`. For eg, MINIO_COMPRESS_MIME_TYPES=\"A,B,C\"",
+        "Compress extensions/mime-types are delimited by `,`. For eg, HULK_COMPRESS_MIME_TYPES=\"A,B,C\"",
     );
 
     pub static ref UiErrorInvalidGWSSEValue: UiError = UiError::new(
         "Invalid gateway SSE value",
         "Please check the passed value",
-        "MINIO_GATEWAY_SSE: Gateway SSE accepts only C and S3 as valid values. Delimit by `;` to set more than one value",
+        "HULK_GATEWAY_SSE: Gateway SSE accepts only C and S3 as valid values. Delimit by `;` to set more than one value",
     );
 
     pub static ref UiErrorInvalidGWSSEEnvValue: UiError = UiError::new(
         "Invalid gateway SSE configuration",
         "",
-        "Refer to https://docs.min.io/docs/minio-kms-quickstart-guide.html for setting up SSE",
+        "Refer to for setting up SSE",
     );
 
     pub static ref UiErrorInvalidReplicationWorkersValue: UiError = UiError::new(
         "Invalid value for replication workers",
         "",
-        "MINIO_API_REPLICATION_WORKERS: should be > 0",
+        "HULK_API_REPLICATION_WORKERS: should be > 0",
     );
 }

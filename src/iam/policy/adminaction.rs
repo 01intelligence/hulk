@@ -53,19 +53,19 @@ pub const HEALTH_INFO_ADMIN_ACTION: AdminAction = AdminAction("admin:OBDInfo");
 // BANDWIDTH_MONITOR_ACTION - allow monitoring bandwidth usage
 pub const BANDWIDTH_MONITOR_ACTION: AdminAction = AdminAction("admin:BandwidthMonitor");
 
-// SERVER_UPDATE_ADMIN_ACTION - allow MinIO binary update
+// SERVER_UPDATE_ADMIN_ACTION - allow hulk binary update
 pub const SERVER_UPDATE_ADMIN_ACTION: AdminAction = AdminAction("admin:ServerUpdate");
-// SERVICE_RESTART_ADMIN_ACTION - allow restart of MinIO service.
+// SERVICE_RESTART_ADMIN_ACTION - allow restart of hulk service.
 pub const SERVICE_RESTART_ADMIN_ACTION: AdminAction = AdminAction("admin:ServiceRestart");
-// SERVICE_STOP_ADMIN_ACTION - allow stopping MinIO service.
+// SERVICE_STOP_ADMIN_ACTION - allow stopping hulk service.
 pub const SERVICE_STOP_ADMIN_ACTION: AdminAction = AdminAction("admin:ServiceStop");
 
-// CONFIG_UPDATE_ADMIN_ACTION - allow MinIO config management
+// CONFIG_UPDATE_ADMIN_ACTION - allow hulk config management
 pub const CONFIG_UPDATE_ADMIN_ACTION: AdminAction = AdminAction("admin:ConfigUpdate");
 
-// CREATE_USER_ADMIN_ACTION - allow creating MinIO user
+// CREATE_USER_ADMIN_ACTION - allow creating hulk user
 pub const CREATE_USER_ADMIN_ACTION: AdminAction = AdminAction("admin:CreateUser");
-// DELETE_USER_ADMIN_ACTION - allow deleting MinIO user
+// DELETE_USER_ADMIN_ACTION - allow deleting hulk user
 pub const DELETE_USER_ADMIN_ACTION: AdminAction = AdminAction("admin:DeleteUser");
 // LIST_USERS_ADMIN_ACTION - allow list users permission
 pub const LIST_USERS_ADMIN_ACTION: AdminAction = AdminAction("admin:ListUsers");

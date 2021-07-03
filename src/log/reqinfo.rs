@@ -13,7 +13,7 @@ pub struct ReqInfo {
     pub remote_host: String,   // Client Host/IP
     pub host: String,          // Node Host/IP
     pub user_agent: String,    // User Agent
-    pub deployment_id: String, // x-minio-deployment-id
+    pub deployment_id: String, // x-hulk-deployment-id
     pub request_id: String,    // x-amz-request-id
     pub api: String,           // API name - GetObject PutObject NewMultipartUpload etc.
     pub bucket_name: String,   // Bucket name

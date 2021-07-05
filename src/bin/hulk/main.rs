@@ -1,11 +1,10 @@
 use clap::{crate_authors, App, Arg};
 use common::*;
-use globals::*;
+use hulk::globals::*;
 
 // mod service;
 // mod server;
 mod common;
-mod globals;
 
 fn main() {
     let build_time = option_env!("HULK_BUILD_TIME");

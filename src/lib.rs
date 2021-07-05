@@ -17,6 +17,7 @@ pub mod erasure;
 pub mod errors;
 pub mod etag;
 pub mod format;
+pub mod globals;
 pub mod iam;
 pub mod jwt;
 pub mod lock;

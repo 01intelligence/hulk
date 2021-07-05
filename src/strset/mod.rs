@@ -36,6 +36,10 @@ impl StringSet {
         self.0.iter()
     }
 
+    pub fn into_iter(self) -> std::collections::hash_set::IntoIter<String> {
+        self.0.into_iter()
+    }
+
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -91,6 +95,16 @@ impl fmt::Display for StringSet {
         write!(f, "[")?;
         write!(f, "{}", slice.join(","))?;
         write!(f, "]")
+    }
+}
+
+impl std::iter::FromIterator<String> for StringSet {
+    fn from_iter<T: IntoIterator<Item = String>>(iter: T) -> Self {
+        let mut ss = StringSet::new();
+        for s in iter {
+            ss.add(s);
+        }
+        ss
     }
 }
 

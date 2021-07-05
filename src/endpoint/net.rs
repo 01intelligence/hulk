@@ -2,29 +2,48 @@ use std::cmp::Ordering;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, ToSocketAddrs};
 
 use anyhow::ensure;
+use http::uri::Scheme;
 
 use crate::errors;
 use crate::globals::*;
 use crate::strset::StringSet;
 
 pub fn split_host_port(host_port: &str) -> anyhow::Result<(String, String)> {
-    let url = url::Url::parse(host_port)?;
+    let url = host_port.parse::<http::Uri>()?;
     ensure!(
-        url.scheme().is_empty() || url.scheme() == "http" || url.scheme() == "https",
-        errors::UiErrorInvalidAddressFlag.clone()
+        url.scheme().is_none()
+            || url.scheme() == Some(&Scheme::HTTP)
+            || url.scheme() == Some(&Scheme::HTTPS),
+        errors::UiErrorInvalidAddressFlag
+            .msg(format!("invalid scheme '{}'", url.scheme().unwrap()))
     );
+    let authority = url
+        .authority()
+        .ok_or_else(|| errors::UiErrorInvalidAddressFlag.msg("empty host:port".to_owned()))?;
     ensure!(
-        !url.has_authority(),
-        errors::UiErrorInvalidAddressFlag.clone()
+        authority.as_str().splitn(2, '@').count() == 1,
+        errors::UiErrorInvalidAddressFlag
+            .msg(format!("invalid host:port '{}'", url.authority().unwrap()))
     ); // no username/password
     ensure!(
-        (&url[url::Position::BeforePath..]).is_empty(),
-        errors::UiErrorInvalidAddressFlag.clone()
+        url.path().is_empty()
+            || (url.scheme().is_some() && url.path() == "/") && url.query().is_none(),
+        errors::UiErrorInvalidAddressFlag
+            .msg(format!("redundant path/query '{:?}'", url.path_and_query()))
     ); // no path/query/fragment
-    let host = url.host_str().unwrap_or("").to_owned();
-    let port = url
-        .port_or_known_default()
-        .map_or("".to_owned(), |p| p.to_string()); // allow empty port
+    let host = url.host().unwrap_or("").to_owned();
+    let port = url.port().map_or_else(
+        || {
+            if url.scheme() == Some(&Scheme::HTTP) {
+                "80".to_owned()
+            } else if url.scheme() == Some(&Scheme::HTTPS) {
+                "443".to_owned()
+            } else {
+                "".to_owned()
+            }
+        },
+        |p| p.to_string(),
+    );
     Ok((host, port))
 }
 
@@ -154,4 +173,31 @@ pub async fn check_local_server_addr(server_addr: &str) -> anyhow::Result<()> {
         );
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_split_host_port() {
+        let cases = vec![
+            (":54321", "", "54321"),
+            ("server:54321", "server", "54321"),
+            (":0", "", "0"),
+            ("https://server", "server", "443"),
+            ("http://server", "server", "80"),
+        ];
+        for (host_port, expected_host, expected_port) in cases {
+            match split_host_port(host_port) {
+                Ok((host, port)) => {
+                    assert_eq!(host, expected_host);
+                    assert_eq!(port, expected_port);
+                }
+                Err(err) => {
+                    assert!(false, err.to_string())
+                }
+            }
+        }
+    }
 }

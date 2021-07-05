@@ -113,6 +113,6 @@ impl Erasure {
             data = d2;
         }
         debug_assert_eq!(dst.len(), shards);
-        Ok((dst))
+        Ok(dst)
     }
 }

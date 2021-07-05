@@ -236,7 +236,7 @@ impl<'a> RWLocker for LocalLockInstance<'a> {
                 timeout.log_failure();
                 for si in success {
                     self.ns
-                        .unlock(&self.volume, &self.paths[si] as &str, read_lock);
+                        .unlock(&self.volume, &self.paths[si] as &str, read_lock).await;
                 }
                 return Err(object::ApiError::OperationTimedOut.into());
             }
@@ -274,7 +274,7 @@ impl<'a> RWLocker for LocalLockInstance<'a> {
                 timeout.log_failure();
                 for si in success {
                     self.ns
-                        .unlock(&self.volume, &self.paths[si] as &str, read_lock);
+                        .unlock(&self.volume, &self.paths[si] as &str, read_lock).await;
                 }
                 return Err(object::ApiError::OperationTimedOut.into());
             }

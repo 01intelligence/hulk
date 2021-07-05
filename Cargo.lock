@@ -1329,6 +1329,7 @@ dependencies = [
  "openssl",
  "opentelemetry",
  "opentelemetry-jaeger",
+ "path-absolutize",
  "path-clean",
  "pnet",
  "rand",
@@ -1846,10 +1847,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "acbf547ad0c65e31259204bd90935776d1c693cec2f4ff7abb7a1bbbd40dfe58"
 
 [[package]]
+name = "path-absolutize"
+version = "3.0.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0feea2f0a6009a0fefe6ee3aae1871e4a57d7f2aae4681ac4a34a201071c9b9"
+dependencies = [
+ "path-dedot",
+]
+
+[[package]]
 name = "path-clean"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ecba01bf2678719532c5e3059e0b5f0811273d94b397088b82e3bd0a78c78fdd"
+
+[[package]]
+name = "path-dedot"
+version = "3.0.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1a14ca47b49e6abd75cf68db85e1e161d9f2b675716894a18af0e9add0266b26"
+dependencies = [
+ "once_cell",
+]
 
 [[package]]
 name = "pem"

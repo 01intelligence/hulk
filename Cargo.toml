@@ -64,6 +64,7 @@ url = "2.2.2"
 colored = "2.0.0"
 pnet = "0.28.0"
 uom = { version = "0.31.1", features = ["usize", "u8", "u16", "u32", "u64", "u128", "isize", "i8", "i16", "i32", "i64", "i128"] }
+path-absolutize = "3.0.10"
 
 [patch.crates-io]
 jsonwebtoken = { git = 'https://github.com/01intelligence/jsonwebtoken', branch = 'master' }

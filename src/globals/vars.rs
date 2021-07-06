@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use lazy_static::lazy_static;
 
 use super::*;
+use crate::strset::StringSet;
 
 lazy_static! {
     // Indicates if the running hulk server is distributed setup.
@@ -35,6 +36,8 @@ lazy_static! {
 
     // IsSSL indicates if the server is configured with SSL.
     pub static ref GLOBAL_IS_TLS: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
+
+    pub static ref GLOBAL_DOMAIN_IPS: Arc<Mutex<StringSet>> = Arc::new(Mutex::new(StringSet::new()));
 }
 
 pub fn get_url_scheme() -> &'static str {

@@ -1,18 +1,22 @@
+use std::collections::HashMap;
 use std::fmt;
+
+use anyhow::ensure;
+use path_absolutize::Absolutize;
+
+use crate::errors;
+use crate::globals::*;
+use crate::strset::StringSet;
 
 mod ellipses;
 mod net;
 mod setup_type;
 
-use anyhow::ensure;
+use std::net::IpAddr;
+
 pub use ellipses::*;
 pub use net::*;
-use path_absolutize::Absolutize;
 pub use setup_type::*;
-
-use crate::errors;
-use crate::globals::*;
-use crate::strset::StringSet;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum EndpointType {
@@ -130,6 +134,34 @@ impl fmt::Display for Endpoint {
 }
 
 impl Endpoints {
+    pub fn new(args: &[&str]) -> anyhow::Result<Endpoints> {
+        let mut endpoint_type = None;
+        let mut scheme = None;
+        let mut unique_args = StringSet::new();
+        let mut endpoints = Vec::new();
+        for (i, &arg) in args.iter().enumerate() {
+            let endpoint = Endpoint::new(arg)?;
+            if i == 0 {
+                endpoint_type = Some(endpoint.typ());
+                scheme = Some(endpoint.url.scheme().to_owned());
+            } else {
+                ensure!(
+                    Some(endpoint.typ()) == endpoint_type,
+                    "mixed style endpoints are not supported"
+                );
+                ensure!(
+                    endpoint.url.scheme() == scheme.as_ref().unwrap(),
+                    "mixed scheme is not supported"
+                );
+            }
+            let arg = endpoint.to_string();
+            ensure!(!unique_args.contains(&arg), "duplicate endpoints found");
+            unique_args.add(arg);
+            endpoints.push(endpoint);
+        }
+        Ok(Endpoints(endpoints))
+    }
+
     pub fn is_https(&self) -> bool {
         self.0[0].is_https()
     }
@@ -146,6 +178,20 @@ impl Endpoints {
     }
 
     fn check_cross_device_mounts(&self) -> anyhow::Result<()> {
+        let mut abs_paths = Vec::new();
+        for e in &self.0 {
+            if e.is_local {
+                abs_paths.push(std::fs::canonicalize(
+                    e.url
+                        .to_file_path()
+                        .map_err(|_| anyhow::anyhow!("invalid file path"))?,
+                )?)
+            }
+        }
+        crate::mount::check_cross_device(&abs_paths)
+    }
+
+    pub fn update_is_local(&mut self, found_prev_local: bool) -> anyhow::Result<()> {
         todo!()
     }
 }
@@ -262,29 +308,173 @@ impl EndpointServerPools {
 pub(self) async fn create_endpoints(
     server_addr: &str,
     found_local: bool,
-    args: &[&[&str]],
+    args_list: &[&[&str]],
 ) -> anyhow::Result<(Endpoints, SetupType)> {
     check_local_server_addr(server_addr).await?;
 
-    let server_addr_port = split_host_port(server_addr).unwrap();
+    let (_, server_addr_port) = split_host_port(server_addr).unwrap();
 
     let mut endpoints = Vec::new();
-    let mut setup_type;
 
     // For single arg, return FS setup.
-    if args.len() == 1 && args[0].len() == 1 {
-        let mut endpoint = Endpoint::new(args[0][0])?;
+    if args_list.len() == 1 && args_list[0].len() == 1 {
+        let mut endpoint = Endpoint::new(args_list[0][0])?;
         endpoint.update_is_local().await?;
         ensure!(
             endpoint.typ() == EndpointType::Path,
             errors::UiErrorInvalidFSEndpoint.msg("use path style endpoint for FS setup".to_owned())
         );
         endpoints.push(endpoint);
-        setup_type = SetupType::Fs;
-        return Ok((Endpoints(endpoints), setup_type));
+        let endpoints = Endpoints(endpoints);
+        // Check for cross device mounts if any.
+        endpoints
+            .check_cross_device_mounts()
+            .map_err(|e| errors::UiErrorInvalidFSEndpoint.msg(e.to_string()))?;
+
+        return Ok((endpoints, SetupType::Fs));
     }
 
-    todo!()
+    for &args in args_list {
+        let eps = Endpoints::new(args)
+            .map_err(|e| errors::UiErrorInvalidErasureEndpoints.msg(e.to_string()))?;
+        eps.check_cross_device_mounts()
+            .map_err(|e| errors::UiErrorInvalidErasureEndpoints.msg(e.to_string()))?;
+        endpoints.extend(eps.0.into_iter());
+    }
+
+    ensure!(
+        !endpoints.is_empty(),
+        errors::UiErrorInvalidErasureEndpoints.msg("invalid number of endpoints".to_owned())
+    );
+
+    if endpoints[0].typ() == EndpointType::Path {
+        return Ok((Endpoints(endpoints), SetupType::Erasure));
+    }
+
+    let mut endpoints = Endpoints(endpoints);
+    endpoints
+        .update_is_local(found_local)
+        .map_err(|e| errors::UiErrorInvalidErasureEndpoints.msg(e.to_string()))?;
+
+    let mut endpoint_path_set = StringSet::new();
+    let mut local_endpoint_count = 0;
+    let mut local_server_host_set = StringSet::new();
+    let mut local_port_set = StringSet::new();
+
+    for endpoint in &endpoints.0 {
+        endpoint_path_set.add(endpoint.url.path().to_owned());
+        if endpoint.is_local {
+            local_server_host_set.add(endpoint.url.host_str().unwrap().to_owned());
+            let port = endpoint
+                .url
+                .port_or_known_default()
+                .map(|p| p.to_string())
+                .unwrap_or_else(|| server_addr_port.clone());
+            local_port_set.add(port);
+            local_endpoint_count += 1;
+        }
+    }
+
+    {
+        let mut path_ip_map: HashMap<String, StringSet> = HashMap::new();
+        for endpoint in &endpoints.0 {
+            let host_ips = get_host_ip(endpoint.url.host_str().unwrap()).await;
+            let host_ips = host_ips.unwrap_or_else(|_| StringSet::new()); // ignore error
+            if let Some(ips) = path_ip_map.get_mut(endpoint.url.path()) {
+                ensure!(
+                    ips.intersection(&host_ips).is_empty(),
+                    errors::UiErrorInvalidErasureEndpoints.msg(format!(
+                        "path '{}' can not be served by different port on same address",
+                        endpoint.url.path()
+                    ))
+                );
+                *ips = ips.union(&host_ips);
+            } else {
+                path_ip_map.insert(endpoint.url.path().to_owned(), host_ips);
+            }
+        }
+    }
+
+    {
+        let mut local_path_set = StringSet::new();
+        for endpoint in &endpoints.0 {
+            if !endpoint.is_local {
+                continue;
+            }
+            ensure!(
+                !local_path_set.contains(endpoint.url.path()),
+                errors::UiErrorInvalidErasureEndpoints.msg(format!(
+                    "path '{}' cannot be served by different address on same server",
+                    endpoint.url.path()
+                ))
+            );
+            local_path_set.add(endpoint.url.path().to_owned());
+        }
+    }
+
+    if endpoints.0.len() == local_endpoint_count {
+        if local_port_set.len() == 1 {
+            ensure!(
+                local_server_host_set.len() <= 1,
+                errors::UiErrorInvalidErasureEndpoints
+                    .msg("all local endpoints should not have different hostnames/ips".to_owned())
+            );
+            return Ok((endpoints, SetupType::Erasure));
+        }
+    }
+
+    for endpoint in endpoints.0.iter_mut() {
+        match endpoint.url.port_or_known_default() {
+            None => {
+                endpoint
+                    .url
+                    .set_port(Some(server_addr_port.parse().unwrap()));
+            }
+            Some(port) => {
+                if endpoint.is_local && server_addr_port != port.to_string() {
+                    endpoint.is_local = false;
+                }
+            }
+        }
+    }
+
+    let mut unique_args = StringSet::new();
+    for endpoint in &endpoints.0 {
+        unique_args.add(endpoint.url.host_str().unwrap().to_owned());
+    }
+
+    ensure!(unique_args.len() >= 2, errors::UiErrorInvalidErasureEndpoints.msg(format!("Unsupported number of endpoints ({:?}), minimum number of servers cannot be less than 2 in distributed setup", endpoints.0)));
+
+    let no_public_ips = std::env::var(crate::config::ENV_PUBLIC_IPS)
+        .map(|v| v.is_empty())
+        .unwrap_or(true);
+    if no_public_ips {
+        update_domain_ips(&unique_args).await;
+    }
+
+    Ok((endpoints, SetupType::DistributedErasure))
+}
+
+pub async fn update_domain_ips(endpoints: &StringSet) {
+    let mut ip_list = StringSet::new();
+    for e in endpoints.iter() {
+        let host_port = split_host_port(e);
+        if host_port.is_err() {
+            continue;
+        }
+        let (host, _) = host_port.unwrap();
+        if host.parse::<IpAddr>().is_err() {
+            if let Ok(ips) = get_host_ip(&host).await {
+                ip_list = ip_list.union(&ips);
+            }
+        } else {
+            ip_list.add(host);
+        }
+    }
+
+    let mut global_domain_ips = GLOBAL_DOMAIN_IPS.lock().unwrap();
+    *global_domain_ips =
+        ip_list.match_fn(|ip| ip.parse::<IpAddr>().unwrap().is_loopback() && ip != "localhost");
 }
 
 #[cfg(test)]

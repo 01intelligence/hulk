@@ -44,6 +44,10 @@ impl StringSet {
         self.0.is_empty()
     }
 
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
     pub fn add(&mut self, s: String) {
         self.0.insert(s);
     }

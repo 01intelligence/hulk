@@ -10,7 +10,9 @@ pub use net::*;
 use path_absolutize::Absolutize;
 pub use setup_type::*;
 
+use crate::errors;
 use crate::globals::*;
+use crate::strset::StringSet;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum EndpointType {
@@ -127,17 +129,160 @@ impl fmt::Display for Endpoint {
     }
 }
 
+impl Endpoints {
+    pub fn is_https(&self) -> bool {
+        self.0[0].is_https()
+    }
+
+    pub fn get_string(&self, i: usize) -> String {
+        self.0
+            .get(i)
+            .map(|e| e.to_string())
+            .unwrap_or_else(|| "".to_owned())
+    }
+
+    pub fn get_all_strings(&self) -> Vec<String> {
+        self.0.iter().map(|e| e.to_string()).collect()
+    }
+
+    fn check_cross_device_mounts(&self) -> anyhow::Result<()> {
+        todo!()
+    }
+}
+
+impl EndpointServerPools {
+    pub fn get_local_pool_idx(&self, endpoint: &Endpoint) -> isize {
+        for (i, p) in self.0.iter().enumerate() {
+            for e in &p.endpoints.0 {
+                if e.is_local && endpoint.is_local && e == endpoint {
+                    return i as isize;
+                }
+            }
+        }
+        return -1;
+    }
+
+    pub fn add(&mut self, p: PoolEndpoints) -> anyhow::Result<()> {
+        let mut existing = StringSet::new();
+        for p in &self.0 {
+            for e in &p.endpoints.0 {
+                existing.add(e.to_string())
+            }
+        }
+        for e in &p.endpoints.0 {
+            ensure!(
+                !existing.contains(&e.to_string()),
+                "duplicate endpoints found"
+            );
+        }
+        self.0.push(p);
+        Ok(())
+    }
+
+    pub fn local_host(&self) -> String {
+        for p in &self.0 {
+            for e in &p.endpoints.0 {
+                if e.is_local {
+                    return e.url.to_string(); // TODO: right?
+                }
+            }
+        }
+        "".to_owned()
+    }
+
+    pub fn local_disk_paths(&self) -> Vec<String> {
+        let mut disks = Vec::new();
+        for p in &self.0 {
+            for e in &p.endpoints.0 {
+                if e.is_local {
+                    disks.push(e.url.path().to_owned());
+                }
+            }
+        }
+        disks
+    }
+
+    pub fn first_local(&self) -> bool {
+        self.0[0].endpoints.0[0].is_local
+    }
+
+    pub fn https(&self) -> bool {
+        self.0[0].endpoints.is_https()
+    }
+
+    pub fn num_of_endpoints(&self) -> usize {
+        self.0
+            .iter()
+            .map(|p| p.endpoints.0.len())
+            .fold(0, |acc, c| acc + c)
+    }
+
+    pub fn host_names(&self) -> Vec<String> {
+        let mut found = StringSet::new();
+        for p in &self.0 {
+            for e in &p.endpoints.0 {
+                let host = e.url.host_str().unwrap();
+                if found.contains(host) {
+                    found.add(host.to_owned());
+                }
+            }
+        }
+        found.to_vec()
+    }
+
+    pub fn peers(&self) -> (Vec<String>, String) {
+        let mut all = StringSet::new();
+        let mut local = None;
+        for p in &self.0 {
+            for e in &p.endpoints.0 {
+                if e.typ() != EndpointType::Url {
+                    continue;
+                }
+                let host = e.url.host_str().unwrap().to_owned();
+                let port = e.url.port_or_known_default().unwrap();
+                let peer = crate::net::Host::new(host, Some(port)).to_string();
+                all.add(peer.clone());
+                if e.is_local {
+                    if port.to_string() == *GLOBAL_PORT.lock().unwrap() {
+                        local = Some(peer);
+                    }
+                }
+            }
+        }
+        (all.to_vec(), local.unwrap_or_else(|| "".to_owned()))
+    }
+
+    pub fn sorted_hosts(&self) -> Vec<String> {
+        let (mut peers, local_peer) = self.peers();
+        peers.sort_unstable();
+        peers.into_iter().filter(|h| h != &local_peer).collect()
+    }
+}
+
 pub(self) async fn create_endpoints(
     server_addr: &str,
     found_local: bool,
-    args: &[&str],
+    args: &[&[&str]],
 ) -> anyhow::Result<(Endpoints, SetupType)> {
     check_local_server_addr(server_addr).await?;
 
     let server_addr_port = split_host_port(server_addr).unwrap();
 
+    let mut endpoints = Vec::new();
+    let mut setup_type;
+
     // For single arg, return FS setup.
-    if args.len() == 1 && args[0].len() == 1 {}
+    if args.len() == 1 && args[0].len() == 1 {
+        let mut endpoint = Endpoint::new(args[0][0])?;
+        endpoint.update_is_local().await?;
+        ensure!(
+            endpoint.typ() == EndpointType::Path,
+            errors::UiErrorInvalidFSEndpoint.msg("use path style endpoint for FS setup".to_owned())
+        );
+        endpoints.push(endpoint);
+        setup_type = SetupType::Fs;
+        return Ok((Endpoints(endpoints), setup_type));
+    }
 
     todo!()
 }

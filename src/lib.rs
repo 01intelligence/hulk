@@ -22,6 +22,7 @@ pub mod iam;
 pub mod jwt;
 pub mod lock;
 pub mod log;
+pub mod net;
 pub mod object;
 pub mod s3utils;
 pub mod strset;

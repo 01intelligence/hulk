@@ -8,6 +8,16 @@ use crate::errors;
 use crate::globals::*;
 use crate::strset::StringSet;
 
+pub fn join_host_port(host: &str, port: &str) -> String {
+    // We assume that host is a literal IPv6 address
+    // if host has colons.
+    if host.find(':').is_some() {
+        format!("[{}]:{}", host, port)
+    } else {
+        format!("{}:{}", host, port)
+    }
+}
+
 pub fn split_host_port(host_port: &str) -> anyhow::Result<(String, String)> {
     let url = host_port.parse::<http::Uri>()?;
     ensure!(

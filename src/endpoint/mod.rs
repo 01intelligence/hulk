@@ -303,6 +303,24 @@ impl EndpointServerPools {
         peers.sort_unstable();
         peers.into_iter().filter(|h| h != &local_peer).collect()
     }
+
+    pub fn get_local_peer(&self, host: &str, port: &str) -> String {
+        let mut peers = StringSet::new();
+        for ep in &self.0 {
+            for endpoint in &ep.endpoints.0 {
+                if endpoint.typ() != EndpointType::Url {
+                    continue;
+                }
+                if endpoint.is_local && endpoint.url.host_str().is_some() {
+                    peers.add(endpoint.url.host_str().unwrap().to_owned());
+                }
+            }
+        }
+        if peers.is_empty() {
+            return join_host_port(if !host.is_empty() { host } else { "127.0.0.1" }, port);
+        }
+        peers.as_slice()[0].to_owned()
+    }
 }
 
 pub(self) async fn create_endpoints(

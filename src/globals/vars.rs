@@ -5,7 +5,18 @@ use lazy_static::lazy_static;
 use super::*;
 use crate::strset::StringSet;
 
+#[derive(Default)]
+pub struct CliContext {
+    json: bool,
+    quiet: bool,
+    anonymous: bool,
+    address: String,
+    strict_s3_compatibility: bool,
+}
+
 lazy_static! {
+    pub static ref GLOBAL_CLI_CONTEXT: Arc<Mutex<CliContext>> = Arc::new(Mutex::new(Default::default()));
+
     // Indicates if the running hulk server is distributed setup.
     pub static ref GLOBAL_IS_DIST_ERASURE: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
     // Indicates if the running hulk server is an erasure-code backend.

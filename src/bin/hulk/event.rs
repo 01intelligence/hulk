@@ -1,15 +1,19 @@
 use hulk::signals::{FromSignal, OneshotSignals, Signal};
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+use lazy_static::lazy_static;
 use log::info;
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 
 pub enum Event {
     ServerStop,
     Signal(Signal),
 }
 
+type EventSender = UnboundedSender<Event>;
+type EventReceiver = UnboundedReceiver<Event>;
+
 pub struct EventHandler {
-    tx: UnboundedSender<Event>,
-    rx: UnboundedReceiver<Event>,
+    tx: EventSender,
+    rx: EventReceiver,
 }
 
 impl EventHandler {
@@ -18,7 +22,11 @@ impl EventHandler {
         EventHandler { tx, rx }
     }
 
-    pub async fn handle_signals(&mut self) {
+    pub fn sender(&self) -> EventSender {
+        self.tx.clone()
+    }
+
+    pub async fn handle_events(&mut self) {
         OneshotSignals::start(self.tx.clone());
 
         while let Some(event) = self.rx.recv().await {

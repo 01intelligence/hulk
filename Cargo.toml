@@ -70,6 +70,10 @@ windows = "0.13.0"
 actix-rt = "2.2.0"
 actix-server = "1.0.4"
 const_format = "0.2.14"
+pprof = "0.4.3"
+trust-dns-resolver = "0.20.3"
+reqwest = "0.11.4"
+hyper = "0.14.9"
 
 [patch.crates-io]
 jsonwebtoken = { git = 'https://github.com/01intelligence/jsonwebtoken', branch = 'master' }

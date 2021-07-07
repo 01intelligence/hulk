@@ -151,6 +151,7 @@ impl UiErrorItemConst {
     }
 }
 
+#[non_exhaustive]
 pub enum UiError {
     InvalidBrowserValue,
     InvalidFSOSyncValue,

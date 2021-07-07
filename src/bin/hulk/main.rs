@@ -1,4 +1,5 @@
 use clap::{crate_authors, App, Arg};
+use hulk::*;
 use hulk::globals::*;
 
 // mod service;

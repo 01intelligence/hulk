@@ -6,6 +6,7 @@
 #![feature(destructuring_assignment)]
 
 pub mod auth;
+pub mod bitrot;
 pub mod bucket;
 pub mod certs;
 pub mod config;
@@ -18,6 +19,7 @@ pub mod errors;
 pub mod etag;
 pub mod format;
 pub mod globals;
+pub mod http;
 pub mod iam;
 pub mod jwt;
 pub mod lock;

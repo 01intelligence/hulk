@@ -24,6 +24,8 @@ pub fn path_join(elements: &[&str]) -> String {
     return s;
 }
 
+pub fn compress_self_test() {}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,22 +1,25 @@
 use std::sync::Arc;
 
-use actix_web::{rt::System, web, App, HttpResponse, HttpServer};
+use actix_web::rt::System;
+use actix_web::{web, App, HttpResponse, HttpServer};
 use rustls::{NoClientAuth, ResolvesServerCertUsingSNI, ServerConfig};
 
-pub struct Server<F, I, S, B> {
-    pub server: HttpServer<F, I, S, B>,
+pub struct Server {
+    pub server: actix_web::dev::Server,
 }
 
-impl<F, I, S, B> Server<F, I, S, B> {
-    pub fn new() -> Self {
+impl Server {
+    pub async fn run() {
         let mut config = ServerConfig::new(NoClientAuth::new());
-        config.set_single_cert();
+        // config.set_single_cert();
         let mut resolver = Arc::new(ResolvesServerCertUsingSNI::new());
-        resolver.add();
+        // resolver.add();
         config.cert_resolver = resolver;
 
-        let server = HttpServer::new().bind_rustls(&[""], config);
-
-        Server { server }
+        let http_server = HttpServer::new(|| App::new())
+            .bind_rustls("", config)
+            .unwrap();
+        let server = http_server.run();
+        let _ = server.await;
     }
 }

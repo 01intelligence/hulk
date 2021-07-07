@@ -26,6 +26,7 @@ pub mod mount;
 pub mod net;
 pub mod object;
 pub mod s3utils;
+pub mod signals;
 pub mod strset;
 pub mod trie;
 pub mod utils;

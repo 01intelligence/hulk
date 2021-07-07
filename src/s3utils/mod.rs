@@ -4,7 +4,7 @@ use regex::Regex;
 
 lazy_static! {
     static ref VALID_BUCKET_NAME: Regex =
-        Regex::new(r#"^[A-Za-z0-9][A-Za-z0-9\.\-\_\:]{1,61}[A-Za-z0-9]$"#).unwrap();
+        Regex::new(r#"^[A-Za-z0-9][A-Za-z0-9\.\-_:]{1,61}[A-Za-z0-9]$"#).unwrap();
     static ref VALID_BUCKET_NAME_STRICT: Regex =
         Regex::new(r#"^[a-z0-9][a-z0-9\.\-]{1,61}[a-z0-9]$"#).unwrap();
     static ref IP_ADDRESS: Regex = Regex::new(r#"^(\d+\.){3}\d+$"#).unwrap();

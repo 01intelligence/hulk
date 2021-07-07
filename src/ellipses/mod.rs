@@ -6,7 +6,7 @@ use std::slice::Iter;
 lazy_static! {
     // Regex to extract ellipses syntax inputs.
     static ref REGEX_ELLIPSES: Regex =
-        Regex::new(r#"(.*)({[0-9a-z]*\.\.\.[0-9a-z]*})(.*)"#).unwrap();
+        Regex::new(r#"(.*)(\{[0-9a-z]*\.\.\.[0-9a-z]*\})(.*)"#).unwrap();
 }
 
 // Ellipses constants

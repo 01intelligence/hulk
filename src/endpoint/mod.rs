@@ -4,7 +4,7 @@ use std::fmt;
 use anyhow::ensure;
 use path_absolutize::Absolutize;
 
-use crate::errors;
+use crate::errors::UiError;
 use crate::globals::*;
 use crate::strset::StringSet;
 
@@ -340,29 +340,29 @@ pub(self) async fn create_endpoints(
         endpoint.update_is_local().await?;
         ensure!(
             endpoint.typ() == EndpointType::Path,
-            errors::UiErrorInvalidFSEndpoint.msg("use path style endpoint for FS setup".to_owned())
+            UiError::InvalidFSEndpoint.msg("use path style endpoint for FS setup".to_owned())
         );
         endpoints.push(endpoint);
         let endpoints = Endpoints(endpoints);
         // Check for cross device mounts if any.
         endpoints
             .check_cross_device_mounts()
-            .map_err(|e| errors::UiErrorInvalidFSEndpoint.msg(e.to_string()))?;
+            .map_err(|e| UiError::InvalidFSEndpoint.msg(e.to_string()))?;
 
         return Ok((endpoints, SetupType::Fs));
     }
 
     for &args in args_list {
         let eps = Endpoints::new(args)
-            .map_err(|e| errors::UiErrorInvalidErasureEndpoints.msg(e.to_string()))?;
+            .map_err(|e| UiError::InvalidErasureEndpoints.msg(e.to_string()))?;
         eps.check_cross_device_mounts()
-            .map_err(|e| errors::UiErrorInvalidErasureEndpoints.msg(e.to_string()))?;
+            .map_err(|e| UiError::InvalidErasureEndpoints.msg(e.to_string()))?;
         endpoints.extend(eps.0.into_iter());
     }
 
     ensure!(
         !endpoints.is_empty(),
-        errors::UiErrorInvalidErasureEndpoints.msg("invalid number of endpoints".to_owned())
+        UiError::InvalidErasureEndpoints.msg("invalid number of endpoints".to_owned())
     );
 
     if endpoints[0].typ() == EndpointType::Path {
@@ -372,7 +372,7 @@ pub(self) async fn create_endpoints(
     let mut endpoints = Endpoints(endpoints);
     endpoints
         .update_is_local(found_local)
-        .map_err(|e| errors::UiErrorInvalidErasureEndpoints.msg(e.to_string()))?;
+        .map_err(|e| UiError::InvalidErasureEndpoints.msg(e.to_string()))?;
 
     let mut endpoint_path_set = StringSet::new();
     let mut local_endpoint_count = 0;
@@ -401,7 +401,7 @@ pub(self) async fn create_endpoints(
             if let Some(ips) = path_ip_map.get_mut(endpoint.url.path()) {
                 ensure!(
                     ips.intersection(&host_ips).is_empty(),
-                    errors::UiErrorInvalidErasureEndpoints.msg(format!(
+                    UiError::InvalidErasureEndpoints.msg(format!(
                         "path '{}' can not be served by different port on same address",
                         endpoint.url.path()
                     ))
@@ -421,7 +421,7 @@ pub(self) async fn create_endpoints(
             }
             ensure!(
                 !local_path_set.contains(endpoint.url.path()),
-                errors::UiErrorInvalidErasureEndpoints.msg(format!(
+                UiError::InvalidErasureEndpoints.msg(format!(
                     "path '{}' cannot be served by different address on same server",
                     endpoint.url.path()
                 ))
@@ -434,7 +434,7 @@ pub(self) async fn create_endpoints(
         if local_port_set.len() == 1 {
             ensure!(
                 local_server_host_set.len() <= 1,
-                errors::UiErrorInvalidErasureEndpoints
+                UiError::InvalidErasureEndpoints
                     .msg("all local endpoints should not have different hostnames/ips".to_owned())
             );
             return Ok((endpoints, SetupType::Erasure));
@@ -446,7 +446,7 @@ pub(self) async fn create_endpoints(
             None => {
                 endpoint
                     .url
-                    .set_port(Some(server_addr_port.parse().unwrap()));
+                    .set_port(Some(server_addr_port.parse().unwrap())).unwrap();
             }
             Some(port) => {
                 if endpoint.is_local && server_addr_port != port.to_string() {
@@ -461,7 +461,7 @@ pub(self) async fn create_endpoints(
         unique_args.add(endpoint.url.host_str().unwrap().to_owned());
     }
 
-    ensure!(unique_args.len() >= 2, errors::UiErrorInvalidErasureEndpoints.msg(format!("Unsupported number of endpoints ({:?}), minimum number of servers cannot be less than 2 in distributed setup", endpoints.0)));
+    ensure!(unique_args.len() >= 2, UiError::InvalidErasureEndpoints.msg(format!("Unsupported number of endpoints ({:?}), minimum number of servers cannot be less than 2 in distributed setup", endpoints.0)));
 
     let no_public_ips = std::env::var(crate::config::ENV_PUBLIC_IPS)
         .map(|v| v.is_empty())

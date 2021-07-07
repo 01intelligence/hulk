@@ -7,7 +7,7 @@ use lazy_static::lazy_static;
 use super::*;
 use crate::disk::get_info;
 use crate::ellipses;
-use crate::errors::{self, TypedError};
+use crate::errors::{TypedError, UiError};
 use crate::strset::StringSet;
 
 // Supported set sizes this is used to find the optimal
@@ -100,7 +100,7 @@ fn get_set_indexes(
     for &total_size in total_sizes {
         ensure!(
             total_size >= SET_SIZES[0] && total_size >= custom_set_drive_count,
-            errors::UiErrorInvalidNumberOfErasureEndpoints
+            UiError::InvalidNumberOfErasureEndpoints
                 .msg(format!("incorrect number of endpoints provided {:?}", args))
         );
     }
@@ -111,14 +111,14 @@ fn get_set_indexes(
         .cloned()
         .filter(|&s| common_size % s == 0)
         .collect();
-    ensure!(!set_counts.is_empty(), errors::UiErrorInvalidNumberOfErasureEndpoints.msg(format!("Incorrect number of endpoints provided {:?}, number of disks {} is not divisible by any supported erasure set sizes {:?}", args, common_size, SET_SIZES)));
+    ensure!(!set_counts.is_empty(), UiError::InvalidNumberOfErasureEndpoints.msg(format!("Incorrect number of endpoints provided {:?}, number of disks {} is not divisible by any supported erasure set sizes {:?}", args, common_size, SET_SIZES)));
 
     let set_size: usize;
     if custom_set_drive_count > 0 {
         let found = set_counts.iter().any(|&c| c == custom_set_drive_count);
         ensure!(
             found,
-            errors::UiErrorInvalidErasureSetSize.msg(format!(
+            UiError::InvalidErasureSetSize.msg(format!(
                 "Invalid set drive count. Acceptable values for {} number drives are {:?}",
                 common_size, set_counts
             ))
@@ -128,12 +128,12 @@ fn get_set_indexes(
         *GLOBAL_CUSTOM_ERASURE_DRIVE_COUNT.lock().unwrap() = true;
     } else {
         let set_counts = possible_set_counts_with_symmetry(&set_counts, arg_patterns);
-        ensure!(!set_counts.is_empty(), errors::UiErrorInvalidNumberOfErasureEndpoints.msg(format!("No symmetric distribution detected with input endpoints provided {:?}, disks {} cannot be spread symmetrically by any supported erasure set sizes {:?}", args, common_size, SET_SIZES)));
+        ensure!(!set_counts.is_empty(), UiError::InvalidNumberOfErasureEndpoints.msg(format!("No symmetric distribution detected with input endpoints provided {:?}, disks {} cannot be spread symmetrically by any supported erasure set sizes {:?}", args, common_size, SET_SIZES)));
 
         set_size = common_set_drive_count(common_size, &set_counts);
     }
 
-    ensure!(is_valid_set_size(set_size), errors::UiErrorInvalidNumberOfErasureEndpoints.msg(format!("Incorrect number of endpoints provided {:?}, number of disks {} is not divisible by any supported erasure set sizes {:?}", args, common_size, SET_SIZES)));
+    ensure!(is_valid_set_size(set_size), UiError::InvalidNumberOfErasureEndpoints.msg(format!("Incorrect number of endpoints provided {:?}, number of disks {} is not divisible by any supported erasure set sizes {:?}", args, common_size, SET_SIZES)));
 
     let set_indexes = total_sizes
         .iter()
@@ -200,7 +200,7 @@ fn parse_endpoint_set<'a>(
     for &arg in args {
         arg_patterns.push(
             ellipses::find_ellipses_patterns(arg)
-                .map_err(|e| errors::UiErrorInvalidErasureEndpoints.msg(e.to_string()))?,
+                .map_err(|e| UiError::InvalidErasureEndpoints.msg(e.to_string()))?,
         );
     }
     let set_indexes = get_set_indexes(
@@ -209,7 +209,7 @@ fn parse_endpoint_set<'a>(
         custom_set_drive_count,
         &arg_patterns,
     )
-    .map_err(|e| errors::UiErrorInvalidErasureEndpoints.msg(e.to_string()))?;
+    .map_err(|e| UiError::InvalidErasureEndpoints.msg(e.to_string()))?;
     Ok(EndpointSet {
         arg_patterns,
         set_indexes,
@@ -222,7 +222,7 @@ fn get_all_sets(args: &[&str]) -> anyhow::Result<Vec<Vec<String>>> {
     if let Ok(v) = std::env::var(ENV_ERASURE_SET_DRIVE_COUNT) {
         custom_set_drive_count = v
             .parse::<usize>()
-            .map_err(|e| errors::UiErrorInvalidErasureSetSize.msg(e.to_string()))?;
+            .map_err(|e| UiError::InvalidErasureSetSize.msg(e.to_string()))?;
     }
 
     let mut s;
@@ -247,7 +247,7 @@ fn get_all_sets(args: &[&str]) -> anyhow::Result<Vec<Vec<String>>> {
         for arg in args {
             ensure!(
                 !unique_args.contains(arg),
-                errors::UiErrorInvalidErasureEndpoints
+                UiError::InvalidErasureEndpoints
                     .msg(format!("Input args {:?} has duplicate ellipses", args))
             );
             unique_args.add(arg.clone());

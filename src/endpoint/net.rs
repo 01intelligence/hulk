@@ -4,7 +4,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, ToSocketAddrs};
 use anyhow::ensure;
 use http::uri::Scheme;
 
-use crate::errors;
+use crate::errors::UiError;
 use crate::globals::*;
 use crate::strset::StringSet;
 
@@ -24,21 +24,20 @@ pub fn split_host_port(host_port: &str) -> anyhow::Result<(String, String)> {
         url.scheme().is_none()
             || url.scheme() == Some(&Scheme::HTTP)
             || url.scheme() == Some(&Scheme::HTTPS),
-        errors::UiErrorInvalidAddressFlag
-            .msg(format!("invalid scheme '{}'", url.scheme().unwrap()))
+        UiError::InvalidAddressFlag.msg(format!("invalid scheme '{}'", url.scheme().unwrap()))
     );
     let authority = url
         .authority()
-        .ok_or_else(|| errors::UiErrorInvalidAddressFlag.msg("empty host:port".to_owned()))?;
+        .ok_or_else(|| UiError::InvalidAddressFlag.msg("empty host:port".to_owned()))?;
     ensure!(
         authority.as_str().splitn(2, '@').count() == 1,
-        errors::UiErrorInvalidAddressFlag
+        UiError::InvalidAddressFlag
             .msg(format!("invalid host:port '{}'", url.authority().unwrap()))
     ); // no username/password
     ensure!(
         url.path().is_empty()
             || (url.scheme().is_some() && url.path() == "/") && url.query().is_none(),
-        errors::UiErrorInvalidAddressFlag
+        UiError::InvalidAddressFlag
             .msg(format!("redundant path/query '{:?}'", url.path_and_query()))
     ); // no path/query/fragment
     let host = url.host().unwrap_or("").to_owned();
@@ -178,7 +177,7 @@ pub async fn check_local_server_addr(server_addr: &str) -> anyhow::Result<()> {
         let local = is_local_host(&host, "", "").await?;
         ensure!(
             local,
-            errors::UiErrorInvalidAddressFlag
+            UiError::InvalidAddressFlag
                 .msg("host in server address should be this server".to_owned())
         );
     }

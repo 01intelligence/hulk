@@ -168,15 +168,15 @@ impl<L: NetLocker + Send + Sync + 'static, D: Dsync<L> + Send + Sync + 'static> 
             )
             .await
         {
-            timeout.log_failure();
+            timeout.log_failure().await;
             return Err(object::ApiError::OperationTimedOut.into());
         }
-        timeout.log_success(Instant::now().sub(start));
+        timeout.log_success(Instant::now().sub(start)).await;
         Ok(())
     }
 
     async fn unlock(&mut self) {
-        self.lock.unlock();
+        self.lock.unlock().await;
     }
 
     async fn rlock(&mut self, timeout: &mut DynamicTimeout) -> anyhow::Result<()> {
@@ -194,15 +194,15 @@ impl<L: NetLocker + Send + Sync + 'static, D: Dsync<L> + Send + Sync + 'static> 
             )
             .await
         {
-            timeout.log_failure();
+            timeout.log_failure().await;
             return Err(object::ApiError::OperationTimedOut.into());
         }
-        timeout.log_success(Instant::now().sub(start));
+        timeout.log_success(Instant::now().sub(start)).await;
         Ok(())
     }
 
     async fn runlock(&mut self) {
-        self.runlock();
+        self.lock.runlock().await;
     }
 }
 
@@ -233,23 +233,24 @@ impl<'a> RWLocker for LocalLockInstance<'a> {
                 )
                 .await
             {
-                timeout.log_failure();
+                timeout.log_failure().await;
                 for si in success {
                     self.ns
-                        .unlock(&self.volume, &self.paths[si] as &str, read_lock).await;
+                        .unlock(&self.volume, &self.paths[si] as &str, read_lock)
+                        .await;
                 }
                 return Err(object::ApiError::OperationTimedOut.into());
             }
             success.push(i);
         }
-        timeout.log_success(Instant::now().sub(start));
+        timeout.log_success(Instant::now().sub(start)).await;
         Ok(())
     }
 
     async fn unlock(&mut self) {
         let read_lock = false;
         for path in &self.paths {
-            self.ns.unlock(&self.volume, path, read_lock);
+            self.ns.unlock(&self.volume, path, read_lock).await;
         }
     }
 
@@ -271,23 +272,24 @@ impl<'a> RWLocker for LocalLockInstance<'a> {
                 )
                 .await
             {
-                timeout.log_failure();
+                timeout.log_failure().await;
                 for si in success {
                     self.ns
-                        .unlock(&self.volume, &self.paths[si] as &str, read_lock).await;
+                        .unlock(&self.volume, &self.paths[si] as &str, read_lock)
+                        .await;
                 }
                 return Err(object::ApiError::OperationTimedOut.into());
             }
             success.push(i);
         }
-        timeout.log_success(Instant::now().sub(start));
+        timeout.log_success(Instant::now().sub(start)).await;
         Ok(())
     }
 
     async fn runlock(&mut self) {
         let read_lock = true;
         for path in &self.paths {
-            self.ns.unlock(&self.volume, path, read_lock);
+            self.ns.unlock(&self.volume, path, read_lock).await;
         }
     }
 }

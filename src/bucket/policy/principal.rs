@@ -76,7 +76,7 @@ impl<'de> Deserialize<'de> for Principal {
                 A: MapAccess<'de>,
             {
                 use serde::de::Error;
-                while let Ok(Some((k, v))) = map.next_entry::<&str, StringSet>() {
+                if let Ok(Some((k, v))) = map.next_entry::<&str, StringSet>() {
                     if k != "AWS" {
                         return Err(A::Error::custom(format!("invalid principal field '{}'", k)));
                     }

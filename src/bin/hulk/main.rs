@@ -1,12 +1,17 @@
 use clap::{crate_authors, App, Arg};
-use common::*;
 use hulk::globals::*;
 
 // mod service;
-// mod server;
 mod common;
+mod event;
+mod server;
 
-fn main() {
+use common::*;
+use event::*;
+use server::*;
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
     let build_time = option_env!("HULK_BUILD_TIME");
     let version_info = hulk::version::hulk_version_info(build_time);
 
@@ -53,8 +58,11 @@ fn main() {
         .get_matches();
 
     match matches.subcommand() {
-        Some(("server", sub_m)) => {}
-        Some(("gateway", sub_m)) => {}
-        _ => {}
+        Some(("server", sub_m)) => {
+            Server::run().await;
+            Ok(())
+        }
+        Some(("gateway", sub_m)) => Ok(()),
+        _ => Ok(()),
     }
 }

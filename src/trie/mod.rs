@@ -1,12 +1,14 @@
 use std::collections::HashMap;
 
 // A trie container.
+#[derive(Default)]
 pub struct Trie {
     root: Node,
     size: usize,
 }
 
 // Trie tree node container carries value and children.
+#[derive(Default)]
 pub struct Node {
     exists: bool,
     value: String,
@@ -14,13 +16,6 @@ pub struct Node {
 }
 
 impl Trie {
-    pub fn new() -> Trie {
-        Trie {
-            root: Node::new(),
-            size: 0,
-        }
-    }
-
     // Returns root node.
     pub fn root(&self) -> &Node {
         &self.root
@@ -31,7 +26,7 @@ impl Trie {
         let mut cur_node = &mut self.root;
         for v in key.chars() {
             if cur_node.child.contains_key(&v) {
-                cur_node.child.insert(v, Node::new());
+                cur_node.child.insert(v, Node::default());
             }
             cur_node = cur_node.child.get_mut(&v).unwrap();
         }
@@ -90,15 +85,5 @@ impl Trie {
             index = key.chars().count();
         }
         Some((cur_node, index))
-    }
-}
-
-impl Node {
-    fn new() -> Node {
-        Node {
-            exists: false,
-            value: "".to_string(),
-            child: Default::default(),
-        }
     }
 }

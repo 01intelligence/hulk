@@ -7,7 +7,7 @@ use constant_time_eq::constant_time_eq;
 use jsonwebtoken::{encode, Algorithm, DecodingKey, EncodingKey, Header};
 use lazy_static::lazy_static;
 use rand::Rng;
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use thiserror::Error;
 
 use crate::jwt;
@@ -75,7 +75,7 @@ pub enum AuthError {
 }
 
 // Credentials holds access and secret keys.
-#[derive(Serialize, Default, Debug)]
+#[derive(Serialize, Deserialize, Default, Debug)]
 pub struct Credentials {
     #[serde(rename = "AccessKeyId")]
     pub access_key: String,

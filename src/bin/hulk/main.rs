@@ -1,13 +1,15 @@
 use clap::{crate_authors, App, Arg};
-use hulk::*;
 use hulk::globals::*;
+use hulk::*;
 
 // mod service;
 mod common;
+mod config;
 mod event;
 mod server;
 
 use common::*;
+use config::*;
 use event::*;
 use server::*;
 
@@ -40,6 +42,13 @@ async fn main() -> std::io::Result<()> {
                 .about("Hide sensitive information from logging"),
         )
         .arg(
+            Arg::new("json")
+                .short('j')
+                .long("json")
+                .validator(is_bool)
+                .about("Output server logs and startup information in json format"),
+        )
+        .arg(
             Arg::new("no-s3-compatibility")
                 .long("no-s3-compatibility")
                 .about("Disable strict S3 compatibility by turning on certain performance optimizations")
@@ -66,4 +75,8 @@ async fn main() -> std::io::Result<()> {
         Some(("gateway", sub_m)) => Ok(()),
         _ => Ok(()),
     }
+}
+
+fn is_bool(v: &str) -> Result<(), String> {
+    utils::parse_bool(v).map(|_| ()).map_err(|e| e.to_string())
 }

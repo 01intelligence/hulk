@@ -4,6 +4,7 @@
 #![feature(once_cell)]
 #![feature(duration_constants)]
 #![feature(destructuring_assignment)]
+#![feature(specialization)]
 
 pub mod auth;
 pub mod bitrot;
@@ -19,6 +20,7 @@ pub mod errors;
 pub mod etag;
 pub mod format;
 pub mod globals;
+pub mod hash;
 pub mod http;
 pub mod iam;
 pub mod jwt;

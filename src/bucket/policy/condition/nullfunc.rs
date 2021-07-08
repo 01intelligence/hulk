@@ -73,7 +73,7 @@ pub(super) fn new_null_func(key: Key, values: ValueSet) -> anyhow::Result<Box<dy
     }
     let value = match values.0.into_iter().next().unwrap() {
         Value::Bool(v) => v,
-        Value::String(s) => parse_bool(&s).map_err(|_| {
+        Value::String(s) => crate::utils::parse_bool(&s).map_err(|_| {
             anyhow::anyhow!("value must be a boolean string for {} condition", NULL)
         })?,
         _ => {

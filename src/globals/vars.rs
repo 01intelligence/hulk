@@ -7,11 +7,11 @@ use crate::strset::StringSet;
 
 #[derive(Default)]
 pub struct CliContext {
-    json: bool,
-    quiet: bool,
-    anonymous: bool,
-    address: String,
-    strict_s3_compatibility: bool,
+    pub json: bool,
+    pub quiet: bool,
+    pub anonymous: bool,
+    pub address: String,
+    pub strict_s3_compatibility: bool,
 }
 
 lazy_static! {

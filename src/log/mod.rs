@@ -1,11 +1,18 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 mod backtrace;
+mod config;
 mod drain;
 mod entry;
 mod logger;
 mod reqinfo;
 
-use std::sync::atomic::{AtomicUsize, Ordering};
-
+pub use self::backtrace::*;
+pub use config::*;
+pub use drain::*;
+pub use entry::*;
+pub use logger::*;
+pub use reqinfo::*;
 pub use slog::Level;
 
 static LOG_LEVEL: AtomicUsize = AtomicUsize::new(usize::MAX);

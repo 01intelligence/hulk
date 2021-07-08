@@ -43,3 +43,19 @@ pub fn ceil_frac(mut numerator: isize, mut denominator: isize) -> isize {
     }
     ceil
 }
+
+pub fn parse_bool(s: &str) -> anyhow::Result<bool> {
+    match s {
+        "1" | "t" | "T" | "true" | "TRUE" | "True" => Ok(true),
+        "0" | "f" | "F" | "false" | "FALSE" | "False" => Ok(false),
+        _ => Err(anyhow::anyhow!("provided string was not a boolean string")),
+    }
+}
+
+pub fn parse_bool_ext(s: &str) -> anyhow::Result<bool> {
+    match s {
+        "on" | "ON" | "On" | "enabled" => Ok(true),
+        "off" | "OFF" | "Off" | "disabled" => Ok(false),
+        _ => parse_bool(s),
+    }
+}

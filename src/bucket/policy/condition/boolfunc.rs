@@ -68,7 +68,7 @@ pub(super) fn new_boolean_func(
     }
     let value = match values.0.into_iter().next().unwrap() {
         Value::Bool(v) => Value::Bool(v),
-        Value::String(s) => Value::Bool(parse_bool(&s).map_err(|_| {
+        Value::String(s) => Value::Bool(crate::utils::parse_bool(&s).map_err(|_| {
             anyhow::anyhow!("value must be a boolean string for {} condition", BOOLEAN)
         })?),
         _ => {
@@ -80,12 +80,4 @@ pub(super) fn new_boolean_func(
         key,
         value: value.to_string(),
     }))
-}
-
-pub(super) fn parse_bool(s: &str) -> anyhow::Result<bool> {
-    match s {
-        "1" | "t" | "T" | "true" | "TRUE" | "True" => Ok(true),
-        "0" | "f" | "F" | "false" | "FALSE" | "False" => Ok(false),
-        _ => Err(anyhow::anyhow!("provided string was not a boolean string")),
-    }
 }

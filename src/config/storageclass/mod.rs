@@ -59,12 +59,12 @@ lazy_static! {
     ]);
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default)]
 pub struct StorageClass {
     pub parity: u8,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default)]
 pub struct Config {
     pub standard: StorageClass,
     pub rrs: StorageClass,

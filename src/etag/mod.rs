@@ -103,7 +103,7 @@ pub use reader::*;
 // the S3 multipart API then its ETag is not
 // necessarily the MD5 of the object content.
 #[derive(Eq, PartialEq)]
-pub struct ETag(Vec<u8>);
+pub struct ETag(pub Vec<u8>);
 
 impl ETag {
     // Parses s as an S3 ETag, returning the result.

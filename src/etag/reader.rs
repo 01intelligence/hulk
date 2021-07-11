@@ -1,4 +1,3 @@
-use std::any::Any;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
@@ -15,7 +14,7 @@ pub trait MaybeTagger {
     fn as_tagger(&self) -> Option<&dyn Tagger>;
 }
 
-default impl<T: Tagger> MaybeTagger for T {
+impl<T: Tagger> MaybeTagger for T {
     fn as_tagger(&self) -> Option<&dyn Tagger> {
         Some(self)
     }
@@ -86,16 +85,25 @@ impl<R: AsyncRead + Unpin> AsyncRead for Reader<R> {
         let r = self.get_mut();
         let len_prev = buf.filled().len();
         let poll = Pin::new(&mut r.src).poll_read(cx, buf);
+        match poll {
+            Poll::Pending => {
+                return poll;
+            }
+            Poll::Ready(Ok(_)) => {}
+            poll => {
+                return poll;
+            }
+        }
         let filled = buf.filled();
         r.read_n = filled.len() - len_prev;
         r.md5.update(&filled[len_prev..]);
-        if poll.is_ready() && r.read_n == 0 && r.checksum.is_some() {
+        if r.read_n == 0 && r.checksum.is_some() {
             let etag = r.etag().unwrap();
             if Some(etag) != r.checksum {
                 return Poll::Ready(Err(std::io::ErrorKind::Other.into()));
             }
         }
-        poll
+        Poll::Ready(Ok(()))
     }
 }
 

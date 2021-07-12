@@ -77,6 +77,7 @@ hyper = "0.14.9"
 ring = "0.16.20"
 md-5 = "0.9.1"
 sha2 = "0.9.5"
+derive_more = "0.99.16"
 
 [patch.crates-io]
 jsonwebtoken = { git = 'https://github.com/01intelligence/jsonwebtoken', branch = 'master' }

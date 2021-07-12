@@ -92,6 +92,7 @@ mod reader;
 
 use actix_web::web;
 use anyhow::bail;
+use derive_more::{Constructor, Deref};
 use hex;
 pub use reader::*;
 
@@ -102,8 +103,9 @@ pub use reader::*;
 // is encrypted, compressed or uploaded using
 // the S3 multipart API then its ETag is not
 // necessarily the MD5 of the object content.
-#[derive(Eq, PartialEq)]
-pub struct ETag(pub Vec<u8>);
+#[derive(Eq, PartialEq, Constructor, Default, Deref)]
+#[deref(forward)]
+pub struct ETag(Vec<u8>);
 
 impl ETag {
     // Parses s as an S3 ETag, returning the result.

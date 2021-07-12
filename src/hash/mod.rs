@@ -8,15 +8,14 @@ use sha2::Digest;
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 
-use crate::etag;
-use crate::etag::{MaybeTagger, Tagger};
+use crate::etag::{self, ETag, MaybeTagger, Tagger};
 
 pub struct Reader<R: AsyncRead + MaybeTagger + Unpin + 'static> {
     src: ReaderInner<R>,
     bytes_read: usize,
     size: isize,
     actual_size: usize,
-    checksum: etag::ETag,
+    checksum: ETag,
     content_sha256: Vec<u8>,
     sha256: Option<sha2::Sha256>,
 }
@@ -123,7 +122,7 @@ impl<R: AsyncRead + MaybeTagger + Unpin + 'static> Reader<R> {
 
         ensure!(src.bytes_read == 0, "hash: already read from hash reader");
         ensure!(
-            src.checksum.0.is_empty() || md5.is_empty() || src.checksum == etag::ETag(md5.clone()),
+            (&src.checksum).is_empty() || md5.is_empty() || src.checksum == ETag::new(md5.clone()),
             Error::BadDigest {
                 expected_md5: src.checksum.to_string(),
                 calculated_md5: md5_hex.to_owned(),
@@ -143,7 +142,7 @@ impl<R: AsyncRead + MaybeTagger + Unpin + 'static> Reader<R> {
                 got: size,
             }
         );
-        src.checksum = etag::ETag(md5);
+        src.checksum = ETag::new(md5);
         src.content_sha256 = sha256;
         if src.size < 0 && size >= 0 {
             src.src = ReaderInner::LimitedEtagWrapInnerReader(etag::WrapReader::wrap(
@@ -176,11 +175,11 @@ impl<R: AsyncRead + MaybeTagger + Unpin + 'static> Reader<R> {
             } else {
                 s = ReaderInner::LimitedEtagReader(etag::Reader::new(
                     src.take(size as u64),
-                    Some(etag::ETag(md5)),
+                    Some(ETag::new(md5)),
                 ));
             }
         } else if src.as_tagger().is_none() {
-            s = ReaderInner::EtagReader(etag::Reader::new(src, Some(etag::ETag(md5))));
+            s = ReaderInner::EtagReader(etag::Reader::new(src, Some(ETag::new(md5))));
         } else {
             s = ReaderInner::Reader(src);
         }
@@ -196,7 +195,7 @@ impl<R: AsyncRead + MaybeTagger + Unpin + 'static> Reader<R> {
             bytes_read: 0,
             size,
             actual_size,
-            checksum: etag::ETag(Default::default()),
+            checksum: ETag::default(),
             content_sha256: sha256,
             sha256: hash,
         })

@@ -5,6 +5,7 @@
 #![feature(duration_constants)]
 #![feature(destructuring_assignment)]
 #![feature(specialization)]
+#![feature(assert_matches)]
 
 pub mod auth;
 pub mod bitrot;

@@ -262,8 +262,7 @@ dependencies = [
 [[package]]
 name = "actix-web"
 version = "4.0.0-beta.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c503f726f895e55dac39adeafd14b5ee00cc956796314e9227fc7ae2e176f443"
+source = "git+https://github.com/01intelligence/actix-web?branch=update-http-header-range#396ae24173ab16243bec1bf9d1454a8dfacbfbcc"
 dependencies = [
  "actix-codec 0.4.0",
  "actix-http",
@@ -1533,6 +1532,7 @@ checksum = "6456b8a6c8f33fee7d958fcd1b60d55b11940a79e63ae87013e6d22e26034440"
 name = "hulk"
 version = "0.1.0"
 dependencies = [
+ "actix-http",
  "actix-rt 2.2.0",
  "actix-server 1.0.4",
  "actix-web",

@@ -78,10 +78,12 @@ ring = "0.16.20"
 md-5 = "0.9.1"
 sha2 = "0.9.5"
 derive_more = "0.99.16"
+actix-http = "3.0.0-beta.8"
 
 [patch.crates-io]
 jsonwebtoken = { git = 'https://github.com/01intelligence/jsonwebtoken', branch = 'master' }
 reed-solomon-erasure = { git = 'https://github.com/01intelligence/reed-solomon-erasure', branch = 'master' }
+actix-web = { git = 'https://github.com/01intelligence/actix-web', branch = 'update-http-header-range' }
 
 [build-dependencies]
 time = "0.2.26"

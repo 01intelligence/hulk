@@ -1,4 +1,6 @@
 use relative_path::{RelativePath, RelativePathBuf};
+use tokio::io::AsyncRead;
+use super::*;
 
 pub const SLASH_SEPARATOR: &str = "/";
 
@@ -22,6 +24,12 @@ pub fn path_join(elements: &[&str]) -> String {
         s.push_str(SLASH_SEPARATOR);
     }
     return s;
+}
+
+pub struct GetObjectReader<R: AsyncRead> {
+    reader: R,
+    pub obj_info: ObjectInfo,
+    cleanup_fns: Vec<Box<dyn Fn()>>,
 }
 
 pub fn compress_self_test() {}

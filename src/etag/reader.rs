@@ -20,6 +20,12 @@ impl<T: Tagger> MaybeTagger for T {
     }
 }
 
+impl MaybeTagger for &[u8] {
+    fn as_tagger(&self) -> Option<&dyn Tagger> {
+        None
+    }
+}
+
 // impl<R: AsyncRead> MaybeTagger for R {
 //     fn as_tagger(&self) -> Option<&dyn Tagger> {
 //         None

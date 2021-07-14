@@ -44,3 +44,44 @@ async fn read_config(
         }
     }
 }
+
+async fn delete_config(api: &object::ObjectLayer, config_file: &str) -> anyhow::Result<()> {
+    match api
+        .delete_object(object::SYSTEM_META_BUCKET, config_file, None)
+        .await
+    {
+        Err(err) => {
+            if object::is_object_not_found(&err) {
+                return Err(ConfigError::ConfigNotFound.into());
+            }
+            return Err(err);
+        }
+        Ok(_) => Ok(()),
+    }
+}
+
+async fn save_config(
+    api: &object::ObjectLayer,
+    config_file: &str,
+    data: &[u8],
+) -> anyhow::Result<()> {
+    let hash_reader = hash::Reader::new(
+        data,
+        data.len() as isize,
+        "",
+        &hash::sha256_hex(data),
+        data.len(),
+    )?;
+    let _ = api
+        .put_object(
+            object::SYSTEM_META_BUCKET,
+            config_file,
+            &mut object::PutObjectReader {},
+            Some(object::ObjectOptions {
+                max_parity: true,
+                ..Default::default()
+            }),
+        )
+        .await?;
+    Ok(())
+}

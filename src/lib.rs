@@ -6,6 +6,7 @@
 #![feature(destructuring_assignment)]
 #![feature(specialization)]
 #![feature(assert_matches)]
+#![feature(trait_alias)]
 
 pub mod admin;
 pub mod auth;

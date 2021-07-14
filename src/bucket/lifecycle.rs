@@ -89,7 +89,7 @@ pub struct GlacierJobParameters {
 }
 
 // TODO: attribute xmlns="http://s3.amazonaws.com/doc/2006-03-01/"
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct RestoreRequest {
     /// <p>Lifetime of the active copy in days. Do not use with restores that specify <code>OutputLocation</code>.</p> <p>The Days element is required for regular restores, and must not be provided for select requests.</p>

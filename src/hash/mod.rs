@@ -1,4 +1,7 @@
+mod utils;
+
 use std::any::Any;
+use std::marker::PhantomData;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
@@ -7,28 +10,33 @@ use procfs::sys::fs::binfmt_misc::enabled;
 use sha2::Digest;
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
+pub use utils::*;
 
 use crate::etag::{self, ETag, MaybeTagger, Tagger};
 
-pub struct Reader<R: AsyncRead + MaybeTagger + Unpin + 'static> {
-    src: ReaderInner<R>,
+pub trait ReadMaybeTagger<'a> = AsyncRead + MaybeTagger + Unpin + 'a;
+
+pub struct Reader<'a, R: ReadMaybeTagger<'a>> {
+    src: ReaderInner<'a, R>,
     bytes_read: usize,
     size: isize,
     actual_size: usize,
     checksum: ETag,
     content_sha256: Vec<u8>,
     sha256: Option<sha2::Sha256>,
+    _phantom: PhantomData<&'a R>,
 }
 
-pub enum ReaderInner<R: AsyncRead + MaybeTagger + Unpin + 'static> {
+pub enum ReaderInner<'a, R: ReadMaybeTagger<'a>> {
     Reader(R),
     EtagReader(etag::Reader<R>),
     LimitedEtagReader(etag::Reader<tokio::io::Take<R>>),
     LimitedEtagWrapReader(etag::WrapReader<tokio::io::Take<R>>),
-    LimitedEtagWrapInnerReader(etag::WrapReader<tokio::io::Take<Box<ReaderInner<R>>>>),
+    LimitedEtagWrapInnerReader(etag::WrapReader<tokio::io::Take<Box<ReaderInner<'a, R>>>>),
+    _Phantom(PhantomData<&'a R>),
 }
 
-impl<R: AsyncRead + MaybeTagger + Unpin + 'static> AsyncRead for ReaderInner<R> {
+impl<'a, R: ReadMaybeTagger<'a>> AsyncRead for ReaderInner<'a, R> {
     fn poll_read(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -40,11 +48,12 @@ impl<R: AsyncRead + MaybeTagger + Unpin + 'static> AsyncRead for ReaderInner<R> 
             ReaderInner::LimitedEtagReader(ref mut r) => Pin::new(r).poll_read(cx, buf),
             ReaderInner::LimitedEtagWrapReader(ref mut r) => Pin::new(r).poll_read(cx, buf),
             ReaderInner::LimitedEtagWrapInnerReader(ref mut r) => Pin::new(r).poll_read(cx, buf),
+            _ => panic!(),
         }
     }
 }
 
-impl<R: AsyncRead + MaybeTagger + Unpin + 'static> MaybeTagger for ReaderInner<R> {
+impl<'a, R: ReadMaybeTagger<'a>> MaybeTagger for ReaderInner<'a, R> {
     fn as_tagger(&self) -> Option<&dyn Tagger> {
         match *self {
             ReaderInner::Reader(ref r) => r.as_tagger(),
@@ -52,17 +61,18 @@ impl<R: AsyncRead + MaybeTagger + Unpin + 'static> MaybeTagger for ReaderInner<R
             ReaderInner::LimitedEtagReader(ref r) => r.as_tagger(),
             ReaderInner::LimitedEtagWrapReader(ref r) => r.as_tagger(),
             ReaderInner::LimitedEtagWrapInnerReader(ref r) => r.as_tagger(),
+            _ => panic!(),
         }
     }
 }
 
-impl<R: AsyncRead + MaybeTagger + Unpin + 'static> MaybeTagger for Box<ReaderInner<R>> {
+impl<'a, R: ReadMaybeTagger<'a>> MaybeTagger for Box<ReaderInner<'a, R>> {
     fn as_tagger(&self) -> Option<&dyn Tagger> {
         (**self).as_tagger()
     }
 }
 
-impl<R: AsyncRead + MaybeTagger + Unpin + 'static> AsyncRead for Reader<R> {
+impl<'a, R: ReadMaybeTagger<'a>> AsyncRead for Reader<'a, R> {
     fn poll_read(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -103,20 +113,20 @@ impl<R: AsyncRead + MaybeTagger + Unpin + 'static> AsyncRead for Reader<R> {
     }
 }
 
-impl<R: AsyncRead + MaybeTagger + Unpin + 'static> MaybeTagger for Reader<R> {
+impl<'a, R: ReadMaybeTagger<'a>> MaybeTagger for Reader<'a, R> {
     fn as_tagger(&self) -> Option<&dyn Tagger> {
         self.src.as_tagger()
     }
 }
 
-impl<R: AsyncRead + MaybeTagger + Unpin + 'static> Reader<R> {
+impl<'a, R: ReadMaybeTagger<'a>> Reader<'a, R> {
     pub fn from_reader(
-        mut src: Reader<R>,
+        mut src: Reader<'a, R>,
         size: isize,
         md5_hex: &str,
         sha256_hex: &str,
         actual_size: usize,
-    ) -> anyhow::Result<Reader<R>> {
+    ) -> anyhow::Result<Reader<'a, R>> {
         let md5 = hex::decode(md5_hex)?;
         let sha256 = hex::decode(sha256_hex)?;
 
@@ -162,7 +172,7 @@ impl<R: AsyncRead + MaybeTagger + Unpin + 'static> Reader<R> {
         md5_hex: &str,
         sha256_hex: &str,
         actual_size: usize,
-    ) -> anyhow::Result<Reader<R>> {
+    ) -> anyhow::Result<Reader<'a, R>> {
         let md5 = hex::decode(md5_hex)?;
         let sha256 = hex::decode(sha256_hex)?;
 
@@ -198,6 +208,7 @@ impl<R: AsyncRead + MaybeTagger + Unpin + 'static> Reader<R> {
             checksum: ETag::default(),
             content_sha256: sha256,
             sha256: hash,
+            _phantom: PhantomData,
         })
     }
 }

@@ -7,6 +7,7 @@
 #![feature(specialization)]
 #![feature(assert_matches)]
 
+pub mod admin;
 pub mod auth;
 pub mod bitrot;
 pub mod bucket;

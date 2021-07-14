@@ -30,6 +30,7 @@ pub struct GetObjectReader<R: AsyncRead> {
     reader: R,
     pub obj_info: ObjectInfo,
     cleanup_fns: Vec<Box<dyn Fn()>>,
+    opts: ObjectOptions,
 }
 
 pub fn compress_self_test() {}

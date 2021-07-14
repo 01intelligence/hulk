@@ -143,6 +143,14 @@ impl NamespaceLockMap {
     }
 }
 
+/*
+pub enum LockInstance<'a, L: NetLocker + Send + Sync + 'static, D: Dsync<L> + Send + Sync + 'static>
+{
+    Local(LocalLockInstance<'a>),
+    Dist(DistLockInstance<L, D>),
+}
+*/
+
 // Distributed lock instance from dsync.
 struct DistLockInstance<L: NetLocker + Send + Sync + 'static, D: Dsync<L> + Send + Sync + 'static> {
     lock: DRWLock<L, D>,

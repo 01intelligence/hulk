@@ -11,7 +11,7 @@ pub use versions::*;
 pub struct ConfigSys {}
 
 impl ConfigSys {
-    pub fn init(obj_api: &Box<dyn object::ObjectLayer>) -> anyhow::Result<()> {
+    pub fn init(obj_api: &object::ObjectLayer) -> anyhow::Result<()> {
         todo!()
     }
 }

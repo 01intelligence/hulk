@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use tokio::io::AsyncRead;
 
 use super::*;
 
@@ -45,5 +45,47 @@ pub struct TransitionOptions {
     pub expire_restored: bool,
 }
 
-#[async_trait]
-pub trait ObjectLayer {}
+// Represents required locking for ObjectLayer operations.
+pub enum LockType {
+    None,
+    Read,
+    Write,
+}
+
+// Implements primitives for object API layer.
+pub enum ObjectLayer {}
+
+impl ObjectLayer {
+    // Locking operations on object.
+    async fn new_ns_lock<'a>(
+        &'a mut self,
+        bucket: &str,
+        objects: &[&str],
+    ) -> Box<dyn crate::lock::RWLocker + 'a> {
+        todo!()
+    }
+
+    // Storage operations.
+    async fn shutdown(&mut self) -> anyhow::Result<()> {
+        todo!()
+    }
+
+    async fn ns_scanner(&self) -> anyhow::Result<()> {
+        todo!()
+    }
+
+    async fn backend_info(&self) -> crate::admin::BackendInfo {
+        todo!()
+    }
+
+    async fn get_object_and_info<R: AsyncRead>(
+        &self,
+        bucket: &str,
+        object: &str,
+        range: crate::http::HttpRange,
+        lock_type: LockType,
+        opts: ObjectOptions,
+    ) -> anyhow::Result<GetObjectReader<R>> {
+        todo!()
+    }
+}

@@ -1,8 +1,31 @@
+use const_format::concatcp;
 use relative_path::{RelativePath, RelativePathBuf};
 use tokio::io::AsyncRead;
+
 use super::*;
 
 pub const SLASH_SEPARATOR: &str = "/";
+
+// System meta bucket.
+pub const SYSTEM_META_BUCKET: &str = ".hulk.sys";
+// Multipart meta prefix.
+const MPART_META_PREFIX: &str = "multipart";
+// System Multipart meta prefix.
+const SYSTEM_META_MULTIPART_BUCKET: &str =
+    concatcp!(SYSTEM_META_BUCKET, SLASH_SEPARATOR, MPART_META_PREFIX);
+// System tmp meta prefix.
+const SYSTEM_META_TMP_BUCKET: &str = concatcp!(SYSTEM_META_BUCKET, "/tmp");
+// System tmp meta prefix for deleted objects.
+const SYSTEM_META_TMP_DELETED_BUCKET: &str = concatcp!(SYSTEM_META_TMP_BUCKET, "/.trash");
+
+// DNS separator (period), used for bucket name validation.
+const DNS_DELIMITER: &str = ".";
+// On compressed files bigger than this;
+const COMP_READ_AHEAD_SIZE: usize = 100 << 20;
+// Read this many buffers ahead.
+const COMP_READ_AHEAD_BUFFERS: usize = 5;
+// Size of each buffer.
+const COMP_READ_AHEAD_BUF_SIZE: usize = 1 << 20;
 
 // Join paths and retains trailing SlashSeparator of the last element.
 pub fn path_join(elements: &[&str]) -> String {
@@ -26,12 +49,14 @@ pub fn path_join(elements: &[&str]) -> String {
     return s;
 }
 
-pub struct GetObjectReader<R: AsyncRead> {
-    reader: R,
+pub struct GetObjectReader {
+    reader: Box<dyn AsyncRead>,
     pub obj_info: ObjectInfo,
     cleanup_fns: Vec<Box<dyn Fn()>>,
     opts: ObjectOptions,
 }
+
+pub struct PutObjectReader {}
 
 pub fn compress_self_test() {}
 

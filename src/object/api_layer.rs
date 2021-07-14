@@ -57,7 +57,8 @@ pub enum ObjectLayer {}
 
 impl ObjectLayer {
     // Locking operations on object.
-    async fn new_ns_lock<'a>(
+
+    pub async fn new_ns_lock<'a>(
         &'a mut self,
         bucket: &str,
         objects: &[&str],
@@ -66,26 +67,46 @@ impl ObjectLayer {
     }
 
     // Storage operations.
-    async fn shutdown(&mut self) -> anyhow::Result<()> {
+
+    pub async fn shutdown(&mut self) -> anyhow::Result<()> {
         todo!()
     }
 
-    async fn ns_scanner(&self) -> anyhow::Result<()> {
+    pub async fn ns_scanner(&self) -> anyhow::Result<()> {
         todo!()
     }
 
-    async fn backend_info(&self) -> crate::admin::BackendInfo {
+    pub async fn backend_info(&self) -> crate::admin::BackendInfo {
         todo!()
     }
 
-    async fn get_object_and_info<R: AsyncRead>(
+    // Bucket operations.
+
+    // Object operations.
+
+    pub async fn get_object_and_info(
         &self,
         bucket: &str,
         object: &str,
         range: crate::http::HttpRange,
+        header: &actix_web::http::HeaderMap,
         lock_type: LockType,
-        opts: ObjectOptions,
-    ) -> anyhow::Result<GetObjectReader<R>> {
+        opts: Option<ObjectOptions>,
+    ) -> anyhow::Result<GetObjectReader> {
         todo!()
     }
+
+    // Multipart operations.
+
+    // Policy operations.
+
+    // Supported operations check.
+
+    // Healing operations.
+
+    // Backend related metrics.
+
+    // Metadata operations.
+
+    // ObjectTagging operations.
 }

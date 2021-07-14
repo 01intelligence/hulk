@@ -50,7 +50,7 @@ pub fn path_join(elements: &[&str]) -> String {
 }
 
 pub struct GetObjectReader {
-    reader: Box<dyn AsyncRead>,
+    pub reader: Box<dyn AsyncRead + Unpin>,
     pub obj_info: ObjectInfo,
     cleanup_fns: Vec<Box<dyn Fn()>>,
     opts: ObjectOptions,

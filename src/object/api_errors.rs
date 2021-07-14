@@ -3,6 +3,8 @@ use std::path::Path;
 
 use thiserror::Error;
 
+use crate::errors::AsError;
+
 #[derive(Debug, Error)]
 pub struct GenericError {
     pub bucket: String,
@@ -181,4 +183,52 @@ pub enum ApiError {
     BackendDown,
     #[error("At least one of the pre-conditions you specified did not hold")]
     PreConditionFailed,
+}
+
+pub fn is_bucket_not_found(err: &anyhow::Error) -> bool {
+    match err.as_error::<ApiError>() {
+        Some(e) => {
+            if let ApiError::BucketNotFound(_) = e {
+                return true;
+            }
+        }
+        _ => {}
+    }
+    false
+}
+
+pub fn is_object_not_found(err: &anyhow::Error) -> bool {
+    match err.as_error::<ApiError>() {
+        Some(e) => {
+            if let ApiError::ObjectNotFound(_) = e {
+                return true;
+            }
+        }
+        _ => {}
+    }
+    false
+}
+
+pub fn is_version_not_found(err: &anyhow::Error) -> bool {
+    match err.as_error::<ApiError>() {
+        Some(e) => {
+            if let ApiError::VersionNotFound(_) = e {
+                return true;
+            }
+        }
+        _ => {}
+    }
+    false
+}
+
+pub fn is_signature_not_match(err: &anyhow::Error) -> bool {
+    match err.as_error::<ApiError>() {
+        Some(e) => {
+            if let ApiError::SignatureDoesNotMatch = e {
+                return true;
+            }
+        }
+        _ => {}
+    }
+    false
 }

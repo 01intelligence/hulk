@@ -15,7 +15,7 @@ pub struct ObjectInfo {
     // Name of the object.
     pub name: String,
     // Date and time when the object was last modified.
-    pub mod_type: DateTime<Utc>,
+    pub mod_time: DateTime<Utc>,
     // Total object size.
     pub size: i64,
     // IsDir indicates if the object is prefix.
@@ -100,4 +100,24 @@ pub struct ObjectInfo {
     pub num_versions: isize,
     //  The modtime of the successor object version if any
     pub successor_mod_time: DateTime<Utc>,
+}
+
+pub struct ListObjectsInfo {
+    /// <p>A flag that indicates whether Amazon S3 returned all of the results that satisfied the search criteria.</p>
+    pub is_truncated: bool,
+    /// <p>When response is truncated (the IsTruncated element value in the response is true), you can use the key name in this field as marker in the subsequent request to get next set of objects. Amazon S3 lists objects in alphabetical order Note: This element is returned only if you have delimiter request parameter specified. If response does not include the NextMarker and it is truncated, you can use the value of the last Key in the response as the marker in the subsequent request to get the next set of object keys.</p>
+    pub next_marker: Option<String>,
+    pub objects: Vec<ObjectInfo>,
+    pub prefixes: Vec<String>,
+}
+
+pub struct ListObjectsV2Info {
+    /// <p> If ContinuationToken was sent with the request, it is included in the response.</p>
+    pub continuation_token: Option<String>,
+    /// <p>Set to false if all of the results were returned. Set to true if more keys are available to return. If the number of results exceeds that specified by MaxKeys, all of the results might not be returned.</p>
+    pub is_truncated: Option<bool>,
+    /// <p> <code>NextContinuationToken</code> is sent when <code>isTruncated</code> is true, which means there are more keys in the bucket that can be listed. The next list requests to Amazon S3 can be continued with this <code>NextContinuationToken</code>. <code>NextContinuationToken</code> is obfuscated and is not a real key</p>
+    pub next_continuation_token: Option<String>,
+    pub objects: Vec<ObjectInfo>,
+    pub prefixes: Vec<String>,
 }

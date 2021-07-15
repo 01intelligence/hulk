@@ -1,5 +1,7 @@
 use std::time::Duration;
 
+use crate::utils::{HOUR, MIB, MINUTE};
+
 // Configuration related constants.
 pub const GLOBAL_DEFAULT_PORT: &str = "9000";
 
@@ -26,10 +28,6 @@ pub const GLOBAL_DIR_SUFFIX: &str = "__XLDIR__";
 pub const GLOBAL_DIR_SUFFIX_WITH_SLASH: &str = "__XLDIR__/";
 
 pub const SLASH_SEPARATOR: &str = "/";
-
-const MIB: usize = 1 << (2 * 10);
-const MINUTE: u64 = 60;
-const HOUR: u64 = MINUTE * 60;
 
 // Limit fields size (except file) to 1Mib since Policy document
 // can reach that size according to https://aws.amazon.com/articles/1434

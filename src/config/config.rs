@@ -144,7 +144,7 @@ pub struct KV {
     pub value: String,
 }
 
-#[derive(Default, Clone)]
+#[derive(Serialize, Deserialize, Default, Clone)]
 pub struct KVS(pub Vec<KV>);
 
 impl KVS {
@@ -296,7 +296,7 @@ pub fn check_valid_keys(sub_sys: &str, kvs: &KVS, valid_kvs: &KVS) -> anyhow::Re
 }
 
 // Config structure at server.
-#[derive(Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Config(HashMap<String, HashMap<String, KVS>>);
 
 #[derive(Default)]

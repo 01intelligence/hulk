@@ -7,6 +7,7 @@
 #![feature(specialization)]
 #![feature(assert_matches)]
 #![feature(trait_alias)]
+#![feature(pattern)]
 
 pub mod admin;
 pub mod auth;
@@ -31,6 +32,7 @@ pub mod iam;
 pub mod jwt;
 pub mod lock;
 pub mod log;
+pub mod metacache;
 pub mod mount;
 pub mod net;
 pub mod object;

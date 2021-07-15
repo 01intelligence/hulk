@@ -20,6 +20,14 @@ pub enum ConfigError {
     ConfigNotFound,
 }
 
+pub fn is_config_not_found(err: &anyhow::Error) -> bool {
+    if let Some(&ConfigError::ConfigNotFound) = err.as_error::<ConfigError>() {
+        true
+    } else {
+        false
+    }
+}
+
 pub async fn check_config(api: &object::ObjectLayer, config_file: &str) -> anyhow::Result<()> {
     match api
         .get_object_info(object::SYSTEM_META_BUCKET, config_file, None)
@@ -106,6 +114,11 @@ pub async fn delete_config(api: &object::ObjectLayer, config_file: &str) -> anyh
     }
 }
 
+pub async fn check_server_config(api: &object::ObjectLayer) -> anyhow::Result<()> {
+    let config_file = object::path_join(&[SYSTEM_CONFIG_PREFIX, SYSTEM_CONFIG_FILE]);
+    check_config(api, &config_file).await
+}
+
 pub async fn read_server_config(api: &object::ObjectLayer) -> anyhow::Result<config::Config> {
     let config_file = object::path_join(&[SYSTEM_CONFIG_PREFIX, SYSTEM_CONFIG_FILE]);
     match read_config(api, &config_file).await {
@@ -123,8 +136,8 @@ pub async fn read_server_config(api: &object::ObjectLayer) -> anyhow::Result<con
     }
 }
 
-pub async fn save_server_config(api: &ObjectLayer, cfg: config::Config) -> anyhow::Result<()> {
-    let data = serde_json::to_string(&cfg)?;
+pub async fn save_server_config(api: &ObjectLayer, cfg: &config::Config) -> anyhow::Result<()> {
+    let data = serde_json::to_string(cfg)?;
     let config_file = object::path_join(&[SYSTEM_CONFIG_PREFIX, SYSTEM_CONFIG_FILE]);
     // TODO: KMS
     save_config(api, &config_file, data.as_bytes()).await
@@ -192,6 +205,15 @@ pub async fn list_server_config_history(
     Ok(config_history)
 }
 
-pub async fn save_server_config_history(api: &ObjectLayer, kv: Vec<u8>) {}
+pub async fn save_server_config_history(api: &ObjectLayer, kv: &[u8]) -> anyhow::Result<()> {
+    let uuid_kv = uuid::Uuid::new_v4().to_string() + KV_PREFIX;
+    let history_file = object::path_join(&[SYSTEM_CONFIG_HISTORY_PREFIX, &uuid_kv]);
+    // TODO: KMS
+    save_config(api, &history_file, kv).await
+}
 
-pub async fn delete_server_config_history(api: &ObjectLayer, uuid_kv: &str) {}
+pub async fn delete_server_config_history(api: &ObjectLayer, uuid_kv: &str) -> anyhow::Result<()> {
+    let uuid_kv = uuid_kv.to_string() + KV_PREFIX;
+    let history_file = object::path_join(&[SYSTEM_CONFIG_HISTORY_PREFIX, &uuid_kv]);
+    delete_config(api, &history_file).await
+}

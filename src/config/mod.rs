@@ -3,6 +3,7 @@ pub mod cache;
 pub mod compress;
 mod config;
 mod constants;
+pub mod etcd;
 mod help;
 pub mod notify;
 pub mod opa;

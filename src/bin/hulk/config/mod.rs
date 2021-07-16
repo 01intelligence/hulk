@@ -7,11 +7,9 @@ use super::*;
 
 mod config;
 mod migrate;
-mod versions;
 
 pub use config::*;
 pub use migrate::*;
-pub use versions::*;
 
 pub struct ConfigSys {}
 
@@ -28,6 +26,7 @@ impl ConfigSys {
             _ => false,
         };
         if config_not_found {
+            //
             let server_config = hulk::config::Config::new();
             let _ = save_server_config(api, &server_config).await?;
             *GLOBAL_SERVER_CONFIG.lock().unwrap() = Some(server_config);

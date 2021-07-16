@@ -1,11 +1,12 @@
 mod help;
 
-use anyhow::{anyhow, bail};
+use anyhow::{anyhow, bail, ensure};
 pub use help::*;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 
 use super::config::{KV, KVS};
+use crate::config::{check_valid_keys, STORAGE_CLASS_SUB_SYS};
 
 // Reduced redundancy storage class
 pub const RRS: &str = "REDUCED_REDUNDANCY";
@@ -172,4 +173,29 @@ pub fn validate_parity(ss_parity: u8, rrs_parity: u8, set_drive_count: u8) -> an
         bail!("Standard storage class parity disks {} should be greater than or equal to Reduced redundancy storage class parity disks {}", ss_parity, rrs_parity);
     }
     Ok(())
+}
+
+pub fn lookup_config(kvs: &KVS, set_drive_count: u8) -> anyhow::Result<Config> {
+    let _ = check_valid_keys(STORAGE_CLASS_SUB_SYS, kvs, &DEFAULT_KVS)?;
+    let standard =
+        std::env::var(STANDARD_ENV).unwrap_or_else(|_| kvs.get(CLASS_STANDARD).to_owned());
+    let rrs = std::env::var(RRS_ENV).unwrap_or_else(|_| kvs.get(CLASS_RRS).to_owned());
+    let dma = std::env::var(DMA_ENV).unwrap_or_else(|_| kvs.get(CLASS_DMA).to_owned());
+    let mut cfg = Config::default();
+    cfg.standard = parse_storage_class(&standard)?;
+    cfg.rrs = parse_storage_class(&rrs)?;
+    if cfg.rrs.parity == 0 {
+        cfg.rrs.parity = DEFAULT_RRS_PARITY;
+    }
+    cfg.dma = if dma.is_empty() {
+        DEFAULT_DMA.to_owned()
+    } else {
+        dma
+    };
+    ensure!(
+        cfg.dma == DMA_READ_WRITE || cfg.dma == DMA_WRITE,
+        "valid dma values are 'read+write' and 'write'"
+    );
+    let _ = validate_parity(cfg.standard.parity, cfg.rrs.parity, set_drive_count)?;
+    Ok(cfg)
 }

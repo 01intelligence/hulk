@@ -131,6 +131,7 @@ pub async fn read_server_config(api: &object::ObjectLayer) -> anyhow::Result<con
         Ok(data) => {
             // TODO: KMS
             let cfg: config::Config = serde_json::from_str(data.to_str()?)?;
+            // Add any missing entries
             Ok(cfg.merge_default())
         }
     }

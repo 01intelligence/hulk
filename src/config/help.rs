@@ -11,6 +11,11 @@ pub struct HelpKV {
     pub description: String,
     pub optional: bool,
 
+    // Indicates if the value contains sensitive info
+    // that shouldn't be exposed in certain apis
+    #[serde(skip)]
+    pub sensitive: bool,
+
     // Indicates if sub-sys supports multiple targets.
     #[serde(rename = "multipleTargets")]
     pub multiple_targets: bool,

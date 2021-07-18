@@ -13,7 +13,7 @@ use crate::auth;
 use crate::strset::StringSet;
 
 pub const ENABLE_KEY: &str = "enable";
-pub const COMMON_KEY: &str = "comment";
+pub const COMMENT_KEY: &str = "comment";
 pub const ENABLE_ON: &str = "on";
 pub const ENABLE_OFF: &str = "off";
 pub const REGION_NAME: &str = "name";
@@ -22,7 +22,6 @@ pub const SECRET_KEY: &str = "secret_key";
 
 // Top level config constants.
 pub const CREDENTIALS_SUB_SYS: &str = "credentials";
-pub const POLICY_OPA_SUB_SYS: &str = "policy_opa";
 pub const IDENTITY_OPEN_ID_SUB_SYS: &str = "identity_openid";
 pub const IDENTITY_LDAP_SUB_SYS: &str = "identity_ldap";
 pub const CACHE_SUB_SYS: &str = "cache";
@@ -55,7 +54,6 @@ pub const NOTIFY_WEBHOOK_SUB_SYS: &str = "notify_webhook";
 lazy_static! {
     static ref SUB_SYSTEMS: StringSet = StringSet::from_slice(&[
         CREDENTIALS_SUB_SYS,
-        POLICY_OPA_SUB_SYS,
         IDENTITY_OPEN_ID_SUB_SYS,
         IDENTITY_LDAP_SUB_SYS,
         CACHE_SUB_SYS,
@@ -97,7 +95,6 @@ lazy_static! {
         COMPRESSION_SUB_SYS,
         KMS_VAULT_SUB_SYS,
         KMS_KES_SUB_SYS,
-        POLICY_OPA_SUB_SYS,
         IDENTITY_LDAP_SUB_SYS,
         IDENTITY_OPEN_ID_SUB_SYS,
         HEAL_SUB_SYS,
@@ -160,14 +157,14 @@ impl KVS {
         let mut keys = Vec::with_capacity(self.0.len());
         let mut found_comment = false;
         for kv in &self.0 {
-            if kv.key == COMMON_KEY {
+            if kv.key == COMMENT_KEY {
                 found_comment = true;
             }
             keys.push(kv.key.as_str());
         }
         // Comment Key not found, add it explicitly.
         if !found_comment {
-            keys.push(COMMON_KEY);
+            keys.push(COMMENT_KEY);
         }
         keys
     }
@@ -275,7 +272,7 @@ pub fn lookup_region(kvs: &KVS) -> anyhow::Result<String> {
 pub fn check_valid_keys(sub_sys: &str, kvs: &KVS, valid_kvs: &KVS) -> anyhow::Result<()> {
     let mut nkvs = KVS::default();
     for kv in kvs.iter() {
-        if kv.key == COMMON_KEY {
+        if kv.key == COMMENT_KEY {
             // Comment is a valid key, its also fully optional.
             // Ignore it since it is a valid key for all sub-systems.
             continue;
@@ -562,15 +559,15 @@ impl Config {
             .or_insert_with(|| default_kvs.clone()); // if not found, insert default_kvs
 
         for kv in &kvs.0 {
-            if kv.key == COMMON_KEY {
+            if kv.key == COMMENT_KEY {
                 // Skip comment and add it later.
                 continue;
             }
             curr_kvs.set(kv.key.to_owned(), kv.value.to_owned());
         }
 
-        if let Some(v) = kvs.lookup(COMMON_KEY) {
-            curr_kvs.set(COMMON_KEY.to_owned(), v.to_owned());
+        if let Some(v) = kvs.lookup(COMMENT_KEY) {
+            curr_kvs.set(COMMENT_KEY.to_owned(), v.to_owned());
         }
 
         let mut help_kvss = HELP_SUB_SYS_MAP.write().unwrap();

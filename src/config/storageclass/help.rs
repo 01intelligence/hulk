@@ -31,7 +31,7 @@ lazy_static! {
             ..Default::default()
         },
         HelpKV {
-            key: config::COMMON_KEY.to_owned(),
+            key: config::COMMENT_KEY.to_owned(),
             description: config::DEFAULT_COMMENT.to_owned(),
             optional: true,
             typ: "sentence".to_owned(),

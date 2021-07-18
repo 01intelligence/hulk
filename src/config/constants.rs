@@ -1,3 +1,5 @@
+pub const VALUE_SEPARATOR: char = ',';
+
 // Top level common ENVs
 pub const ENV_ACCESS_KEY: &str = "HULK_ACCESS_KEY";
 pub const ENV_SECRET_KEY: &str = "HULK_SECRET_KEY";

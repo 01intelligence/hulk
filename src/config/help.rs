@@ -46,7 +46,7 @@ lazy_static! {
             ..Default::default()
         },
         HelpKV {
-            key: super::config::COMMON_KEY.to_string(),
+            key: super::config::COMMENT_KEY.to_string(),
             typ: "sentence".to_string(),
             description: DEFAULT_COMMENT.to_string(),
             optional: true,

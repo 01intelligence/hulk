@@ -1,3 +1,4 @@
+pub mod api;
 mod boolflag;
 pub mod cache;
 pub mod compress;

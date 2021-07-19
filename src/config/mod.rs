@@ -9,6 +9,7 @@ pub mod heal;
 mod help;
 pub mod notify;
 pub mod openid;
+pub mod scanner;
 pub mod storageclass;
 
 pub use boolflag::*;

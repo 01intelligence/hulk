@@ -24,6 +24,7 @@ pub mod endpoint;
 pub mod erasure;
 pub mod errors;
 pub mod etag;
+pub mod event;
 pub mod format;
 pub mod globals;
 pub mod hash;

@@ -4,6 +4,7 @@ use anyhow::ensure;
 
 use super::*;
 
+#[derive(Eq, PartialEq, Hash, Clone)]
 pub struct TargetId {
     pub id: String,
     pub name: String,

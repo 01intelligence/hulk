@@ -8,6 +8,7 @@
 #![feature(assert_matches)]
 #![feature(trait_alias)]
 #![feature(pattern)]
+#![feature(hash_set_entry)]
 
 pub mod admin;
 pub mod auth;

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use super::*;
 
-#[derive(Serialize, Deserialize, Derivative)]
+#[derive(Serialize, Deserialize, Derivative, Clone, Eq, PartialEq, Hash)]
 #[derivative(Default)]
 pub enum Name {
     #[derivative(Default)]
@@ -87,16 +87,16 @@ impl Name {
         Ok(n)
     }
 
-    pub fn expand(self) -> Vec<Name> {
+    pub fn expand(&self) -> Vec<Name> {
         use Name::*;
         match self {
-            ObjectAccessedAll => vec![
+            &ObjectAccessedAll => vec![
                 ObjectAccessedGet,
                 ObjectAccessedHead,
                 ObjectAccessedGetRetention,
                 ObjectAccessedGetLegalHold,
             ],
-            ObjectCreatedAll => vec![
+            &ObjectCreatedAll => vec![
                 ObjectCreatedCompleteMultipartUpload,
                 ObjectCreatedCopy,
                 ObjectCreatedPost,
@@ -106,17 +106,17 @@ impl Name {
                 ObjectCreatedPutTagging,
                 ObjectCreatedDeleteTagging,
             ],
-            ObjectRemovedAll => vec![ObjectRemovedDelete, ObjectRemovedDeleteMarkerCreated],
-            ObjectReplicationAll => vec![
+            &ObjectRemovedAll => vec![ObjectRemovedDelete, ObjectRemovedDeleteMarkerCreated],
+            &ObjectReplicationAll => vec![
                 ObjectReplicationFailed,
                 ObjectReplicationComplete,
                 ObjectReplicationNotTracked,
                 ObjectReplicationMissedThreshold,
                 ObjectReplicationReplicatedAfterThreshold,
             ],
-            ObjectRestorePostAll => vec![ObjectRestorePostInitiated, ObjectRestorePostCompleted],
-            ObjectTransitionAll => vec![ObjectTransitionFailed, ObjectTransitionComplete],
-            n => vec![n],
+            &ObjectRestorePostAll => vec![ObjectRestorePostInitiated, ObjectRestorePostCompleted],
+            &ObjectTransitionAll => vec![ObjectTransitionFailed, ObjectTransitionComplete],
+            n => vec![n.clone()],
         }
     }
 }

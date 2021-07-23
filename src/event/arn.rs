@@ -1,6 +1,8 @@
 use std::fmt;
 
 use anyhow::ensure;
+use serde::de::{self, Deserialize, Deserializer, SeqAccess, Visitor};
+use serde::ser::{Serialize, Serializer};
 
 pub use super::*;
 
@@ -17,6 +19,40 @@ impl fmt::Display for Arn {
             return write!(f, "");
         }
         write!(f, "arn:hulk:sqs:{}:{}", self.region, self.target_id)
+    }
+}
+
+impl Serialize for Arn {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for Arn {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct PrincipalVisitor;
+        impl<'de> Visitor<'de> for PrincipalVisitor {
+            type Value = Arn;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("an arn string")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                parse_arn(v).map_err(|e| E::custom(e))
+            }
+        }
+
+        deserializer.deserialize_any(PrincipalVisitor)
     }
 }
 

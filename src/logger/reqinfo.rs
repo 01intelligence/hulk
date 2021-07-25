@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use opentelemetry::Context;
 
-use crate::log::entry::Value;
+use crate::logger::entry::Value;
 
 lazy_static::lazy_static! {
     static ref NOOP_REQ_INFO: ReqInfo = ReqInfo::default();

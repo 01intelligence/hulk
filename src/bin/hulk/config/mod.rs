@@ -6,9 +6,11 @@ use lazy_static::lazy_static;
 use super::*;
 
 mod config;
+mod current;
 mod migrate;
 
 pub use config::*;
+pub use current::*;
 pub use migrate::*;
 
 pub struct ConfigSys {}

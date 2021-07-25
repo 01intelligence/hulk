@@ -9,10 +9,10 @@ use lazy_static::lazy_static;
 use log::{error, info, warn};
 use opentelemetry::Context;
 
-use crate::log::backtrace::Backtrace;
-use crate::log::backtrace::Inner::*;
-use crate::log::entry::{Api, Args, Entry, ErrKind, Trace};
-use crate::log::reqinfo::ReqInfoContextExt;
+use crate::logger::backtrace::Backtrace;
+use crate::logger::backtrace::Inner::*;
+use crate::logger::entry::{Api, Args, Entry, ErrKind, Trace};
+use crate::logger::reqinfo::ReqInfoContextExt;
 
 // HighwayHash key for logging in anonymous mode
 const MAGIC_HIGHWAY_HASH_256_KEY: [u8; 32] =

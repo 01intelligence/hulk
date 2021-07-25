@@ -33,7 +33,7 @@ pub mod http;
 pub mod iam;
 pub mod jwt;
 pub mod lock;
-pub mod log;
+pub mod logger;
 pub mod metacache;
 pub mod mount;
 pub mod net;

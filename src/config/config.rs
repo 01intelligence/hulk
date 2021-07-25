@@ -121,6 +121,9 @@ lazy_static! {
     // Default kvs for all sub-systems
     pub static ref DEFAULT_KVS: Arc<RwLock<HashMap<String, KVS>>> = Arc::new(RwLock::new(HashMap::new()));
 
+    // Help for all individual KVS for each sub-systems
+    // also carries a special empty sub-system which dumps
+    // help for each sub-system key.
     pub static ref HELP_SUB_SYS_MAP: Arc<RwLock<HashMap<String, HelpKVS>>> = Arc::new(RwLock::new(HashMap::new()));
 }
 
@@ -222,7 +225,7 @@ impl ToString for KVS {
 }
 
 lazy_static! {
-    static ref DEFAULT_CREDENTIAL_KVS: KVS = KVS(vec![
+    pub static ref DEFAULT_CREDENTIAL_KVS: KVS = KVS(vec![
         KV {
             key: ACCESS_KEY.to_owned(),
             value: crate::auth::DEFAULT_ACCESS_KEY.to_owned()
@@ -232,7 +235,7 @@ lazy_static! {
             value: crate::auth::DEFAULT_SECRET_KEY.to_owned()
         },
     ]);
-    static ref DEFAULT_REGION_KVS: KVS = KVS(vec![KV {
+    pub static ref DEFAULT_REGION_KVS: KVS = KVS(vec![KV {
         key: REGION_NAME.to_owned(),
         value: "".to_owned(),
     }]);

@@ -49,7 +49,7 @@ impl TargetList {
     }
 
     pub fn iter(
-        &mut self,
+        &self,
     ) -> std::collections::hash_map::Iter<'_, TargetId, Arc<Mutex<Box<dyn Target>>>> {
         self.0.iter()
     }

@@ -5,6 +5,9 @@ use serde::{Deserialize, Serialize};
 use super::*;
 use crate::errors;
 
+mod help;
+pub use help::*;
+
 pub const DRIVES: &str = "drives";
 pub const EXCLUDE: &str = "exclude";
 pub const EXPIRY: &str = "expiry";

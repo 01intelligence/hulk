@@ -3,6 +3,9 @@ use serde::{Deserialize, Serialize};
 
 use super::*;
 
+mod help;
+pub use help::*;
+
 #[derive(Serialize, Deserialize, Default)]
 pub struct Config {}
 

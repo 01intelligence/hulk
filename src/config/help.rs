@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 // Implements help messages for keys
 // with value as description of the keys.
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize, Default, Clone)]
 pub struct HelpKV {
     pub key: String,
     #[serde(rename = "type")]
@@ -21,7 +21,7 @@ pub struct HelpKV {
     pub multiple_targets: bool,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct HelpKVS(pub Vec<HelpKV>);
 
 impl HelpKVS {

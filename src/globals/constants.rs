@@ -66,3 +66,8 @@ const DISK_ASSUME_UNKNOWN_SIZE: usize = 1 << 30;
 
 // The minimum number of inodes we want free on a disk to perform writes.
 const DISK_MIN_INODES: usize = 1000;
+
+// Prefix of a metadata key which
+// is reserved and for internal use only.
+pub const RESERVED_METADATA_PREFIX: &str = "X-Minio-Internal-";
+pub const RESERVED_METADATA_PREFIX_LOWER: &str = "x-minio-internal-";

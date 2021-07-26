@@ -1,5 +1,11 @@
 use std::collections::HashMap;
 
+// Information of underlying storage.
+pub struct StorageInfo {
+    pub disks: Vec<Disk>,
+    pub backend: BackendInfo,
+}
+
 // Contains info of the underlying backend.
 pub struct BackendInfo {
     // Represents various backend types, currently on FS, Erasure and Gateway
@@ -20,3 +26,6 @@ pub struct BackendInfo {
 }
 
 pub struct BackendDisks(HashMap<String, usize>);
+
+// Disk information.
+pub struct Disk {}

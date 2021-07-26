@@ -84,6 +84,10 @@ impl ObjectLayer {
         todo!()
     }
 
+    pub async fn storage_info(&self) -> anyhow::Result<crate::admin::StorageInfo> {
+        todo!()
+    }
+
     // Bucket operations.
 
     // Object operations.
@@ -143,12 +147,34 @@ impl ObjectLayer {
         todo!()
     }
 
+    pub async fn copy_object(
+        &self,
+        src_bucket: &str,
+        src_object: &str,
+        dst_bucket: &str,
+        dst_object: &str,
+        src_info: &ObjectInfo,
+        src_opts: Option<ObjectOptions>,
+        dst_opts: Option<ObjectOptions>,
+    ) -> anyhow::Result<ObjectInfo> {
+        todo!()
+    }
+
     pub async fn delete_object(
         &self,
         bucket: &str,
         object: &str,
         opts: Option<ObjectOptions>,
     ) -> anyhow::Result<ObjectInfo> {
+        todo!()
+    }
+
+    pub async fn delete_objects(
+        &self,
+        bucket: &str,
+        objects: &[ObjectToDelete],
+        opts: Option<ObjectOptions>,
+    ) -> anyhow::Result<Vec<DeletedObject>> {
         todo!()
     }
 

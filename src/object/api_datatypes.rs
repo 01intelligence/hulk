@@ -60,9 +60,9 @@ pub struct ObjectInfo {
     pub expires: DateTime<Utc>,
 
     // Sets status of whether this is a cache hit/miss
-    pub cache_status: crate::diskcache::CacheStatus,
+    pub cache_status: crate::objectcache::CacheStatus,
     // Sets whether a cacheable response is present in the cache
-    pub cache_lookup_status: crate::diskcache::CacheStatus,
+    pub cache_lookup_status: crate::objectcache::CacheStatus,
 
     // Specify object storage class
     pub storage_class: String,

@@ -1,6 +1,8 @@
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use const_format::concatcp;
+use lazy_static::lazy_static;
 use strum::Display;
 
 use crate::utils::minutes;
@@ -110,4 +112,16 @@ impl CacheObjectLayer {
     pub async fn cache_stats(&self) -> CacheStats {
         todo!()
     }
+}
+
+lazy_static! {
+    static ref GLOBAL_CACHE_API: Arc<Mutex<Option<CacheObjectLayer>>> = Arc::new(Mutex::new(None));
+}
+
+pub fn get_cache_layer() -> MutexGuard<'static, Option<CacheObjectLayer>> {
+    GLOBAL_CACHE_API.lock().unwrap()
+}
+
+pub fn set_cache_layer(api: CacheObjectLayer) {
+    *GLOBAL_CACHE_API.lock().unwrap() = Some(api);
 }

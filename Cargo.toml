@@ -90,7 +90,7 @@ dashmap = { version = "4.0.2", features = ["serde", "raw-api"] }
 [patch.crates-io]
 jsonwebtoken = { git = 'https://github.com/01intelligence/jsonwebtoken', branch = 'master' }
 reed-solomon-erasure = { git = 'https://github.com/01intelligence/reed-solomon-erasure', branch = 'master' }
-actix-web = { git = 'https://github.com/01intelligence/actix-web', branch = 'update-http-header-range' }
+actix-web = { git = 'https://github.com/01intelligence/actix-web', branch = 'master' }
 
 [build-dependencies]
 time = "0.2.26"

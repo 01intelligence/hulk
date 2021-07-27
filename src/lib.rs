@@ -17,7 +17,7 @@ pub mod bucket;
 pub mod certs;
 pub mod config;
 pub mod disk;
-pub mod diskcache;
+pub mod objectcache;
 pub mod dsync;
 pub mod ellipses;
 pub mod encrypt;

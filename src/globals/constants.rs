@@ -1,5 +1,7 @@
 use std::time::Duration;
 
+use const_format::concatcp;
+
 use crate::utils::{HOUR, MIB, MINUTE};
 
 // Configuration related constants.
@@ -71,3 +73,7 @@ const DISK_MIN_INODES: usize = 1000;
 // is reserved and for internal use only.
 pub const RESERVED_METADATA_PREFIX: &str = "X-Minio-Internal-";
 pub const RESERVED_METADATA_PREFIX_LOWER: &str = "x-minio-internal-";
+
+// Reserved bucket.
+pub const SYSTEM_RESERVED_BUCKET: &str = "hulk";
+pub const SYSTEM_RESERVED_BUCKET_PATH: &str = concatcp!(SLASH_SEPARATOR, SYSTEM_RESERVED_BUCKET);

@@ -7,6 +7,7 @@ mod common;
 mod config;
 mod env;
 mod event;
+mod middlewares;
 mod router;
 mod server;
 
@@ -14,6 +15,7 @@ use common::*;
 use config::*;
 use env::*;
 use event::*;
+use middlewares::*;
 use router::*;
 use server::*;
 

@@ -1,13 +1,19 @@
+mod api_config;
+mod api_headers;
 mod api_router;
+mod middleware;
 
 use std::sync::MutexGuard;
-use regex::Regex;
 
 use actix_http::body::Body;
 use actix_web::guard::get_host_uri;
 use actix_web::{guard, web, App, AppEntry, HttpServer, Scope};
+use api_config::*;
+use api_headers::*;
 use api_router::*;
 use hulk::{globals, object, objectcache};
+use middleware::*;
+use regex::Regex;
 
 use super::*;
 
@@ -35,7 +41,7 @@ pub fn configure_server_handler() -> anyhow::Result<App<AppEntry, Body>> {
             if let Some(uri) = get_host_uri(req) {
                 if let Some(uri_host) = uri.host() {
                     // Reserve hulk.<namespace>.svc.<cluster_domain> if in Kubernetes.
-                    if *is_kubernetes && uri_host == reserved_host {
+                    if *IS_KUBERNETES && uri_host == reserved_host {
                         return false;
                     }
                     // Allow <bucket>.<namespace>.svc.<cluster_domain> and extract bucket.

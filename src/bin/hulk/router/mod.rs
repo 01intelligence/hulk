@@ -3,7 +3,6 @@ use std::sync::MutexGuard;
 use actix_http::body::Body;
 use actix_web::guard::get_host_uri;
 use actix_web::{guard, web, App, AppEntry, HttpServer, Scope};
-use api_headers::*;
 use api_router::*;
 use hulk::router::ApiConfig;
 use hulk::{globals, object, objectcache};
@@ -12,7 +11,6 @@ use regex::Regex;
 
 use super::*;
 
-mod api_headers;
 mod api_router;
 mod middleware;
 

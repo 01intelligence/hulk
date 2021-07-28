@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use actix_cors::Cors;
 use actix_web::http::{header, Method};
-use hulk::wildcard;
+use hulk::{http, wildcard};
 
 use super::*;
 
@@ -26,7 +26,7 @@ pub fn cors() -> Cors {
             CACHE_CONTROL,
             RETRY_AFTER,
             EXPIRES,
-            AMZ_BUCKET_REGION.clone(),
+            http::AMZ_BUCKET_REGION.clone(),
             HeaderName::from_str("X-Amz*").unwrap(),
             HeaderName::from_str("x-amz*").unwrap(),
             HeaderName::from_str("*").unwrap(),

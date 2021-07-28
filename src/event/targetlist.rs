@@ -84,6 +84,6 @@ impl TargetList {
                 }
             }
         }
-        let _ = futures::future::join_all(results).await;
+        let _ = futures_util::future::join_all(results).await;
     }
 }

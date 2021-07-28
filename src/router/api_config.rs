@@ -1,8 +1,7 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use hulk::config::api;
-use lazy_static::lazy_static;
+use crate::config::api;
 
 #[derive(Default)]
 pub struct ApiConfig {
@@ -35,9 +34,4 @@ impl ApiConfig {
         self.replication_workers = cfg.replication_workers;
         self.replication_failed_workers = cfg.replication_failed_workers;
     }
-}
-
-lazy_static! {
-    pub static ref GLOBAL_API_CONFIG: Arc<Mutex<ApiConfig>> =
-        Arc::new(Mutex::new(Default::default()));
 }

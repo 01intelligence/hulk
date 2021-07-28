@@ -440,7 +440,7 @@ async fn refresh<L: NetLocker + Send + Sync + 'static>(
 
     // We may have some unused results in channel, release them async.
     tokio::spawn(async move {
-        for r in futures::future::join_all(handles).await {
+        for r in futures_util::future::join_all(handles).await {
             r.unwrap(); // no task should panic
         }
         rx.close();
@@ -577,7 +577,7 @@ async fn lock<L: NetLocker + Send + Sync + 'static>(
     let lock_names = Vec::from(lock_names);
     let owner = owner.to_owned();
     tokio::spawn(async move {
-        for r in futures::future::join_all(handles).await {
+        for r in futures_util::future::join_all(handles).await {
             r.unwrap(); // no task should panic
         }
         rx.close();
@@ -624,7 +624,7 @@ async fn release_all<L: NetLocker + Send + Sync + 'static>(
             }
         }));
     }
-    for r in futures::future::join_all(handles).await {
+    for r in futures_util::future::join_all(handles).await {
         r.unwrap(); // no task should panic
     }
 

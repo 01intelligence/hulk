@@ -43,7 +43,7 @@ impl FromSignal for Signal {
 pub struct OneshotSignals<S: Signaller> {
     signaller: S,
     #[cfg(not(unix))]
-    signals: futures::future::LocalBoxFuture<'static, std::io::Result<()>>,
+    signals: futures_util::future::LocalBoxFuture<'static, std::io::Result<()>>,
     #[cfg(unix)]
     signals: Vec<(Signal, actix_rt::signal::unix::Signal)>,
 }

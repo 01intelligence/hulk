@@ -39,6 +39,7 @@ pub mod net;
 pub mod object;
 pub mod objectcache;
 pub mod pubsub;
+pub mod router;
 pub mod s3select;
 pub mod s3utils;
 pub mod signals;

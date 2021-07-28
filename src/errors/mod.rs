@@ -1,6 +1,10 @@
+mod api_errors;
+mod encryption;
 mod typed_errors;
 mod ui_errors;
 
+pub use api_errors::*;
+pub use encryption::*;
 pub use typed_errors::*;
 pub use ui_errors::*;
 

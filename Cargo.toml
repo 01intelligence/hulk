@@ -45,7 +45,6 @@ base64 = "0.13.0"
 regex = "1.5.4"
 term = "0.7.0"
 async-trait = "0.1.50"
-futures = "0.3.15"
 cc = "1.0.68"
 tokio-util = "0.6.7"
 heim = { version = "0.1.0-rc.1", features = ["disk"] }
@@ -87,6 +86,9 @@ humantime = "2.1.0"
 async-nats = "0.9.18"
 dashmap = { version = "4.0.2", features = ["serde", "raw-api"] }
 actix-cors = "0.5.4"
+futures-core = { version = "0.3.16", default-features = false }
+futures-util = { version = "0.3.16", default-features = false }
+pin-project = "1.0.8"
 
 [patch.crates-io]
 jsonwebtoken = { git = 'https://github.com/01intelligence/jsonwebtoken', branch = 'master' }

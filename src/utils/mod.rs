@@ -1,11 +1,15 @@
-mod str;
-mod units;
 use std::time::SystemTime;
 
 use rand::rngs::StdRng;
 pub use rand::Rng;
 use rand::SeedableRng;
 use tokio::time::{timeout, Duration, Instant};
+
+mod atomic;
+mod str;
+mod units;
+
+pub use atomic::*;
 pub use units::*;
 
 pub use self::str::*;

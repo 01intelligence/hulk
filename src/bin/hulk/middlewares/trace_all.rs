@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform};
 use actix_web::error::{Error, Result};
-use futures::future::{FutureExt, LocalBoxFuture};
+use futures_util::future::{Either, FutureExt, LocalBoxFuture};
 use hulk::admin::TraceInfo;
 use hulk::globals;
 
@@ -40,10 +40,7 @@ where
 {
     type Response = S::Response;
     type Error = S::Error;
-    type Future = futures::future::Either<
-        S::Future,
-        LocalBoxFuture<'static, Result<ServiceResponse<B>, Error>>,
-    >;
+    type Future = Either<S::Future, LocalBoxFuture<'static, Result<ServiceResponse<B>, Error>>>;
 
     fn poll_ready(
         &self,
@@ -55,7 +52,7 @@ where
     fn call(&self, req: ServiceRequest) -> Self::Future {
         let fut = self.service.call(req);
         if globals::GLOBAL_TRACE.subscribers_num() == 0 {
-            return futures::future::Either::Left(fut);
+            return Either::Left(fut);
         }
         let res = async move {
             let res: Result<S::Response, S::Error> = fut.await;
@@ -63,6 +60,6 @@ where
             res
         }
         .boxed_local();
-        futures::future::Either::Right(res)
+        Either::Right(res)
     }
 }

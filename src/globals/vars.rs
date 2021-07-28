@@ -7,6 +7,8 @@ use crate::admin::TraceInfo;
 use crate::event;
 use crate::pubsub::PubSub;
 use crate::strset::StringSet;
+use crate::http::HttpStats;
+use crate::router::ApiConfig;
 
 #[derive(Default)]
 pub struct CliContext {
@@ -48,12 +50,17 @@ lazy_static! {
     // Holds the possible host endpoint.
     pub static ref GLOBAL_ENDPOINT: Arc<Mutex<String>> = Arc::new(Mutex::new("".to_owned()));
 
+    pub static ref GLOBAL_API_CONFIG: Arc<Mutex<ApiConfig>> =
+        Arc::new(Mutex::new(Default::default()));
+
     // IsSSL indicates if the server is configured with SSL.
     pub static ref GLOBAL_IS_TLS: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
 
     pub static ref GLOBAL_TRACE: Arc<PubSub<TraceInfo>> = Arc::new(PubSub::new(4096));
 
     // pub static ref GLOBAL_HTTP_LISTEN: Arc<PubSub<event::Event>> = Arc::new(PubSub::new(4096));
+
+    pub static ref GLOBAL_HTTP_STATS: Arc<HttpStats> = Arc::new(Default::default());
 
     pub static ref GLOBAL_DOMAIN_IPS: Arc<Mutex<StringSet>> = Arc::new(Mutex::new(StringSet::new()));
 }

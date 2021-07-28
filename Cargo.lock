@@ -1936,6 +1936,7 @@ dependencies = [
  "log",
  "maplit",
  "md-5",
+ "mime",
  "nix 0.20.0",
  "notify",
  "openssl",

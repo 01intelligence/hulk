@@ -44,7 +44,7 @@ pub fn configure_server_handler() -> anyhow::Result<App<AppEntry, Body>> {
                     // Allow <bucket>.<namespace>.svc.<cluster_domain> and extract bucket.
                     if let Some(caps) = host_re.captures(uri_host) {
                         let bucket = caps.get(1).unwrap().as_str();
-                        req.extensions_mut().insert(bucket.to_owned());
+                        req.extensions_mut().insert(bucket.to_owned()); // TODO
                         return true;
                     }
                 }

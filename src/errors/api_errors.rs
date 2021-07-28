@@ -32,8 +32,7 @@ pub struct ApiErrorResponse {
 }
 
 impl ApiErrorResponse {
-    pub fn from(err: ApiError, resource: String, request_id: String, host_id: String) -> Self {
-        let err = err.to();
+    pub fn from(err: GenericApiError, resource: String, request_id: String, host_id: String) -> Self {
         ApiErrorResponse {
             code: err.code,
             message: err.description,
@@ -53,7 +52,7 @@ impl ApiErrorResponse {
 /// S3 Error codes, non exhaustive list.
 /// Refer: http://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.htm
 #[non_exhaustive]
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub enum ApiError {
     None,
     AccessDenied,

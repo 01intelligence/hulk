@@ -63,6 +63,9 @@ lazy_static! {
     pub static ref GLOBAL_HTTP_STATS: Arc<HttpStats> = Arc::new(Default::default());
 
     pub static ref GLOBAL_DOMAIN_IPS: Arc<Mutex<StringSet>> = Arc::new(Mutex::new(StringSet::new()));
+
+    // Deployment ID, unique per deployment.
+    pub static ref GLOBAL_DEPLOYMENT_ID: Arc<Mutex<String>> = Arc::new(Mutex::new(Default::default()));
 }
 
 pub fn get_url_scheme() -> &'static str {

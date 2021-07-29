@@ -62,7 +62,7 @@ uuid = { version = "0.8.2", features = ["v4"] }
 url = "2.2.2"
 colored = "2.0.0"
 pnet = "0.28.0"
-uom = { version = "0.31.1", features = ["usize", "u8", "u16", "u32", "u64", "u128", "isize", "i8", "i16", "i32", "i64", "i128"] }
+# uom = { version = "0.31.1", features = ["usize", "u8", "u16", "u32", "u64", "u128", "isize", "i8", "i16", "i32", "i64", "i128"] }
 path-absolutize = "3.0.10"
 procfs = "0.9.1"
 windows = "0.13.0"
@@ -90,11 +90,14 @@ futures-core = { version = "0.3.16", default-features = false }
 futures-util = { version = "0.3.16", default-features = false }
 pin-project = "1.0.8"
 mime = "0.3.16"
+bytes = "1.0.1"
 
 [patch.crates-io]
 jsonwebtoken = { git = 'https://github.com/01intelligence/jsonwebtoken', branch = 'master' }
 reed-solomon-erasure = { git = 'https://github.com/01intelligence/reed-solomon-erasure', branch = 'master' }
 actix-web = { git = 'https://github.com/01intelligence/actix-web', branch = 'master' }
+quick-xml = { git = 'https://github.com/01intelligence/quick-xml', branch = 'golang_xml' }
+mime = { git = 'https://github.com/01intelligence/mime', branch = '0.3.x' }
 
 [build-dependencies]
 time = "0.2.26"

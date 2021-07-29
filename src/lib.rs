@@ -42,6 +42,7 @@ pub mod pubsub;
 pub mod router;
 pub mod s3select;
 pub mod s3utils;
+pub mod serde;
 pub mod signals;
 pub mod storage;
 pub mod strset;

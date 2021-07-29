@@ -37,6 +37,12 @@ impl<T: Clone> Drop for Receiver<T> {
     }
 }
 
+impl<T: Clone> Default for PubSub<T> {
+    fn default() -> Self {
+        Self::new(4096)
+    }
+}
+
 impl<T: Clone> PubSub<T> {
     pub fn new(capacity: usize) -> PubSub<T> {
         let (tx, _) = broadcast::channel(capacity);

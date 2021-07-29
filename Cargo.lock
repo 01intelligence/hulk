@@ -1785,7 +1785,7 @@ dependencies = [
  "mach",
  "nix 0.19.1",
  "pin-utils",
- "uom 0.30.0",
+ "uom",
  "winapi 0.3.9",
 ]
 
@@ -1907,6 +1907,7 @@ dependencies = [
  "base64 0.13.0",
  "bstr",
  "byteorder",
+ "bytes 1.0.1",
  "cc",
  "chrono",
  "clap",
@@ -1974,7 +1975,6 @@ dependencies = [
  "trust-dns-resolver 0.20.3",
  "typetag",
  "unicase",
- "uom 0.31.1",
  "url",
  "uuid",
  "validator",
@@ -2372,8 +2372,7 @@ dependencies = [
 [[package]]
 name = "mime"
 version = "0.3.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2a60c7ce501c71e03a9c9c0d35b861413ae925bd979cc7a4e30d060069aaac8d"
+source = "git+https://github.com/01intelligence/mime?branch=0.3.x#6e772912da05ed829b7c6efa8698742653f4f194"
 
 [[package]]
 name = "miniz_oxide"
@@ -3129,8 +3128,7 @@ checksum = "a1d01941d82fa2ab50be1e79e6714289dd7cde78eba4c074bc5a4374f650dfe0"
 [[package]]
 name = "quick-xml"
 version = "0.22.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8533f14c8382aaad0d592c812ac3b826162128b65662331e1127b45c3d18536b"
+source = "git+https://github.com/01intelligence/quick-xml?branch=golang_xml#004e61aca7ae5aea146736de0f374b5456d8c475"
 dependencies = [
  "memchr",
  "serde",
@@ -4487,17 +4485,6 @@ name = "uom"
 version = "0.30.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e76503e636584f1e10b9b3b9498538279561adcef5412927ba00c2b32c4ce5ed"
-dependencies = [
- "num-rational",
- "num-traits",
- "typenum",
-]
-
-[[package]]
-name = "uom"
-version = "0.31.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1ee6bfd0a27bf614353809a035cf6880b74239ec6c5e39a7b2860ca16809137"
 dependencies = [
  "num-rational",
  "num-traits",

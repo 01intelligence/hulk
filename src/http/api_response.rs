@@ -6,6 +6,7 @@ use serde::Serialize;
 
 use super::*;
 use crate::errors;
+use crate::globals::{self, Get, Guard, GLOBALS};
 
 pub struct ApiResponse<B = AnyBody> {
     res: HttpResponse<B>,
@@ -39,7 +40,7 @@ impl<B: MessageBody> ApiResponse<B> {
     pub fn set_common_headers(&mut self) {
         let headers = self.res.headers_mut();
         headers.insert(header::SERVER, HeaderValue::from_static("Hulk"));
-        let region = crate::globals::GLOBAL_SERVER_REGION.lock().unwrap();
+        let region = GLOBALS.server_region.guard();
         if !region.is_empty() {
             headers.insert(
                 AMZ_BUCKET_REGION.clone(),
@@ -67,6 +68,67 @@ impl ApiResponse<AnyBody> {
     pub fn error(err: errors::GenericApiError) -> Self {
         Self::new(err.http_status_code, AnyBody::None, None)
     }
+
+    pub fn error_xml(mut err: errors::GenericApiError, req: &HttpRequest) -> Self {
+        match err.code {
+            "InvalidRegion" => {
+                err.description = format!(
+                    "Region does not match; expecting '{}'.",
+                    &*GLOBALS.server_region.guard()
+                );
+            }
+            "AuthorizationHeaderMalformed" => {
+                err.description = format!(
+                    "The authorization header is malformed; the region is wrong; expecting '{}'.",
+                    &*GLOBALS.server_region.guard()
+                );
+            }
+            "AccessDenied" => {
+                // The request is from browser and also if browser
+                // is enabled we need to redirect.
+                if guess_is_browser_req(req) {
+                    let mut res = Self::new(err.http_status_code, AnyBody::None, None);
+                    res.res.headers_mut().insert(
+                        header::LOCATION,
+                        HeaderValue::from_str(&format!(
+                            "{}{}",
+                            globals::SYSTEM_RESERVED_BUCKET_PATH,
+                            req.path()
+                        ))
+                        .unwrap(),
+                    );
+                    return res;
+                }
+            }
+            _ => {}
+        }
+        let request_id = extract_request_id(req);
+        let code = err.code;
+        let status_code = err.http_status_code;
+        let deployment_id = GLOBALS.deployment_id.guard().to_owned();
+        let err_res =
+            errors::ApiErrorResponse::from(err, req.path().to_owned(), request_id, deployment_id);
+        let body = crate::serde::xml::to_string(&err_res).unwrap_or_else(|_| "".to_owned());
+        let mut res = Self::new(
+            status_code,
+            AnyBody::from(body),
+            Some(mime::APPLICATION_XML),
+        );
+        match code {
+            "SlowDown"
+            | "XMinioServerNotInitialized"
+            | "XMinioReadQuorum"
+            | "XMinioWriteQuorum" => {
+                // Set retry-after header to indicate user-agents to retry request after 120secs.
+                // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After
+                res.res
+                    .headers_mut()
+                    .insert(header::RETRY_AFTER, HeaderValue::from_static("120"));
+            }
+            _ => {}
+        }
+        res
+    }
 }
 
 impl ApiResponse<String> {
@@ -85,10 +147,7 @@ impl ApiResponse<String> {
     pub fn error_json(err: errors::GenericApiError, req: &HttpRequest) -> Self {
         let request_id = extract_request_id(req);
         let status_code = err.http_status_code;
-        let deployment_id = crate::globals::GLOBAL_DEPLOYMENT_ID
-            .lock()
-            .unwrap()
-            .to_owned();
+        let deployment_id = GLOBALS.deployment_id.guard().to_owned();
         let err_res =
             errors::ApiErrorResponse::from(err, req.path().to_owned(), request_id, deployment_id);
         Self::new(

@@ -115,7 +115,7 @@ impl Endpoint {
             self.is_local = is_local_host(
                 self.url.host_str().unwrap(),
                 &self.url.port().map(|p| p.to_string()).unwrap_or_default(),
-                &*GLOBAL_PORT.lock().unwrap(),
+                &*GLOBALS.port.guard(),
             )
             .await?;
         }
@@ -289,7 +289,7 @@ impl EndpointServerPools {
                 let peer = crate::net::Host::new(host, Some(port)).to_string();
                 all.add(peer.clone());
                 if e.is_local {
-                    if port.to_string() == *GLOBAL_PORT.lock().unwrap() {
+                    if port.to_string() == *GLOBALS.port.guard() {
                         local = Some(peer);
                     }
                 }
@@ -446,7 +446,8 @@ pub(self) async fn create_endpoints(
             None => {
                 endpoint
                     .url
-                    .set_port(Some(server_addr_port.parse().unwrap())).unwrap();
+                    .set_port(Some(server_addr_port.parse().unwrap()))
+                    .unwrap();
             }
             Some(port) => {
                 if endpoint.is_local && server_addr_port != port.to_string() {
@@ -490,8 +491,7 @@ pub async fn update_domain_ips(endpoints: &StringSet) {
         }
     }
 
-    let mut global_domain_ips = GLOBAL_DOMAIN_IPS.lock().unwrap();
-    *global_domain_ips =
+    *GLOBALS.domain_ips.guard() =
         ip_list.match_fn(|ip| ip.parse::<IpAddr>().unwrap().is_loopback() && ip != "localhost");
 }
 

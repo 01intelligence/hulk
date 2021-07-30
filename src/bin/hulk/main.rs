@@ -1,23 +1,17 @@
 use clap::{crate_authors, App, Arg};
+use common::*;
+use config::*;
+use event::*;
 use hulk::globals::*;
+use hulk::router::middlewares::*;
 use hulk::*;
+use server::*;
 
 // mod service;
 mod common;
 mod config;
-mod env;
 mod event;
-mod middlewares;
-mod router;
 mod server;
-
-use common::*;
-use config::*;
-use env::*;
-use event::*;
-use middlewares::*;
-use router::*;
-use server::*;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {

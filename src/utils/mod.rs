@@ -6,10 +6,12 @@ use rand::SeedableRng;
 use tokio::time::{timeout, Duration, Instant};
 
 mod atomic;
+mod datetime;
 mod str;
 mod units;
 
 pub use atomic::*;
+pub use datetime::*;
 pub use units::*;
 
 pub use self::str::*;

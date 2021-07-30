@@ -22,7 +22,7 @@ pub fn init_help() {
     for (k, v) in notify::DEFAULT_KVS.iter() {
         kvs.insert(k.to_owned(), v.clone());
     }
-    if *globals::GLOBAL_IS_ERASURE.lock().unwrap() {
+    if globals::GLOBALS.is_erasure.get() {
         kvs.insert(
             STORAGE_CLASS_SUB_SYS.to_owned(),
             storageclass::DEFAULT_KVS.clone(),
@@ -119,7 +119,7 @@ pub fn init_help() {
             ..Default::default()
         },
     ]);
-    if *globals::GLOBAL_IS_ERASURE.lock().unwrap() {
+    if globals::GLOBALS.is_erasure.get() {
         help_sub_sys.0.insert(
             1,
             HelpKV {

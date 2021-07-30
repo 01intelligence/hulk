@@ -118,18 +118,18 @@ pub fn sort_ips(ip_list: &[&str]) -> Vec<String> {
 
 pub fn get_api_endpoints() -> Vec<String> {
     let mut ip_list;
-    let global_host = GLOBAL_HOST.lock().unwrap();
+    let global_host = GLOBALS.host.guard();
     if global_host.is_empty() {
         ip_list = sort_ips(&get_local_ip4().as_slice());
         ip_list.extend(get_local_ip6().into_iter());
     } else {
         ip_list = vec![global_host.clone()];
     }
-    let global_port = GLOBAL_PORT.lock().unwrap();
+    let global_port = GLOBALS.port.guard().parse::<u16>().unwrap();
     ip_list
         .iter()
         .map(|ip| {
-            let socket = (ip as &str, global_port.parse::<u16>().unwrap()).to_socket_addrs();
+            let socket = (ip as &str, global_port).to_socket_addrs();
             format!("{}://{}", get_url_scheme(), socket.unwrap().next().unwrap(),)
         })
         .collect()

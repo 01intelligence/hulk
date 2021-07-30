@@ -1,18 +1,17 @@
 use std::future::{ready, Future, Ready};
-use std::marker::PhantomData;
-use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{Context, Poll};
 use std::time::Duration;
-use tokio::time::{timeout};
 
 use actix_web::dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform};
 use actix_web::error::Error;
-use futures_util::{ready, FutureExt};
-use hulk::globals::{GLOBAL_API_CONFIG, GLOBAL_HTTP_STATS};
-use tokio::sync::Semaphore;
-use hulk::utils::AtomicExt;
 use futures_util::future::{Either, LocalBoxFuture};
+use futures_util::FutureExt;
+use tokio::sync::Semaphore;
+use tokio::time::timeout;
+
+use crate::globals::GLOBALS;
+use crate::utils::AtomicExt;
+use crate::{errors, http};
 
 pub struct MaxClients {
     requests_max_semaphore: Option<Arc<Semaphore>>,
@@ -71,52 +70,37 @@ where
     forward_ready!(service);
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
-        let fut = self.service.call(req);
         let sem = match self.requests_max_semaphore {
             Some(ref sem) => sem.clone(),
             None => {
-                return Either::Left(fut);
+                return Either::Left(self.service.call(req));
             }
         };
-        GLOBAL_HTTP_STATS.s3_requests_in_queue.inc();
+        let _guard = GLOBALS.http_stats.add_requests_in_queue();
 
         let deadline = self.request_deadline;
+        let request = req.request().clone();
+        let fut = self.service.call(req);
         let res = async move {
             match timeout(deadline, async move {
-                let _permit = sem.acquire();
-                GLOBAL_HTTP_STATS.s3_requests_in_queue.dec();
+                let _permit = sem.acquire().await.unwrap();
                 fut.await
-            }).await {
+            })
+            .await
+            {
                 Ok(res) => res,
-                Err(err) => {
-                    GLOBAL_HTTP_STATS.s3_requests_in_queue.dec();
-                    todo!()
+                Err(_) => {
+                    let res = http::ApiResponse::error_xml(
+                        errors::ApiError::OperationMaxedOut.to(),
+                        &request,
+                    );
+
+                    Err(res.into())
                 }
             }
-        }.boxed_local();
+        }
+        .boxed_local();
 
         Either::Right(res)
-    }
-}
-
-#[pin_project::pin_project]
-pub struct MaxClientsFuture<S: Service<ServiceRequest>, B> {
-    #[pin]
-    fut: S::Future,
-    requests_max_semaphore: Arc<Semaphore>,
-    _b: PhantomData<B>,
-}
-
-impl<S, B> Future for MaxClientsFuture<S, B>
-where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
-{
-    type Output = <S::Future as Future>::Output;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let this = self.project();
-        let res = ready!(this.fut.poll(cx));
-
-        Poll::Ready(res)
     }
 }

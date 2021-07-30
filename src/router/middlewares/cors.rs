@@ -2,9 +2,8 @@ use std::str::FromStr;
 
 use actix_cors::Cors;
 use actix_web::http::{header, Method};
-use hulk::{http, wildcard};
 
-use super::*;
+use crate::globals::{Guard, GLOBALS};
 
 // CORS (Cross Origin Resource Sharing) middleware.
 pub fn cors() -> Cors {
@@ -26,7 +25,7 @@ pub fn cors() -> Cors {
             CACHE_CONTROL,
             RETRY_AFTER,
             EXPIRES,
-            http::AMZ_BUCKET_REGION.clone(),
+            crate::http::AMZ_BUCKET_REGION.clone(),
             HeaderName::from_str("X-Amz*").unwrap(),
             HeaderName::from_str("x-amz*").unwrap(),
             HeaderName::from_str("*").unwrap(),
@@ -34,9 +33,9 @@ pub fn cors() -> Cors {
     };
     Cors::default()
         .allowed_origin_fn(|origin, head| {
-            for allowed_origin in &GLOBAL_API_CONFIG.lock().unwrap().cors_allow_origins {
+            for allowed_origin in &GLOBALS.api_config.guard().cors_allow_origins {
                 if let Ok(origin) = origin.to_str() {
-                    if wildcard::match_wildcard_simple(allowed_origin, origin) {
+                    if crate::wildcard::match_wildcard_simple(allowed_origin, origin) {
                         return true;
                     }
                 }

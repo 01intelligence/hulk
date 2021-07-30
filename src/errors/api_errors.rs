@@ -4,6 +4,8 @@ use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::globals::Guard;
+
 #[derive(Debug)]
 pub struct GenericApiError {
     pub code: &'static str,
@@ -32,17 +34,19 @@ pub struct ApiErrorResponse {
 }
 
 impl ApiErrorResponse {
-    pub fn from(err: GenericApiError, resource: String, request_id: String, host_id: String) -> Self {
+    pub fn from(
+        err: GenericApiError,
+        resource: String,
+        request_id: String,
+        host_id: String,
+    ) -> Self {
         ApiErrorResponse {
             code: err.code,
             message: err.description,
             key: "".to_string(),         // TODO
             bucket_name: "".to_string(), // TODO
             resource,
-            region: crate::globals::GLOBAL_SERVER_REGION
-                .lock()
-                .unwrap()
-                .to_owned(),
+            region: crate::globals::GLOBALS.server_region.guard().to_owned(),
             request_id,
             host_id,
         }
@@ -378,7 +382,7 @@ impl GenericApiErrorConst {
 
     fn to(&self, ae: &ApiError, err: Option<&str>) -> GenericApiError {
         let mut desc = None;
-        let region = crate::globals::GLOBAL_SERVER_REGION.lock().unwrap();
+        let region = crate::globals::GLOBALS.server_region.guard();
         if !region.is_empty() {
             if let &ApiError::AuthorizationHeaderMalformed = ae {
                 desc = Some(format!(

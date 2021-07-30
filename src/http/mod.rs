@@ -1,4 +1,5 @@
 mod api_headers;
+mod api_request;
 mod api_response;
 mod auth;
 mod dnscache;
@@ -8,6 +9,7 @@ mod request_extensions;
 mod stats;
 
 pub use api_headers::*;
+pub use api_request::*;
 pub use api_response::*;
 pub use auth::*;
 pub use dnscache::*;

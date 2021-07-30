@@ -91,13 +91,17 @@ futures-util = { version = "0.3.16", default-features = false }
 pin-project = "1.0.8"
 mime = "0.3.16"
 bytes = "1.0.1"
+cached = "0.24.0"
 
 [patch.crates-io]
 jsonwebtoken = { git = 'https://github.com/01intelligence/jsonwebtoken', branch = 'master' }
 reed-solomon-erasure = { git = 'https://github.com/01intelligence/reed-solomon-erasure', branch = 'master' }
-actix-web = { git = 'https://github.com/01intelligence/actix-web', branch = 'master' }
-quick-xml = { git = 'https://github.com/01intelligence/quick-xml', branch = 'golang_xml' }
-mime = { git = 'https://github.com/01intelligence/mime', branch = '0.3.x' }
+# actix-web = { git = 'https://github.com/01intelligence/actix-web', branch = 'master' }
+actix-web = { path = '../actix/actix-web' }
+# quick-xml = { git = 'https://github.com/01intelligence/quick-xml', branch = 'golang_xml' }
+quick-xml = { path = '../quick-xml' }
+# mime = { git = 'https://github.com/01intelligence/mime', branch = '0.3.x' }
+mime = { path = '../mime' }
 
 [build-dependencies]
 time = "0.2.26"

@@ -9,6 +9,7 @@
 #![feature(trait_alias)]
 #![feature(pattern)]
 #![feature(hash_set_entry)]
+#![feature(option_get_or_insert_default)]
 
 pub mod admin;
 pub mod auth;

@@ -4,8 +4,8 @@ use std::rc::Rc;
 use actix_web::dev::{Service, ServiceRequest, ServiceResponse, Transform};
 use actix_web::error::{Error, Result};
 use futures_util::future::{Either, FutureExt, LocalBoxFuture};
-use hulk::admin::TraceInfo;
-use hulk::globals;
+use crate::admin::TraceInfo;
+use crate::globals;
 
 pub struct TraceAll {}
 
@@ -51,12 +51,12 @@ where
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
         let fut = self.service.call(req);
-        if globals::GLOBAL_TRACE.subscribers_num() == 0 {
+        if globals::GLOBALS.trace.subscribers_num() == 0 {
             return Either::Left(fut);
         }
         let res = async move {
             let res: Result<S::Response, S::Error> = fut.await;
-            globals::GLOBAL_TRACE.publish(TraceInfo {});
+            // globals::GLOBALS.trace.publish(TraceInfo {}); // TODO
             res
         }
         .boxed_local();

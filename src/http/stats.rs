@@ -6,6 +6,7 @@ use actix_web::http::StatusCode;
 use serde::{Deserialize, Serialize};
 
 use crate::router;
+use crate::utils::AtomicExt;
 
 // Holds statistics information about
 // a given API in the requests.
@@ -51,7 +52,22 @@ pub struct HttpStats {
     pub total_s3_rejected_invalid: AtomicU64,
 }
 
+pub struct HttpStatsAddRequestsGuard<'a> {
+    stats: &'a HttpStats,
+}
+
+impl<'a> Drop for HttpStatsAddRequestsGuard<'a> {
+    fn drop(&mut self) {
+        self.stats.s3_requests_in_queue.dec();
+    }
+}
+
 impl HttpStats {
+    pub fn add_requests_in_queue(&self) -> HttpStatsAddRequestsGuard<'_> {
+        self.s3_requests_in_queue.inc();
+        HttpStatsAddRequestsGuard { stats: self }
+    }
+
     pub fn update_stats(&self, api: &str, r: &ServiceResponse) {
         let status = r.response().status();
         let success = status >= StatusCode::OK && status < StatusCode::MULTIPLE_CHOICES;

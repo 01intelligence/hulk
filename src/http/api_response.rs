@@ -1,7 +1,10 @@
+use std::fmt;
+
 use actix_http::body::{AnyBody, BodySize};
 use actix_web::body::MessageBody;
-use actix_web::http::{header, HeaderMap, HeaderValue, StatusCode};
-use actix_web::{HttpRequest, HttpResponse, Responder};
+use actix_web::dev::ServiceResponse;
+use actix_web::http::{header, HeaderMap, HeaderName, HeaderValue, StatusCode};
+use actix_web::{HttpRequest, HttpResponse, Responder, ResponseError};
 use serde::Serialize;
 
 use super::*;
@@ -65,11 +68,27 @@ impl ApiResponse<AnyBody> {
         Self::new(StatusCode::OK, AnyBody::None, None)
     }
 
-    pub fn error(err: errors::GenericApiError) -> Self {
-        Self::new(err.http_status_code, AnyBody::None, None)
+    pub fn success_json<T>(data: &T) -> Self
+    where
+        T: ?Sized + Serialize,
+    {
+        let body = serde_json::to_string(data).unwrap();
+        Self::new(
+            StatusCode::OK,
+            AnyBody::from(body),
+            Some(mime::APPLICATION_JSON),
+        )
     }
 
-    pub fn error_xml(mut err: errors::GenericApiError, req: &HttpRequest) -> Self {
+    pub fn error(err: errors::GenericApiError) -> ApiResponseError {
+        ApiResponseError::new(err.http_status_code, AnyBody::None, None)
+    }
+
+    pub fn error_string(err: errors::GenericApiError) -> ApiResponseError {
+        ApiResponseError::new(err.http_status_code, AnyBody::from(err.description), None)
+    }
+
+    pub fn error_xml(mut err: errors::GenericApiError, req: &HttpRequest) -> ApiResponseError {
         match err.code {
             "InvalidRegion" => {
                 err.description = format!(
@@ -87,8 +106,8 @@ impl ApiResponse<AnyBody> {
                 // The request is from browser and also if browser
                 // is enabled we need to redirect.
                 if guess_is_browser_req(req) {
-                    let mut res = Self::new(err.http_status_code, AnyBody::None, None);
-                    res.res.headers_mut().insert(
+                    let mut res = ApiResponseError::new(err.http_status_code, AnyBody::None, None);
+                    res.insert_header(
                         header::LOCATION,
                         HeaderValue::from_str(&format!(
                             "{}{}",
@@ -109,7 +128,7 @@ impl ApiResponse<AnyBody> {
         let err_res =
             errors::ApiErrorResponse::from(err, req.path().to_owned(), request_id, deployment_id);
         let body = crate::serde::xml::to_string(&err_res).unwrap_or_else(|_| "".to_owned());
-        let mut res = Self::new(
+        let mut res = ApiResponseError::new(
             status_code,
             AnyBody::from(body),
             Some(mime::APPLICATION_XML),
@@ -121,40 +140,29 @@ impl ApiResponse<AnyBody> {
             | "XMinioWriteQuorum" => {
                 // Set retry-after header to indicate user-agents to retry request after 120secs.
                 // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After
-                res.res
-                    .headers_mut()
-                    .insert(header::RETRY_AFTER, HeaderValue::from_static("120"));
+                res.insert_header(header::RETRY_AFTER, HeaderValue::from_static("120"));
             }
             _ => {}
         }
         res
     }
-}
 
-impl ApiResponse<String> {
-    pub fn success_json<T>(data: &T) -> Self
-    where
-        T: ?Sized + Serialize,
-    {
-        let body = serde_json::to_string(data).unwrap();
-        Self::new(StatusCode::OK, body, Some(mime::APPLICATION_JSON))
-    }
-
-    pub fn error_string(err: errors::GenericApiError) -> Self {
-        Self::new(err.http_status_code, err.description, None)
-    }
-
-    pub fn error_json(err: errors::GenericApiError, req: &HttpRequest) -> Self {
+    pub fn error_json(err: errors::GenericApiError, req: &HttpRequest) -> ApiResponseError {
         let request_id = extract_request_id(req);
         let status_code = err.http_status_code;
         let deployment_id = GLOBALS.deployment_id.guard().to_owned();
         let err_res =
             errors::ApiErrorResponse::from(err, req.path().to_owned(), request_id, deployment_id);
-        Self::new(
+        let body = serde_json::to_string(&err_res).unwrap_or_else(|_| "".to_owned());
+        ApiResponseError::new(
             status_code,
-            serde_json::to_string(&err_res).unwrap_or_else(|_| "".to_owned()),
+            AnyBody::from(body),
             Some(mime::APPLICATION_JSON),
         )
+    }
+
+    pub fn response(self) -> HttpResponse {
+        self.res
     }
 }
 
@@ -162,5 +170,66 @@ impl Responder for ApiResponse {
     #[inline]
     fn respond_to(self, _: &HttpRequest) -> HttpResponse {
         self.res
+    }
+}
+
+#[derive(Debug)]
+pub struct ApiResponseError {
+    status: StatusCode,
+    body: AnyBody,
+    mime: Option<mime::Mime>,
+    head_extra: Option<Vec<(HeaderName, HeaderValue, bool)>>,
+}
+
+impl ApiResponseError {
+    pub fn new(status: StatusCode, body: AnyBody, mime: Option<mime::Mime>) -> Self {
+        Self {
+            status,
+            body,
+            mime,
+            head_extra: None,
+        }
+    }
+
+    pub fn append_header(&mut self, key: header::HeaderName, value: HeaderValue) {
+        let head = self.head_extra.get_or_insert_default();
+        head.push((key, value, false));
+    }
+
+    pub fn insert_header(&mut self, key: header::HeaderName, value: HeaderValue) {
+        let head = self.head_extra.get_or_insert_default();
+        head.push((key, value, true));
+    }
+}
+
+impl ResponseError for ApiResponseError {
+    fn status_code(&self) -> StatusCode {
+        self.status
+    }
+    fn error_response(&self) -> HttpResponse {
+        let body = match &self.body {
+            AnyBody::None => AnyBody::None,
+            AnyBody::Empty => AnyBody::None,
+            AnyBody::Bytes(bytes) => AnyBody::Bytes(bytes.clone()),
+            AnyBody::Message(_) => panic!("ApiResponseError do not support AnyBody::Message"),
+        };
+        let mut res = ApiResponse::new(self.status, body, self.mime.clone()).response();
+        if let Some(head_extra) = &self.head_extra {
+            let headers = res.headers_mut();
+            for (key, value, is_insert) in head_extra {
+                if *is_insert {
+                    let _ = headers.insert(key.clone(), value.clone());
+                } else {
+                    headers.append(key.clone(), value.clone());
+                }
+            }
+        }
+        res
+    }
+}
+
+impl fmt::Display for ApiResponseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.status.fmt(f)
     }
 }

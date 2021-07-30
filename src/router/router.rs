@@ -3,16 +3,10 @@ use std::sync::MutexGuard;
 use actix_http::body::Body;
 use actix_web::guard::get_host_uri;
 use actix_web::{guard, web, App, AppEntry, HttpServer, Scope};
-use api_router::*;
-use hulk::router::ApiConfig;
-use hulk::{globals, object, objectcache};
-use middleware::*;
-use regex::Regex;
 
 use super::*;
-
-mod api_router;
-mod middleware;
+use crate::globals::{self, Guard, GLOBALS};
+use crate::{object, objectcache};
 
 struct Api {}
 
@@ -31,14 +25,14 @@ pub fn configure_server_handler() -> anyhow::Result<App<AppEntry, Body>> {
     let mut app = App::new();
 
     let mut scopes = Vec::new();
-    for domain_name in globals::GLOBAL_DOMAIN_IPS.lock().unwrap().iter() {
+    for domain_name in GLOBALS.domain_ips.guard().iter() {
         let host_re = regex::Regex::new(&format!(r#"^(.+)\.{}$"#, regex::escape(domain_name)))?;
         let reserved_host = format!("{}.{}", globals::SYSTEM_RESERVED_BUCKET, domain_name);
         let scope = web::scope("/").guard(guard::fn_guard(move |req| {
             if let Some(uri) = get_host_uri(req) {
                 if let Some(uri_host) = uri.host() {
                     // Reserve hulk.<namespace>.svc.<cluster_domain> if in Kubernetes.
-                    if *IS_KUBERNETES && uri_host == reserved_host {
+                    if *globals::IS_KUBERNETES && uri_host == reserved_host {
                         return false;
                     }
                     // Allow <bucket>.<namespace>.svc.<cluster_domain> and extract bucket.

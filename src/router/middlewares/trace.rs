@@ -1,3 +1,4 @@
+use std::error::Error as StdError;
 use std::future::{ready, Future, Ready};
 use std::marker::PhantomData;
 use std::pin::Pin;
@@ -13,8 +14,9 @@ use actix_web::dev::{
 use actix_web::error::Error;
 use actix_web::http::{header, HeaderMap, HeaderName, StatusCode};
 use actix_web::web::{BufMut, Bytes, BytesMut};
+use bstr::ByteSlice;
 use futures_core::Stream;
-use futures_util::future::{Either, LocalBoxFuture};
+use futures_util::future::Either;
 use futures_util::{ready, FutureExt};
 
 use crate::globals::{Get, Guard, GLOBALS};
@@ -75,18 +77,34 @@ where
     forward_ready!(service);
 
     fn call(&self, mut req: ServiceRequest) -> Self::Future {
+        if GLOBALS.trace.subscribers_num() == 0 {
+            return RecordResponse {
+                fut: self.service.call(req),
+                inner: None,
+                rx: None,
+                _phantom: PhantomData,
+            };
+        }
+
         let fn_name = sanitize_operation_name(req.request().ctx().handler_fn_name.unwrap());
-        let mut headers = req.headers().clone();
+
+        let mut bytes_read = 0;
+        for (k, v) in req.headers() {
+            bytes_read += format!("{}: {}\n", k, v.to_str().unwrap_or_default()).len();
+        }
+
+        let (tx, rx) = tokio::sync::oneshot::channel();
 
         let (request, payload) = req.into_parts();
         let payload = RecordRequestPayload {
             payload,
-            bytes_read: 0,
+            bytes_read,
             record_body: if !self.only_headers {
                 Some(BytesMut::new())
             } else {
                 None
             },
+            tx: Some(tx),
         };
         let req = ServiceRequest::from_parts(request, Payload::Stream(Box::pin(payload)));
 
@@ -97,15 +115,7 @@ where
             node_name.to_owned()
         };
 
-        let mut t = admin::TraceInfo {
-            trace_type: admin::TraceType::Http,
-            fn_name,
-            time: utils::now(),
-            node_name,
-            ..Default::default()
-        };
-
-        let rq = admin::TraceRequestInfo {
+        let req_info = admin::TraceRequestInfo {
             time: utils::now(),
             proto: format!("{:?}", req.head().version),
             method: req.method().to_string(),
@@ -120,26 +130,25 @@ where
             body: None,
         };
 
-        let res = RecordResponse{
-            fut: self.service.call(req),
-            record: true,
-            record_error_only: true,
-            _phantom: PhantomData,
+        let mut trace_info = admin::TraceInfo {
+            trace_type: admin::TraceType::Http,
+            node_name,
+            fn_name,
+            time: utils::now(),
+            req_info: Some(req_info),
+            ..Default::default()
         };
 
-        /*let rs = admin::TraceResponseInfo{
-            time: utils::now(),
-            headers:,
-            status_code:,
-            body: None,
+        RecordResponse {
+            fut: self.service.call(req),
+            inner: Some(RecordResponseInner {
+                record: true,
+                record_error_only: true,
+                trace_info: Some(trace_info),
+            }),
+            rx: Some(rx),
+            _phantom: PhantomData,
         }
-
-        t.req_info = Some(rq);
-        t.resp_info = Some(rs);
-
-        ()*/
-
-        res
     }
 }
 
@@ -151,9 +160,16 @@ where
 {
     #[pin]
     fut: S::Future,
+    inner: Option<RecordResponseInner>,
+    #[pin]
+    rx: Option<tokio::sync::oneshot::Receiver<(usize, Option<Bytes>)>>,
+    _phantom: PhantomData<B>,
+}
+
+struct RecordResponseInner {
     record: bool,
     record_error_only: bool,
-    _phantom: PhantomData<B>,
+    trace_info: Option<admin::TraceInfo>,
 }
 
 impl<S, B> Future for RecordResponse<S, B>
@@ -171,33 +187,69 @@ where
             Err(e) => return Poll::Ready(Err(e)),
         };
 
-        let status: StatusCode = res.status();
+        let inner = match this.inner.as_mut() {
+            None => {
+                return Poll::Ready(Ok(
+                    res.map_body(move |_, body| RecordResponseBody { body, inner: None })
+                ))
+            }
+            Some(inner) => inner,
+        };
+
+        let (bytes_read, record_body) = match ready!(this.rx.as_pin_mut().unwrap().poll(cx)) {
+            Ok(r) => r,
+            Err(err) => {
+                let err = Box::new(err) as Box<(dyn StdError + 'static)>;
+                return Poll::Ready(Err(err.into()));
+            }
+        };
+
+        let mut trace_info: admin::TraceInfo = inner.trace_info.take().unwrap();
+        let rq = trace_info.req_info.as_mut().unwrap();
+        rq.body = Some(record_body.unwrap_or_else(|| Bytes::from_static(b"<BODY>")));
+        trace_info.call_stats = Some(admin::TraceCallStats {
+            input_bytes: bytes_read,
+            ..Default::default()
+        });
+
+        let status_code: StatusCode = res.status();
         let mut bytes_written = format!(
             "{} {}\n",
-            status.as_str(),
-            status.canonical_reason().unwrap_or_default()
+            status_code.as_str(),
+            status_code.canonical_reason().unwrap_or_default()
         )
         .len();
-        let headers: &HeaderMap = res.headers();
-        for (k, v) in headers {
+        let headers: HeaderMap = res.headers().clone();
+        for (k, v) in &headers {
             bytes_written += format!("{}: {}\n", k, v.to_str().unwrap_or_default()).len();
         }
 
-        let record_body = if *this.record {
+        let record_body = if inner.record {
             Some(BytesMut::new())
         } else {
             None
         };
-        let record_error_only = *this.record_error_only;
+        let record_error_only = inner.record_error_only;
+
+        let rs = admin::TraceResponseInfo {
+            time: utils::now(),
+            headers: Some(headers),
+            status_code,
+            body: None,
+        };
+        trace_info.resp_info = Some(rs);
 
         Poll::Ready(Ok(res.map_body(move |_, body| RecordResponseBody {
-            status,
             body,
-            bytes_written,
-            time_to_first_byte: Duration::ZERO,
-            start_time: utils::now(),
-            record_body,
-            record_error_only,
+            inner: Some(RecordResponseBodyInner {
+                status_code,
+                bytes_written,
+                time_to_first_byte: Duration::ZERO,
+                start_time: utils::now(),
+                record_body,
+                record_error_only,
+                trace_info: Some(trace_info),
+            }),
         })))
     }
 }
@@ -208,18 +260,7 @@ struct RecordRequestPayload<S> {
     payload: Payload<S>,
     bytes_read: usize,
     record_body: Option<BytesMut>,
-}
-
-#[pin_project::pin_project]
-pub struct RecordResponseBody<B> {
-    status: StatusCode,
-    #[pin]
-    body: B,
-    bytes_written: usize,
-    time_to_first_byte: Duration,
-    start_time: utils::DateTime,
-    record_body: Option<BytesMut>,
-    record_error_only: bool,
+    tx: Option<tokio::sync::oneshot::Sender<(usize, Option<Bytes>)>>,
 }
 
 impl<S> Stream for RecordRequestPayload<S>
@@ -239,9 +280,33 @@ where
                 }
                 Poll::Ready(Some(Ok(bytes)))
             }
+            Poll::Ready(None) => {
+                this.tx.take().unwrap().send((
+                    *this.bytes_read,
+                    this.record_body.take().map(|b| b.freeze()),
+                ));
+                Poll::Ready(None)
+            }
             p => p,
         }
     }
+}
+
+#[pin_project::pin_project]
+pub struct RecordResponseBody<B> {
+    #[pin]
+    body: B,
+    inner: Option<RecordResponseBodyInner>,
+}
+
+struct RecordResponseBodyInner {
+    status_code: StatusCode,
+    bytes_written: usize,
+    time_to_first_byte: Duration,
+    start_time: utils::DateTime,
+    record_body: Option<BytesMut>,
+    record_error_only: bool,
+    trace_info: Option<admin::TraceInfo>,
 }
 
 impl<B> MessageBody for RecordResponseBody<B>
@@ -260,25 +325,60 @@ where
         cx: &mut Context<'_>,
     ) -> Poll<Option<Result<Bytes, Self::Error>>> {
         let this = self.project();
+        let inner = match this.inner.as_mut() {
+            None => {
+                return match ready!(this.body.poll_next(cx)) {
+                    Some(Err(err)) => Poll::Ready(Some(Err(err.into()))),
+                    Some(Ok(r)) => Poll::Ready(Some(Ok(r))),
+                    None => Poll::Ready(None),
+                };
+            }
+            Some(inner) => inner,
+        };
 
         match ready!(this.body.poll_next(cx)) {
             Some(Ok(chunk)) => {
-                *this.bytes_written += chunk.len();
-                if *this.time_to_first_byte == Duration::ZERO {
-                    *this.time_to_first_byte = utils::now()
-                        .signed_duration_since(*this.start_time)
+                inner.bytes_written += chunk.len();
+                if inner.time_to_first_byte == Duration::ZERO {
+                    inner.time_to_first_byte = utils::now()
+                        .signed_duration_since(inner.start_time)
                         .to_std()
                         .unwrap_or_default();
                 }
-                if let Some(record) = this.record_body {
-                    if !*this.record_error_only || *this.status >= StatusCode::BAD_REQUEST {
+                if let Some(record) = &mut inner.record_body {
+                    if !inner.record_error_only || inner.status_code >= StatusCode::BAD_REQUEST {
                         record.put_slice(chunk.as_ref());
                     }
                 }
                 Poll::Ready(Some(Ok(chunk)))
             }
             Some(Err(err)) => Poll::Ready(Some(Err(err.into()))),
-            None => Poll::Ready(None),
+            None => {
+                let mut trace_info: admin::TraceInfo = inner.trace_info.take().unwrap();
+
+                let resp_info = trace_info.resp_info.as_mut().unwrap();
+                resp_info.time = utils::now();
+                resp_info.body = Some(
+                    inner
+                        .record_body
+                        .take()
+                        .map(|b| b.freeze())
+                        .unwrap_or_else(|| Bytes::from_static(b"<BODY>")),
+                );
+
+                let call_stats = trace_info.call_stats.as_mut().unwrap();
+                call_stats.latency = resp_info
+                    .time
+                    .signed_duration_since(inner.start_time)
+                    .to_std()
+                    .unwrap_or_default();
+                call_stats.output_bytes = inner.bytes_written;
+                call_stats.time_to_first_byte = inner.time_to_first_byte;
+
+                GLOBALS.trace.publish(trace_info);
+
+                Poll::Ready(None)
+            }
         }
     }
 }

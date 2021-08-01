@@ -41,7 +41,7 @@ pub struct TraceRequestInfo {
     pub path: String,
     pub raw_query: String,
     pub headers: Option<HeaderMap>,
-    pub body: Option<String>,
+    pub body: Option<bytes::Bytes>,
     pub client: String,
 }
 
@@ -49,11 +49,11 @@ pub struct TraceRequestInfo {
 pub struct TraceResponseInfo {
     pub time: DateTime<Utc>,
     pub headers: Option<HeaderMap>,
-    pub body: Option<String>,
+    pub body: Option<bytes::Bytes>,
     pub status_code: StatusCode,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct TraceCallStats {
     pub input_bytes: usize,
     pub output_bytes: usize,

@@ -1,10 +1,10 @@
 use std::sync::MutexGuard;
 use std::time::Duration;
 
-use actix_http::body::{Body, MessageBody};
+use actix_http::body::MessageBody;
 use actix_web::dev::ServiceRequest;
 use actix_web::guard::get_host_uri;
-use actix_web::{guard, web, App, AppEntry, HttpServer, Scope};
+use actix_web::{guard, web, App};
 
 use super::*;
 use crate::globals::{self, Guard, GLOBALS};

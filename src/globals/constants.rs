@@ -71,8 +71,8 @@ const DISK_MIN_INODES: usize = 1000;
 
 // Prefix of a metadata key which
 // is reserved and for internal use only.
-pub const RESERVED_METADATA_PREFIX: &str = "X-Minio-Internal-";
-pub const RESERVED_METADATA_PREFIX_LOWER: &str = "x-minio-internal-";
+pub const RESERVED_METADATA_PREFIX: &str = "X-Hulk-Internal-";
+pub const RESERVED_METADATA_PREFIX_LOWER: &str = "x-hulk-internal-";
 
 // Reserved bucket.
 pub const SYSTEM_RESERVED_BUCKET: &str = "hulk";

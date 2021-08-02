@@ -1,4 +1,4 @@
-use std::future::{ready, Future, Ready};
+use std::future::{ready, Ready};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -10,7 +10,6 @@ use tokio::sync::Semaphore;
 use tokio::time::timeout;
 
 use crate::globals::GLOBALS;
-use crate::utils::AtomicExt;
 use crate::{errors, http};
 
 pub struct MaxClients {

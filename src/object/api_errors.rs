@@ -159,7 +159,7 @@ pub enum ApiError {
         object: String,
         upload_id: String,
     },
-    #[error("Specified part could not be found. PartNumber {part_number}, Expected {exp_etag}, got {got_etag}")]
+    #[error("Specified part could not be found. PART_NUMBER {part_number}, Expected {exp_etag}, got {got_etag}")]
     InvalidPart {
         part_number: String,
         exp_etag: String,

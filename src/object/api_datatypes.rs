@@ -37,7 +37,7 @@ pub struct ObjectInfo {
     pub transition_status: String,
     // Name of transitioned object on remote tier
     transitioned_obj_name: String,
-    // VersionID on the the remote tier
+    // VERSION_ID on the the remote tier
     transition_version_id: String,
     // Name of remote tier object has transitioned to
     pub transition_tier: String,

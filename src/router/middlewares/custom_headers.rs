@@ -11,7 +11,7 @@ pub fn custom_headers() -> DefaultHeaders {
         .header("Content-Security-Policy", "block-all-mixed-content")
         // Sets x-amz-request-id header
         .header(
-            http::AMZ_REQUEST_ID.clone(),
+            http::AMZ_REQUEST_ID,
             format!("{:X}", utils::now().timestamp_nanos()),
         )
 }

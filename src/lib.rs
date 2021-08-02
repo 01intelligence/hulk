@@ -17,6 +17,7 @@ pub mod bitrot;
 pub mod bucket;
 pub mod certs;
 pub mod config;
+pub mod crypto;
 pub mod disk;
 pub mod dsync;
 pub mod ellipses;

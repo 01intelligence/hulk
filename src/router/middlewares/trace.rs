@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::error::Error as StdError;
 use std::future::{ready, Future, Ready};
 use std::marker::PhantomData;
@@ -20,22 +21,37 @@ use futures_util::future::Either;
 use futures_util::{ready, FutureExt};
 
 use crate::globals::{Get, Guard, GLOBALS};
-use crate::http::RequestExtensionsContext;
+use crate::http::{self, RequestExtensionsContext};
 use crate::{admin, utils};
 
+#[derive(Clone)]
 pub struct Trace {
     only_headers: bool,
+    collect_stats: Option<Cow<'static, str>>,
 }
 
 impl Trace {
-    pub fn trace_all() -> Self {
+    pub fn new() -> Self {
         Trace {
-            only_headers: false,
+            only_headers: true,
+            collect_stats: None,
         }
     }
 
-    pub fn trace_only_headers() -> Self {
-        Trace { only_headers: true }
+    pub fn trace_all(mut self) -> Self {
+        self.only_headers = false;
+        self
+    }
+
+    pub fn collect_stats<T: Into<Cow<'static, str>>>(mut self, api: T) -> Self {
+        self.collect_stats = Some(api.into());
+        self
+    }
+}
+
+impl Default for Trace {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -55,6 +71,7 @@ where
         ready(Ok(TraceMiddleware {
             service,
             only_headers: self.only_headers,
+            collect_stats: self.collect_stats.clone(),
         }))
     }
 }
@@ -62,6 +79,7 @@ where
 pub struct TraceMiddleware<S> {
     service: S,
     only_headers: bool,
+    collect_stats: Option<Cow<'static, str>>,
 }
 
 impl<S, B> Service<ServiceRequest> for TraceMiddleware<S>
@@ -77,12 +95,24 @@ where
     forward_ready!(service);
 
     fn call(&self, mut req: ServiceRequest) -> Self::Future {
+        let stats_guard = if let Some(api) = &self.collect_stats {
+            Some(
+                GLOBALS
+                    .http_stats
+                    .current_s3_requests
+                    .inc_guard(api.clone()),
+            )
+        } else {
+            None
+        };
+
         if GLOBALS.trace.subscribers_num() == 0 {
             return RecordResponse {
                 fut: self.service.call(req),
                 inner: None,
                 rx: None,
                 _phantom: PhantomData,
+                stats_guard,
             };
         }
 
@@ -147,6 +177,7 @@ where
                 trace_info: Some(trace_info),
             }),
             rx: Some(rx),
+            stats_guard,
             _phantom: PhantomData,
         }
     }
@@ -163,6 +194,7 @@ where
     inner: Option<RecordResponseInner>,
     #[pin]
     rx: Option<tokio::sync::oneshot::Receiver<(usize, Option<Bytes>)>>,
+    stats_guard: Option<http::HttpApiStatsGuard<'static>>,
     _phantom: PhantomData<B>,
 }
 
@@ -239,6 +271,8 @@ where
         };
         trace_info.resp_info = Some(rs);
 
+        let stats_guard = this.stats_guard.take();
+
         Poll::Ready(Ok(res.map_body(move |_, body| RecordResponseBody {
             body,
             inner: Some(RecordResponseBodyInner {
@@ -249,6 +283,7 @@ where
                 record_body,
                 record_error_only,
                 trace_info: Some(trace_info),
+                stats_guard,
             }),
         })))
     }
@@ -307,6 +342,7 @@ struct RecordResponseBodyInner {
     record_body: Option<BytesMut>,
     record_error_only: bool,
     trace_info: Option<admin::TraceInfo>,
+    stats_guard: Option<http::HttpApiStatsGuard<'static>>,
 }
 
 impl<B> MessageBody for RecordResponseBody<B>
@@ -356,6 +392,7 @@ where
             None => {
                 let mut trace_info: admin::TraceInfo = inner.trace_info.take().unwrap();
 
+                let req_info = trace_info.req_info.as_mut().unwrap();
                 let resp_info = trace_info.resp_info.as_mut().unwrap();
                 resp_info.time = utils::now();
                 resp_info.body = Some(
@@ -375,6 +412,15 @@ where
                 call_stats.output_bytes = inner.bytes_written;
                 call_stats.time_to_first_byte = inner.time_to_first_byte;
 
+                let stats_guard: Option<http::HttpApiStatsGuard<'_>> = inner.stats_guard.take();
+                if let Some(stats_guard) = stats_guard {
+                    GLOBALS.http_stats.update_stats(
+                        stats_guard.api(),
+                        resp_info.status_code,
+                        &req_info.path,
+                    );
+                }
+
                 GLOBALS.trace.publish(trace_info);
 
                 Poll::Ready(None)
@@ -384,5 +430,5 @@ where
 }
 
 fn sanitize_operation_name(name: &str) -> String {
-    todo!()
+    return name.to_owned();
 }

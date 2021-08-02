@@ -85,13 +85,18 @@ etcd-client = { version = "0.7.0", features = ["tls"] }
 humantime = "2.1.0"
 async-nats = "0.9.18"
 dashmap = { version = "4.0.2", features = ["serde", "raw-api"] }
-actix-cors = "0.5.4"
 futures-core = { version = "0.3.16", default-features = false }
 futures-util = { version = "0.3.16", default-features = false }
 pin-project = "1.0.8"
 mime = "0.3.16"
 bytes = "1.0.1"
 cached = "0.24.0"
+actix-service = "2.0.0"
+
+[dependencies.actix-cors]
+git = 'https://github.com/actix/actix-extras'
+branch = 'master'
+package = 'actix-cors'
 
 [patch.crates-io]
 jsonwebtoken = { git = 'https://github.com/01intelligence/jsonwebtoken', branch = 'master' }

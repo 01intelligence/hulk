@@ -1,6 +1,8 @@
 use std::sync::MutexGuard;
+use std::time::Duration;
 
-use actix_http::body::Body;
+use actix_http::body::{Body, MessageBody};
+use actix_web::dev::ServiceRequest;
 use actix_web::guard::get_host_uri;
 use actix_web::{guard, web, App, AppEntry, HttpServer, Scope};
 
@@ -21,7 +23,8 @@ impl Api {
 }
 
 // Configure server http handler.
-pub fn configure_server_handler() -> anyhow::Result<App<AppEntry, Body>> {
+pub fn configure_server_handler(
+) -> anyhow::Result<App<impl actix_service::ServiceFactory<ServiceRequest>, impl MessageBody>> {
     let mut app = App::new();
 
     let mut scopes = Vec::new();
@@ -52,6 +55,12 @@ pub fn configure_server_handler() -> anyhow::Result<App<AppEntry, Body>> {
     for scope in scopes {
         app = app.service(scope);
     }
+
+    let app = app
+        .wrap(middlewares::cors())
+        .wrap(middlewares::Trace::new())
+        .wrap(middlewares::MaxClients::new(0, Duration::ZERO))
+        .wrap(middlewares::custom_headers());
 
     Ok(app)
 }

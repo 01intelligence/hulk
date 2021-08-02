@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -13,28 +14,60 @@ use crate::utils::AtomicExt;
 #[derive(Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct HttpApiStats {
-    api_stats: dashmap::DashMap<String, u64>,
+    api_stats: dashmap::DashMap<Cow<'static, str>, u64>,
 }
 
 impl HttpApiStats {
-    pub fn inc(&self, api: &str) {
-        let mut e = self.api_stats.entry(api.to_owned()).or_default();
+    pub fn inc_guard<T: Into<Cow<'static, str>>>(&self, api: T) -> HttpApiStatsGuard<'_> {
+        let api = api.into();
+        let guard = HttpApiStatsGuard {
+            inner: self,
+            api: Some(api.clone()),
+        };
+        self.inc(api);
+        guard
+    }
+
+    pub fn inc<T: Into<Cow<'static, str>>>(&self, api: T) {
+        let mut e = self.api_stats.entry(api.into()).or_default();
         *e.value_mut() += 1;
     }
 
-    pub fn dec(&self, api: &str) {
-        let mut e = self.api_stats.entry(api.to_owned()).or_default();
-        let val = e.value_mut();
-        if *val > 0 {
-            *val -= 1;
+    pub fn dec<T: Into<Cow<'static, str>>>(&self, api: T) {
+        let api = api.into();
+        if let Some(mut e) = self.api_stats.get_mut(&api) {
+            let val = e.value_mut();
+            if *val > 0 {
+                *val -= 1;
+                if *val == 0 {
+                    let _ = self.api_stats.remove(&api);
+                }
+            }
         }
     }
 
-    pub fn view(&self) -> HashMap<String, u64> {
+    pub fn view(&self) -> HashMap<Cow<'static, str>, u64> {
         self.api_stats
             .iter()
             .map(|e| (e.key().to_owned(), *e.value()))
             .collect()
+    }
+}
+
+pub struct HttpApiStatsGuard<'a> {
+    inner: &'a HttpApiStats,
+    api: Option<Cow<'static, str>>,
+}
+
+impl<'a> HttpApiStatsGuard<'a> {
+    pub fn api(&self) -> Cow<'static, str> {
+        self.api.as_ref().unwrap().clone()
+    }
+}
+
+impl<'a> Drop for HttpApiStatsGuard<'a> {
+    fn drop(&mut self) {
+        self.inner.dec(self.api.take().unwrap());
     }
 }
 
@@ -68,15 +101,19 @@ impl HttpStats {
         HttpStatsAddRequestsGuard { stats: self }
     }
 
-    pub fn update_stats(&self, api: &str, r: &ServiceResponse) {
-        let status = r.response().status();
+    pub fn update_stats<S: Into<Cow<'static, str>>>(
+        &self,
+        api: S,
+        status: StatusCode,
+        uri_path: &str,
+    ) {
+        let api = api.into();
         let success = status >= StatusCode::OK && status < StatusCode::MULTIPLE_CHOICES;
 
-        let path = r.request().uri().path();
-        if !path.ends_with(router::PROMETHEUS_METRICS_V2_CLUSTER_PATH)
-            && !path.ends_with(router::PROMETHEUS_METRICS_V2_NODE_PATH)
+        if !uri_path.ends_with(router::PROMETHEUS_METRICS_V2_CLUSTER_PATH)
+            && !uri_path.ends_with(router::PROMETHEUS_METRICS_V2_NODE_PATH)
         {
-            self.total_s3_requests.inc(api);
+            self.total_s3_requests.inc(api.clone());
             if !success {
                 match status.as_u16() {
                     0 | 499 => {

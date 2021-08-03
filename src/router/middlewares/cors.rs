@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::convert::TryInto;
 
 use actix_cors::Cors;
 use actix_web::http::{header, Method};
@@ -25,10 +25,10 @@ pub fn cors() -> Cors {
             CACHE_CONTROL,
             RETRY_AFTER,
             EXPIRES,
-            crate::http::AMZ_BUCKET_REGION.clone(),
-            HeaderName::from_str("X-Amz*").unwrap(),
-            HeaderName::from_str("x-amz*").unwrap(),
-            HeaderName::from_str("*").unwrap(),
+            crate::http::AMZ_BUCKET_REGION.try_into().unwrap(),
+            "X-Amz*".try_into().unwrap(),
+            "x-amz*".try_into().unwrap(),
+            "*".try_into().unwrap(),
         ]
     };
     Cors::default()

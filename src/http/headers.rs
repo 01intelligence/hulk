@@ -1,3 +1,6 @@
+pub const AMZ_BUCKET_REGION: &str = "X-Amz-Bucket-Region";
+pub const ACTION: &str = "Action";
+
 // Non standard S3 HTTP response constants
 pub const X_CACHE: &str = "X-Cache";
 pub const X_CACHE_LOOKUP: &str = "X-Cache-Lookup";

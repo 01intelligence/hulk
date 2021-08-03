@@ -40,7 +40,7 @@ const MAX_FORM_MEMORY: usize = MIB * 5;
 
 // The maximum allowed time difference between the incoming request
 // date and server date during signature verification.
-const GLOBAL_MAX_SKEW_TIME: Duration = Duration::from_secs(MINUTE * 15); // 15 minutes skew allowed.
+pub const GLOBAL_MAX_SKEW_TIME: Duration = Duration::from_secs(MINUTE * 15); // 15 minutes skew allowed.
 
 // EXPIRY - Expiry duration after which the uploads in multipart, tmp directory are deemed stale.
 const GLOBAL_STALE_UPLOADS_EXPIRY: Duration = Duration::from_secs(HOUR * 24); // 24 hrs.
@@ -77,3 +77,5 @@ pub const RESERVED_METADATA_PREFIX_LOWER: &str = "x-hulk-internal-";
 // Reserved bucket.
 pub const SYSTEM_RESERVED_BUCKET: &str = "hulk";
 pub const SYSTEM_RESERVED_BUCKET_PATH: &str = concatcp!(SLASH_SEPARATOR, SYSTEM_RESERVED_BUCKET);
+pub const SYSTEM_RESERVED_BUCKET_PATH_WITH_SLASH: &str =
+    concatcp!(SYSTEM_RESERVED_BUCKET_PATH, SLASH_SEPARATOR);

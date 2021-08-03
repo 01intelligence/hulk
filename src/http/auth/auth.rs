@@ -2,8 +2,7 @@ use actix_web::http::{header, Method};
 use actix_web::HttpRequest;
 
 use super::*;
-use crate::http;
-use crate::http::{RequestExtensionsContext, AMZ_ACCESS_KEY_ID, AMZ_CREDENTIAL};
+use crate::http::{self, RequestExtensionsContext};
 
 fn is_request_jwt(req: &HttpRequest) -> bool {
     req.headers()
@@ -41,14 +40,14 @@ fn is_request_sign_v2(req: &HttpRequest) -> bool {
 fn is_request_presigned_sign_v4(req: &HttpRequest) -> bool {
     req.query()
         .as_ref()
-        .map(|q| q.contains_key(AMZ_CREDENTIAL))
+        .map(|q| q.contains_key(http::AMZ_CREDENTIAL))
         .unwrap_or_default()
 }
 
 fn is_request_presigned_sign_v2(req: &HttpRequest) -> bool {
     req.query()
         .as_ref()
-        .map(|q| q.contains_key(AMZ_ACCESS_KEY_ID))
+        .map(|q| q.contains_key(http::AMZ_ACCESS_KEY_ID))
         .unwrap_or_default()
 }
 
@@ -78,7 +77,7 @@ fn is_request_sign_streaming_v4(req: &HttpRequest) -> bool {
             .unwrap_or_default()
 }
 
-#[derive(Eq, PartialEq)]
+#[derive(Eq, PartialEq, Copy, Clone)]
 pub enum AuthType {
     Unknown,
     Anonymous,
@@ -88,12 +87,46 @@ pub enum AuthType {
     StreamingSigned,
     Signed,
     SignedV2,
-    JWT,
-    STS,
+    Jwt,
+    Sts,
 }
 
 pub fn get_request_auth_type(req: &HttpRequest) -> AuthType {
     use AuthType::*;
-    // TODO
-    Unknown
+    if is_request_sign_v2(req) {
+        SignedV2
+    } else if is_request_presigned_sign_v2(req) {
+        PresignedV2
+    } else if is_request_sign_streaming_v4(req) {
+        StreamingSigned
+    } else if is_request_sign_v4(req) {
+        Signed
+    } else if is_request_presigned_sign_v4(req) {
+        Presigned
+    } else if is_request_jwt(req) {
+        Jwt
+    } else if is_request_post_policy_sign_v4(req) {
+        PostPolicy
+    } else {
+        if req
+            .query()
+            .as_ref()
+            .map(|q| q.contains_key(http::ACTION))
+            .unwrap_or_default()
+        {
+            Sts
+        } else if req.headers().get(header::AUTHORIZATION).is_none() {
+            Anonymous
+        } else {
+            Unknown
+        }
+    }
+}
+
+pub fn is_supported_s3_auth_type(auth_type: AuthType) -> bool {
+    use AuthType::*;
+    matches!(
+        auth_type,
+        Anonymous | Presigned | PresignedV2 | Signed | SignedV2 | PostPolicy | StreamingSigned
+    )
 }

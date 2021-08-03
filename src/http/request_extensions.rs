@@ -8,10 +8,10 @@ use actix_web::HttpRequest;
 pub struct RequestExtensions {
     // Handler function name.
     pub handler_fn_name: Option<&'static str>,
-    // Special headers which are added to response but useful for some middlewares.
+    // Special headers which are added by some middlewares, for conveniently feeding into response.
     pub special_headers: Option<HeaderMap>,
     // Parsed query map.
-    pub query: Option<Option<Query<HashMap<String, String>>>>,
+    query: Option<Option<Query<HashMap<String, String>>>>,
     // Extra metadata.
     pub extra: Option<HashMap<String, String>>,
 }
@@ -20,6 +20,7 @@ pub trait RequestExtensionsContext {
     fn ctx(&self) -> Ref<'_, RequestExtensions>;
     fn ctx_mut(&self) -> RefMut<'_, RequestExtensions>;
     fn query(&self) -> Ref<'_, Option<Query<HashMap<String, String>>>>;
+    fn special_headers_mut(&self) -> RefMut<'_, HeaderMap>;
 }
 
 impl RequestExtensionsContext for HttpRequest {
@@ -43,5 +44,11 @@ impl RequestExtensionsContext for HttpRequest {
                 .unwrap_or(None)
         });
         Ref::map(self.ctx(), |e| e.query.as_ref().unwrap())
+    }
+
+    fn special_headers_mut(&self) -> RefMut<'_, HeaderMap> {
+        RefMut::map(self.ctx_mut(), |e| {
+            e.special_headers.get_or_insert_default()
+        })
     }
 }

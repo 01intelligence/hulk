@@ -57,6 +57,7 @@ pub fn configure_server_handler(
     }
 
     let app = app
+        .wrap(middlewares::GenericHandlers {})
         .wrap(middlewares::cors())
         .wrap(middlewares::Trace::new())
         .wrap(middlewares::MaxClients::new(0, Duration::ZERO))

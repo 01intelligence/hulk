@@ -1,12 +1,8 @@
+use std::convert::TryInto;
 use std::fmt;
-use std::future::Future;
-use std::marker::PhantomData;
-use std::pin::Pin;
-use std::task::{Context, Poll};
 
 use actix_http::body::{AnyBody, BodySize};
 use actix_web::body::MessageBody;
-use actix_web::error::Error;
 use actix_web::http::{header, HeaderName, HeaderValue, StatusCode};
 use actix_web::{HttpRequest, HttpResponse, Responder, ResponseError};
 use serde::Serialize;
@@ -50,7 +46,7 @@ impl<B: MessageBody> ApiResponse<B> {
         let region = GLOBALS.server_region.guard();
         if !region.is_empty() {
             headers.insert(
-                AMZ_BUCKET_REGION.clone(),
+                AMZ_BUCKET_REGION.try_into().unwrap(),
                 HeaderValue::from_str(&*region).unwrap(),
             );
         }
@@ -235,31 +231,5 @@ impl ResponseError for ApiResponseError {
 impl fmt::Display for ApiResponseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.status.fmt(f)
-    }
-}
-
-#[pin_project::pin_project]
-pub struct ApiResponseErrorFuture<R> {
-    #[pin]
-    inner: Option<ApiResponseError>,
-    _phantom: PhantomData<R>,
-}
-
-impl<R> Future for ApiResponseErrorFuture<R> {
-    type Output = Result<R, Error>;
-
-    fn poll(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Self::Output> {
-        let this = self.project();
-        let err = this.inner.get_mut().take().unwrap();
-        Poll::Ready(Err(err.into()))
-    }
-}
-
-impl<R> From<ApiResponseError> for ApiResponseErrorFuture<R> {
-    fn from(e: ApiResponseError) -> Self {
-        ApiResponseErrorFuture {
-            inner: Some(e),
-            _phantom: PhantomData,
-        }
     }
 }

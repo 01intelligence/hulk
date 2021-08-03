@@ -12,7 +12,7 @@ use crate::globals::{Get, Guard, GLOBALS};
 /// a best effort function
 pub fn guess_is_browser_req(req: &HttpRequest) -> bool {
     let auth_type = get_request_auth_type(req);
-    if auth_type != AuthType::JWT && auth_type != AuthType::Anonymous {
+    if auth_type != AuthType::Jwt && auth_type != AuthType::Anonymous {
         return false;
     }
     if GLOBALS.browser_enabled.get() {

@@ -63,6 +63,9 @@ pub struct Globals {
 
     pub local_node_name: Arc<Mutex<String>>,
 
+    // Root domains for virtual host style requests.
+    pub domain_names: Arc<Mutex<Vec<String>>>,
+    // Root domain IP addresses.
     pub domain_ips: Arc<Mutex<StringSet>>,
 
     // Deployment ID, unique per deployment.

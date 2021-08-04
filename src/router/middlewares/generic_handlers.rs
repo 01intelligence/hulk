@@ -15,7 +15,11 @@ use tokio::time::timeout;
 use crate::crypto::{self, SseType};
 use crate::errors::ApiError;
 use crate::globals::{self, Get, GLOBALS};
-use crate::http::{get_request_auth_type, ApiResponse, RequestExtensionsContext};
+use crate::http::{
+    get_request_auth_type, guess_is_admin_req, guess_is_browser_req, guess_is_health_check_req,
+    guess_is_metrics_req, guess_is_rpc_req, ApiResponse, RequestExtensionsContext,
+};
+use crate::router::request_to_bucket_object;
 use crate::utils::{AtomicExt, DateTimeExt};
 use crate::{errors, http, utils};
 
@@ -133,6 +137,21 @@ where
             let _ = request
                 .special_headers_mut()
                 .insert(header::CACHE_CONTROL, cache_control.try_into().unwrap());
+        }
+
+        let (bucket, _) = request_to_bucket_object(request);
+        if bucket.as_ref() == globals::SYSTEM_RESERVED_BUCKET
+            || bucket.as_ref() == crate::object::SYSTEM_META_BUCKET
+        {
+            if !guess_is_rpc_req(request)
+                && !guess_is_browser_req(request)
+                && !guess_is_health_check_req(request)
+                && !guess_is_metrics_req(request)
+                && !guess_is_admin_req(request)
+            {
+                let res = ApiResponse::error_xml(ApiError::AllAccessDisabled.to(), request);
+                return Either::Right(ready(Err(res.into())));
+            }
         }
 
         Either::Left(self.service.call(req))

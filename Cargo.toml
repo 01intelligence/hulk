@@ -92,6 +92,7 @@ mime = "0.3.16"
 bytes = "1.0.1"
 cached = "0.24.0"
 actix-service = "2.0.0"
+askama_escape = "0.10.1"
 
 [dependencies.actix-cors]
 git = 'https://github.com/actix/actix-extras'

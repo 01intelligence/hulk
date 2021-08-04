@@ -5,12 +5,13 @@ use std::time::Duration;
 
 use actix_web::dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform};
 use actix_web::error::Error;
-use actix_web::http::{header, HeaderMap, Method};
+use actix_web::http::{header, HeaderMap, Method, StatusCode};
 use actix_web::HttpRequest;
 use futures_util::future::{Either, LocalBoxFuture};
 use futures_util::FutureExt;
 use tokio::sync::Semaphore;
 use tokio::time::timeout;
+use validator::HasLen;
 
 use crate::crypto::{self, SseType};
 use crate::errors::ApiError;
@@ -154,6 +155,28 @@ where
             }
         }
 
+        if GLOBALS.browser_enabled.get() && guess_is_browser_req(request) {
+            let redirect_location = get_redirect_location(request.path());
+            if !redirect_location.is_empty() {
+                // TODO
+                let _ = http::redirect(
+                    request,
+                    redirect_location.as_ref(),
+                    StatusCode::TEMPORARY_REDIRECT,
+                );
+            }
+        }
+
+        if let Some(res) = http::cross_domain_policy(request) {
+            // TODO
+        }
+
+        if is_header_size_too_large(headers) {
+            GLOBALS.http_stats.total_s3_rejected_header.inc();
+            let res = ApiResponse::error_xml(ApiError::MetadataTooLarge.to(), request);
+            return Either::Right(ready(Err(res.into())));
+        }
+
         Either::Left(self.service.call(req))
     }
 }
@@ -199,3 +222,50 @@ const AMZ_DATE_FORMATS: [&str; 3] = [
 ];
 
 const AMZ_DATE_HEADERS: [&str; 2] = ["x-amz-date", "date"];
+
+// Fetch redirect location if url_path satisfies certain
+// criteria. Some special names are considered to be
+// redirectable, this is purely internal function and
+// serves only limited purpose on redirect-handler for
+// browser requests.
+fn get_redirect_location(url_path: &str) -> std::borrow::Cow<'static, str> {
+    if [
+        globals::SLASH_SEPARATOR,
+        "/webrpc",
+        "/login",
+        "/favicon-16x16.png",
+        "/favicon-32x32.png",
+        "/favicon-96x96.png",
+    ]
+    .contains(&url_path)
+    {
+        return format!("{}{}", globals::SYSTEM_RESERVED_BUCKET_PATH, url_path).into();
+    }
+    if url_path == globals::SYSTEM_RESERVED_BUCKET_PATH {
+        return globals::SYSTEM_RESERVED_BUCKET_PATH_WITH_SLASH.into();
+    }
+    "".into()
+}
+
+// Maximum size for http headers - See: https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingMetadata.html
+const MAX_HEADER_SIZE: usize = 8 * 1024;
+// Maximum size for user-defined metadata - See: https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingMetadata.html
+const MAX_USER_DATA_SIZE: usize = 2 * 1024;
+
+fn is_header_size_too_large(headers: &HeaderMap) -> bool {
+    let mut size = 0;
+    let mut user_size = 0;
+    for key in headers.keys() {
+        size += key.as_str().len();
+        for v in headers.get_all(key) {
+            size += v.len();
+        }
+        for prefix in http::USER_METADATA_KEY_PREFIXES {
+            if key.as_str().starts_with(prefix) {
+                user_size += key.as_str().len();
+                break;
+            }
+        }
+    }
+    user_size > MAX_USER_DATA_SIZE || size > MAX_HEADER_SIZE
+}

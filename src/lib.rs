@@ -40,6 +40,7 @@ pub mod mount;
 pub mod net;
 pub mod object;
 pub mod objectcache;
+pub mod proto;
 pub mod pubsub;
 pub mod router;
 pub mod s3select;

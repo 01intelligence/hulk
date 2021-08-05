@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package peer_service;
+
+import "common.proto";
+
+service PeerService {
+  rpc version(common.Empty) returns (Version) {}
+}
+
+message Version {
+}

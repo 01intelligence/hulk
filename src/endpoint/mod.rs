@@ -26,8 +26,8 @@ pub enum EndpointType {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Endpoint {
-    url: url::Url,
-    is_local: bool,
+    pub url: url::Url,
+    pub is_local: bool,
 }
 
 pub struct Endpoints(Vec<Endpoint>);

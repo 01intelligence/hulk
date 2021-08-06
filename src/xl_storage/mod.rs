@@ -52,20 +52,33 @@ pub(super) struct XlStorage {
 }
 
 impl XlStorage {
-    pub(super) fn new(endpoint: Endpoint) -> anyhow::Result<Self> {
+    pub(super) async fn new(endpoint: Endpoint) -> anyhow::Result<Self> {
         let path = get_valid_path(endpoint.url.path())?;
+        let path = path.to_str().ok_or_else(|| StorageError::Unexpected)?;
+
+        let root_disk = if std::env::var("HULK_CI_CD").is_ok() {
+            true
+        } else {
+            let mut root_disk =
+                crate::disk::is_root_disk(path.as_ref(), crate::globals::SLASH_SEPARATOR)?;
+            if !root_disk {
+                if let Ok(root_disk_size) = std::env::var(config::ENV_ROOT_DISK_THRESHOLD_SIZE) {
+                    let info = crate::disk::get_info(path).await?;
+                    let size = byte_unit::Byte::from_str(&root_disk_size)?;
+                    root_disk = info.total <= size.get_bytes();
+                }
+            }
+            root_disk
+        };
 
         let xl = XlStorage {
-            disk_path: path
-                .to_str()
-                .ok_or_else(|| StorageError::Unexpected)?
-                .to_owned(),
+            disk_path: path.to_owned(),
             endpoint,
             global_sync: std::env::var(config::ENV_FS_OSYNC)
                 .as_ref()
                 .map_or_else(|_| config::ENABLE_ON, |s| s.as_str())
                 == config::ENABLE_ON,
-            root_disk: false,
+            root_disk,
             disk_id: "".to_string(),
             pool_index: -1,
             set_index: -1,

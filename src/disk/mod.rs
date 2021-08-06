@@ -1,4 +1,8 @@
+mod root_disk;
+
 use std::path::Path;
+
+pub use root_disk::*;
 
 pub struct Info {
     pub total: u64,
@@ -16,8 +20,8 @@ pub async fn get_info<P: AsRef<Path>>(path: P) -> anyhow::Result<Info> {
         total: disk_usage.total().get::<heim::units::information::byte>(),
         free: disk_usage.free().get::<heim::units::information::byte>(),
         used: disk_usage.used().get::<heim::units::information::byte>(),
-        files: 0, // todo
-        ffree: 0, // todo
+        files: 0,               // todo
+        ffree: 0,               // todo
         fs_type: "".to_owned(), // todo
     })
 }

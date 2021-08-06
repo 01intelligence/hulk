@@ -134,10 +134,7 @@ impl ApiResponse<AnyBody> {
             Some(mime::APPLICATION_XML),
         );
         match code {
-            "SlowDown"
-            | "XMinioServerNotInitialized"
-            | "XMinioReadQuorum"
-            | "XMinioWriteQuorum" => {
+            "SlowDown" | "XHulkServerNotInitialized" | "XHulkReadQuorum" | "XHulkWriteQuorum" => {
                 // Set retry-after header to indicate user-agents to retry request after 120secs.
                 // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After
                 res.insert_header(header::RETRY_AFTER, HeaderValue::from_static("120"));

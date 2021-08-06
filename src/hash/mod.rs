@@ -6,7 +6,6 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use anyhow::ensure;
-use procfs::sys::fs::binfmt_misc::enabled;
 use sha2::Digest;
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};

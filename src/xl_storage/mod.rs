@@ -33,6 +33,7 @@ const SMALL_FILE_THRESHOLD: usize = 128 * utils::KIB; // Optimized for NVMe/SSDs
 // XL metadata file carries per object metadata.
 const XL_STORAGE_FORMAT_FILE: &str = "xl.meta";
 
+// Storage backed by a disk.
 pub(super) struct XlStorage {
     disk_path: String,
     endpoint: Endpoint,
@@ -61,10 +62,16 @@ impl XlStorage {
         } else {
             let mut root_disk =
                 crate::disk::is_root_disk(path.as_ref(), crate::globals::SLASH_SEPARATOR)?;
+            // If for some reason we couldn't detect the
+            // root disk use - HULK_ROOTDISK_THRESHOLD_SIZE
+            // to figure out if the disk is root disk or not.
             if !root_disk {
                 if let Ok(root_disk_size) = std::env::var(config::ENV_ROOT_DISK_THRESHOLD_SIZE) {
                     let info = crate::disk::get_info(path).await?;
                     let size = byte_unit::Byte::from_str(&root_disk_size)?;
+                    // Size of the disk is less than the threshold or
+                    // equal to the size of the disk at path, treat
+                    // such disks as root_disks and reject them.
                     root_disk = info.total <= size.get_bytes();
                 }
             }

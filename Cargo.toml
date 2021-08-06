@@ -10,7 +10,7 @@ lazy_static = "1.4.0"
 log = { version = "0.4.14", features = ["max_level_trace", "release_max_level_info"] }
 slog = { version = "2.7.0", features = ["max_level_trace", "release_max_level_info"] }
 async-std = { version = "1.9.0", features = ["attributes", "unstable"] }
-tokio = { version = "1.6.1", features = ["full"] }
+tokio = { version = "1.9.0", features = ["full"] }
 serde = { version = "1.0.126", features = ["derive"] }
 serde_json = "1.0.64"
 anyhow = "1.0.40"
@@ -19,7 +19,6 @@ crossbeam = "0.8.0"
 nix = "0.20.0"
 which = "4.1.0"
 actix-web = { version = "4.0.0-beta.8", features = ["rustls"] }
-openssl = { version = "0.10.34", features = ["v110"] }
 rustls = "0.19.1"
 notify = "5.0.0-pre.9"
 typetag = "0.1.7"
@@ -64,12 +63,9 @@ colored = "2.0.0"
 pnet = "0.28.0"
 # uom = { version = "0.31.1", features = ["usize", "u8", "u16", "u32", "u64", "u128", "isize", "i8", "i16", "i32", "i64", "i128"] }
 path-absolutize = "3.0.10"
-procfs = "0.9.1"
-windows = "0.13.0"
 actix-rt = "2.2.0"
 actix-server = "1.0.4"
 const_format = "0.2.14"
-pprof = "0.4.3"
 trust-dns-resolver = "0.20.3"
 reqwest = { version = "0.11.4", default-features = false, features = ["rustls-tls"] }
 hyper = "0.14.9"
@@ -106,12 +102,17 @@ package = 'actix-cors'
 [patch.crates-io]
 jsonwebtoken = { git = 'https://github.com/01intelligence/jsonwebtoken', branch = 'master' }
 reed-solomon-erasure = { git = 'https://github.com/01intelligence/reed-solomon-erasure', branch = 'master' }
-# actix-web = { git = 'https://github.com/01intelligence/actix-web', branch = 'master' }
-actix-web = { path = '../actix/actix-web' }
-# quick-xml = { git = 'https://github.com/01intelligence/quick-xml', branch = 'golang_xml' }
-quick-xml = { path = '../quick-xml' }
-# mime = { git = 'https://github.com/01intelligence/mime', branch = '0.3.x' }
-mime = { path = '../mime' }
+actix-web = { git = 'https://github.com/01intelligence/actix-web', branch = 'master' }
+quick-xml = { git = 'https://github.com/01intelligence/quick-xml', branch = 'golang_xml' }
+mime = { git = 'https://github.com/01intelligence/mime', branch = '0.3.x' }
+
+[target.'cfg(unix)'.dependencies]
+procfs = "0.9.1"
+pprof = "0.4.3"
+
+[target.'cfg(windows)'.dependencies]
+windows = "0.18.0"
+winbinding = { path = "winbinding" }
 
 [build-dependencies]
 time = "0.2.26"

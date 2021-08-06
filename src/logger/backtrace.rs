@@ -365,7 +365,7 @@ pub fn output_filename(
         #[cfg(windows)]
         BytesOrWideString::Wide(wide) => {
             use std::os::windows::prelude::*;
-            Cow::Owned(std::ffi::OsString::from_wide(wide).into())
+            std::borrow::Cow::Owned(std::ffi::OsString::from_wide(wide).into())
         }
         #[cfg(not(windows))]
         BytesOrWideString::Wide(_wide) => Path::new("<unknown>").into(),

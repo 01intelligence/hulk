@@ -11,4 +11,17 @@ fn main() {
             &["proto"],
         )
         .unwrap();
+
+    print_link_search_path();
+}
+
+fn print_link_search_path() {
+    if std::env::var("CARGO_CFG_TARGET_OS").unwrap() == "windows" {
+        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+        if std::env::var("CARGO_CFG_TARGET_ARCH").unwrap() == "x86_64" {
+            println!("cargo:rustc-link-search=native={}/lib/x64", manifest_dir);
+        } else {
+            println!("cargo:rustc-link-search=native={}/lib", manifest_dir);
+        }
+    }
 }

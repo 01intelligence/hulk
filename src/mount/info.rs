@@ -66,8 +66,32 @@ pub fn is_likely_mount_point<P: AsRef<Path>>(path: P) -> bool {
 
 #[cfg(target_os = "windows")]
 pub fn is_likely_mount_point<P: AsRef<Path>>(path: P) -> bool {
-    // TODO: use windows crate
-    todo!()
+    use std::os::windows::prelude::*;
+
+    use winbinding::Windows::Win32::Foundation::PWSTR;
+    use winbinding::Windows::Win32::Storage::FileSystem::{GetDriveTypeW, GetVolumePathNameW};
+    use winbinding::Windows::Win32::System::WindowsProgramming::*;
+    let mut path: Vec<u16> = path.as_ref().as_os_str().encode_wide().collect();
+    let mut volume = vec![0u16; path.len()];
+    let success = unsafe {
+        GetVolumePathNameW(
+            PWSTR(&mut path[0] as *mut u16),
+            PWSTR(&mut volume[0] as *mut u16),
+            volume.len() as u32,
+        )
+        .as_bool()
+    };
+    if !success {
+        return false;
+    }
+    let drive_type = unsafe { GetDriveTypeW(PWSTR(&mut volume[0] as *mut u16)) };
+    match drive_type {
+        // Recognize "fixed", "removable", "remote" and "ramdisk" drives as proper drives
+        // which can be treated as an actual mount-point, rest can be ignored.
+        // https://docs.microsoft.com/en-us/windows/desktop/api/fileapi/nf-fileapi-getdrivetypew
+        DRIVE_FIXED | DRIVE_REMOVABLE | DRIVE_REMOTE | DRIVE_RAMDISK => true,
+        _ => false,
+    }
 }
 
 #[cfg(all(not(target_os = "linux"), not(target_os = "windows")))]

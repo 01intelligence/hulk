@@ -94,6 +94,8 @@ prost = "0.8.0"
 prost-types = "0.8.0"
 byte-unit = { version = "4.0.12", default-features = false, features = ["std"] }
 libc = "0.2.98"
+tempfile = "3.2.0"
+faccess = "0.2.3"
 
 [dependencies.actix-cors]
 git = 'https://github.com/actix/actix-extras'

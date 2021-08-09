@@ -10,7 +10,7 @@ const ALIGN_SIZE: usize = 4096;
 pub trait OpenOptionsDirectIo {
     async fn open_direct_io(
         &mut self,
-        path: impl AsRef<Path> + Send + 'static,
+        path: impl AsRef<Path> + Send + 'async_trait,
     ) -> anyhow::Result<fs::File>;
 }
 
@@ -19,7 +19,7 @@ pub trait OpenOptionsDirectIo {
 impl OpenOptionsDirectIo for fs::OpenOptions {
     async fn open_direct_io(
         &mut self,
-        path: impl AsRef<Path> + Send + 'static,
+        path: impl AsRef<Path> + Send + 'async_trait,
     ) -> anyhow::Result<fs::File> {
         let file = self.custom_flags(libc::O_DIRECT).open(path).await?;
         Ok(file)
@@ -31,7 +31,7 @@ impl OpenOptionsDirectIo for fs::OpenOptions {
 impl OpenOptionsDirectIo for fs::OpenOptions {
     async fn open_direct_io(
         &mut self,
-        path: impl AsRef<Path> + Send + 'static,
+        path: impl AsRef<Path> + Send + 'async_trait,
     ) -> anyhow::Result<fs::File> {
         use std::os::unix::io::AsRawFd;
         let file = self.custom_flags(libc::O_DIRECT).open(path).await?;
@@ -49,7 +49,7 @@ impl OpenOptionsDirectIo for fs::OpenOptions {
 impl OpenOptionsDirectIo for fs::OpenOptions {
     async fn open_direct_io(
         &mut self,
-        path: impl AsRef<Path> + Send + 'static,
+        path: impl AsRef<Path> + Send + 'async_trait,
     ) -> anyhow::Result<File> {
         // Do not support O_DIRECT on Windows.
         let file = self.open(path).await?;
@@ -58,19 +58,29 @@ impl OpenOptionsDirectIo for fs::OpenOptions {
 }
 
 pub trait FileDirectIo {
-    fn disable_direct_io(&self) -> anyhow::Result<()>;
+    fn direct_io(&self, enable: bool) -> anyhow::Result<()>;
+    fn enable_direct_io(&self) -> anyhow::Result<()> {
+        self.direct_io(true)
+    }
+    fn disable_direct_io(&self) -> anyhow::Result<()> {
+        self.direct_io(false)
+    }
 }
 
 #[cfg(all(target_family = "unix", not(target_os = "macos")))]
 impl FileDirectIo for fs::File {
-    fn disable_direct_io(&self) -> anyhow::Result<()> {
+    fn direct_io(&self, enable: bool) -> anyhow::Result<()> {
         use std::os::unix::io::AsRawFd;
 
         use nix::fcntl::*;
         let fd = self.as_raw_fd();
         let flag = fcntl(fd, FcntlArg::F_GETFL)?;
         let mut flag = OFlag::from_bits(flag).ok_or_else(|| anyhow::anyhow!("invalid OFlag"))?;
-        flag.remove(OFlag::O_DIRECT);
+        if enable {
+            flag.insert(OFlag::O_DIRECT);
+        } else {
+            flag.remove(OFlag::O_DIRECT);
+        }
         let _ = fcntl(fd, FcntlArg::F_SETFL(flag))?;
         Ok(())
     }
@@ -78,9 +88,13 @@ impl FileDirectIo for fs::File {
 
 #[cfg(target_os = "macos")]
 impl FileDirectIo for fs::File {
-    fn disable_direct_io(&self) -> anyhow::Result<()> {
+    fn direct_io(&self, enable: bool) -> anyhow::Result<()> {
         use std::os::unix::io::AsRawFd;
-        let res = libc::fcntl(self.as_raw_fd(), libc::F_NOCACHE, 0);
+        let res = libc::fcntl(
+            self.as_raw_fd(),
+            libc::F_NOCACHE,
+            if enable { 1 } else { 0 },
+        );
         let _ = nix::error::Errno::result(res)?;
         Ok(())
     }
@@ -88,7 +102,7 @@ impl FileDirectIo for fs::File {
 
 #[cfg(target_family = "windows")]
 impl FileDirectIo for fs::File {
-    fn disable_direct_io(&self) -> anyhow::Result<()> {
+    fn direct_io(&self, _enable: bool) -> anyhow::Result<()> {
         Ok(())
     }
 }

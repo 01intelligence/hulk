@@ -3,12 +3,16 @@ mod types;
 use std::borrow::Cow;
 use std::path::Path;
 
+use lazy_static::lazy_static;
 use path_absolutize::Absolutize;
+use tokio::fs;
+use tokio::io::AsyncWriteExt;
 pub use types::*;
 
+use crate::disk::OpenOptionsDirectIo;
 use crate::endpoint::Endpoint;
 use crate::errors::{StorageError, TypedError};
-use crate::{config, utils};
+use crate::{config, globals, utils};
 
 const NULL_VERSION_ID: &str = "null";
 const BLOCK_SIZE_SMALL: usize = 128 * utils::KIB; // Default r/w block size for smaller objects.
@@ -93,8 +97,61 @@ impl XlStorage {
             format_last_check: None,
         };
 
+        // Check if backend is writable and supports O_DIRECT
+        use utils::Rng;
+        let rnd = utils::rng_seed_now().gen::<[u8; 8]>();
+        let tmp_file = format!(".writable-check-{}.tmp", hex::encode(rnd));
+        let tmp_file =
+            crate::object::path_join(&[&xl.disk_path, globals::SYSTEM_RESERVED_BUCKET, &tmp_file]);
+        use crate::disk::OpenOptionsDirectIo;
+        let mut file = fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open_direct_io(&tmp_file)
+            .await?;
+        let mut aligned_buf = crate::disk::AlignedBlock::new(4096);
+        utils::rng_seed_now().fill(aligned_buf.as_mut());
+        let _ = file.write_all(aligned_buf.as_ref()).await?;
+        drop(file);
+        let _ = fs::remove_file(&tmp_file).await;
+
         Ok(xl)
     }
+
+    pub(super) fn make_volume(&self, volume: &str) -> anyhow::Result<()> {
+        if !is_valid_volume_name(volume) {
+            return Err(TypedError::InvalidArgument.into());
+        }
+        let volume_dir = self.get_volume_dir(volume)?;
+
+        if let Err(mut err) = crate::disk::access(&volume_dir) {
+            if err.kind() == std::io::ErrorKind::NotFound {}
+        }
+
+        Ok(())
+    }
+
+    fn get_volume_dir(&self, volume: &str) -> anyhow::Result<String> {
+        match volume {
+            "" | "." | ".." => Err(StorageError::VolumeNotFound.into()),
+            _ => Ok(crate::object::path_join(&[&self.disk_path, volume])),
+        }
+    }
+}
+
+lazy_static! {
+    static ref RESERVED_CHARS: Vec<char> = r#"\:*?\"<>|"#.chars().collect();
+}
+
+fn is_valid_volume_name(volume: &str) -> bool {
+    if volume.len() < 3 {
+        return false;
+    }
+    if cfg!(windows) {
+        // Volname shouldn't have reserved characters in Windows.
+        return !volume.contains(&RESERVED_CHARS[..]);
+    }
+    true
 }
 
 pub fn check_path_length(path_name: &str) -> anyhow::Result<(), StorageError> {

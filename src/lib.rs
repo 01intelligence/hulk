@@ -4,7 +4,6 @@
 #![feature(once_cell)]
 #![feature(duration_constants)]
 #![feature(destructuring_assignment)]
-#![feature(specialization)]
 #![feature(assert_matches)]
 #![feature(trait_alias)]
 #![feature(pattern)]

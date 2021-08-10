@@ -214,7 +214,9 @@ fn parse_cache_drives(drives: &str) -> anyhow::Result<Vec<String>> {
     if drives.is_empty() {
         return Ok(Vec::new());
     }
+
     let drives: Vec<&str> = drives.split(CACHE_DELIMITER).collect();
+
     let mut endpoints = Vec::new();
     for d in drives {
         ensure!(
@@ -255,7 +257,9 @@ fn parse_cache_excludes(excludes: &str) -> anyhow::Result<Vec<String>> {
     if excludes.is_empty() {
         return Ok(Vec::new());
     }
+
     let excludes: Vec<&str> = excludes.split(CACHE_DELIMITER).collect();
+
     for e in &excludes {
         ensure!(
             !e.is_empty(),
@@ -263,7 +267,7 @@ fn parse_cache_excludes(excludes: &str) -> anyhow::Result<Vec<String>> {
                 .msg(format!("cache exclude path '{}' cannot be empty", e))
         );
         ensure!(
-            e.starts_with("/"),
+            !e.starts_with("/"),
             errors::UiError::InvalidCacheExcludesValue.msg(format!(
                 "cache exclude pattern '{}' cannot start with '/' as prefix",
                 e
@@ -280,5 +284,116 @@ fn parse_cache_commit_mode(commit_str: &str) -> anyhow::Result<bool> {
         _ => Err(errors::UiError::InvalidCacheCommitValue
             .msg("cache commit value must be 'writeback' or 'writethrough'".to_owned())
             .into()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[cfg(target_family = "windows")]
+    fn test_parse_cache_drives_windows() {
+        let cases: [(&str, Vec<String>, bool); 7] = [
+            // Invalid input
+            ("bucket1/*,*.png,images/trip/barcelona/*", Vec::new(), false),
+            ("bucket1", Vec::new(), false),
+            (",,,", Vec::new(), false),
+            (",;,;,;", Vec::new(), false),
+            // Valid input
+            (
+                "C:/home/drive1,C:/home/drive2,C:/home/drive3",
+                vec![
+                    "C:/home/drive1".to_string(),
+                    "C:/home/drive2".to_string(),
+                    "C:/home/drive3".to_string(),
+                ],
+                true,
+            ),
+            (
+                "C:/home/drive{1...3}",
+                vec![
+                    "C:/home/drive1".to_string(),
+                    "C:/home/drive2".to_string(),
+                    "C:/home/drive3".to_string(),
+                ],
+                true,
+            ),
+            ("C:/home/drive{1..3}", Vec::new(), false),
+        ];
+        for (drive_str, expected_patterns, success) in cases.iter() {
+            let result = parse_cache_drives(drive_str);
+            match result {
+                Ok(result) => assert_eq!(result, *expected_patterns),
+                Err(_) => assert!(!success),
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(target_family = "unix")]
+    fn test_parse_cache_drives() {
+        let cases: [(&str, Vec<String>, bool); 7] = [
+            // Invalid input
+            ("bucket1/*,*.png,images/trip/barcelona/*", Vec::new(), false),
+            ("bucket1", Vec::new(), false),
+            (",,,", Vec::new(), false),
+            (",;,;,;", Vec::new(), false),
+            // Valid input
+            (
+                "/home/drive1,/home/drive2,/home/drive3",
+                vec![
+                    "/home/drive1".to_string(),
+                    "/home/drive2".to_string(),
+                    "/home/drive3".to_string(),
+                ],
+                true,
+            ),
+            (
+                "/home/drive{1...3}",
+                vec![
+                    "/home/drive1".to_string(),
+                    "/home/drive2".to_string(),
+                    "/home/drive3".to_string(),
+                ],
+                true,
+            ),
+            ("/home/drive{1..3}", Vec::new(), false),
+        ];
+        for (drive_str, expected_patterns, success) in cases.iter() {
+            let result = parse_cache_drives(drive_str);
+            match result {
+                Ok(result) => assert_eq!(result, *expected_patterns),
+                Err(_) => assert!(!success),
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_cache_exclude() {
+        let cases: [(&str, Vec<String>, bool); 5] = [
+            // Invalid input
+            ("/home/drive1,/home/drive2,/home/drive3", Vec::new(), false),
+            ("/", Vec::new(), false),
+            (",,,", Vec::new(), false),
+            // Valid input
+            (
+                "bucket1/*,*.png,images/trip/barcelona/*",
+                vec![
+                    "bucket1/*".to_string(),
+                    "*.png".to_string(),
+                    "images/trip/barcelona/*".to_string(),
+                ],
+                true,
+            ),
+            ("bucket1", vec!["bucket1".to_string()], true),
+        ];
+        for (drive_str, expected_patterns, success) in cases.iter() {
+            let result = parse_cache_excludes(drive_str);
+            match result {
+                Ok(result) => assert_eq!(result, *expected_patterns),
+                Err(_) => assert!(!success),
+            }
+        }
     }
 }

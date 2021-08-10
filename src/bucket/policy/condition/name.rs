@@ -6,7 +6,7 @@ use serde::ser::{Serialize, Serializer};
 
 use crate::bucket::policy::Valid;
 
-#[derive(Eq, PartialEq, Hash, Clone)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub struct Name<'a>(&'a str);
 
 pub(super) const STRING_EQUALS: Name = Name("StringEquals");
@@ -112,5 +112,113 @@ impl<'de, 'a> Deserialize<'de> for Name<'a> {
         }
 
         deserializer.deserialize_str(NameVisitor)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bstr::ByteSlice;
+
+    use super::*;
+
+    #[test]
+    fn test_name_is_valid() {
+        let cases = [
+            (STRING_EQUALS, true),
+            (STRING_NOT_EQUALS, true),
+            (STRING_LIKE, true),
+            (STRING_NOT_LIKE, true),
+            (IP_ADDRESS, true),
+            (NOT_IP_ADDRESS, true),
+            (NULL, true),
+            (Name("foo"), false),
+        ];
+
+        for (key, expected_result) in cases.iter() {
+            assert_eq!(
+                key.is_valid(),
+                *expected_result,
+                "key: '{}', expected: {}, got: {}",
+                key,
+                expected_result,
+                key.is_valid()
+            );
+        }
+    }
+
+    #[test]
+    fn test_name_marshal_json() {
+        let cases = [
+            (STRING_EQUALS, "\"StringEquals\"".as_bytes(), false),
+            (STRING_NOT_EQUALS, "\"StringNotEquals\"".as_bytes(), false),
+            (STRING_LIKE, "\"StringLike\"".as_bytes(), false),
+            (STRING_NOT_LIKE, "\"StringNotLike\"".as_bytes(), false),
+            (IP_ADDRESS, "\"IpAddress\"".as_bytes(), false),
+            (NOT_IP_ADDRESS, "\"NotIpAddress\"".as_bytes(), false),
+            (NULL, "\"Null\"".as_bytes(), false),
+            (Name("foo"), "".as_bytes(), true),
+        ];
+
+        for (key, expected_result, expect_err) in cases {
+            let error: bool;
+            match serde_json::to_vec(&key) {
+                Ok(result) => {
+                    error = false;
+                    assert_eq!(
+                        error, expect_err,
+                        "key: '{}', expected: {}, got: {}",
+                        key, expect_err, error
+                    );
+                    assert_eq!(
+                        result, expected_result,
+                        "key: '{}', expected: {:?}, got: {:?}",
+                        key, expected_result, result
+                    );
+                }
+                Err(_) => {
+                    error = true;
+                    assert_eq!(
+                        error, expect_err,
+                        "key: '{}', expected: {}, got: {}",
+                        key, expect_err, error
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_name_unmarshal_json() {
+        let cases = [
+            ("\"StringEquals\"".as_bytes(), STRING_EQUALS, false),
+            ("\"foo\"".as_bytes(), Name(""), true),
+        ];
+
+        for (key, expected_result, expect_err) in cases {
+            let error: bool;
+            match serde_json::from_slice::<Name>(key) {
+                Ok(result) => {
+                    error = false;
+                    assert_eq!(
+                        error, expect_err,
+                        "key: '{:?}', expected: {}, got: {}",
+                        key, expect_err, error
+                    );
+                    assert_eq!(
+                        result, expected_result,
+                        "key: '{:?}', expected: {}, got: {}",
+                        key, expected_result, result
+                    );
+                }
+                Err(_) => {
+                    error = true;
+                    assert_eq!(
+                        error, expect_err,
+                        "key: '{:?}', expected: {}, got: {}",
+                        key, expect_err, error
+                    );
+                }
+            }
+        }
     }
 }

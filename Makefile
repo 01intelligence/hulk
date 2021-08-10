@@ -28,5 +28,9 @@ build-allow-warnings: export HULK_PROFILE=debug
 build-allow-warnings:
 	RUSTFLAGS="-A warnings" cargo build --no-default-features
 
+test-allow-warnings: export HULK_PROFILE=debug
+test-allow-warnings:
+	RUSTFLAGS="-A warnings" cargo test --no-default-features
+
 check:
 	cargo clippy

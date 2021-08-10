@@ -112,7 +112,7 @@ mime = { git = 'https://github.com/01intelligence/mime', branch = '0.3.x' }
 [target.'cfg(unix)'.dependencies]
 pprof = "0.4.3"
 
-[target.'cfg(linux)'.dependencies]
+[target.'cfg(target_os = "linux")'.dependencies]
 procfs = "0.9.1"
 
 [target.'cfg(windows)'.dependencies]

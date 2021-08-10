@@ -1,3 +1,5 @@
+use std::convert::TryFrom;
+
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -106,3 +108,25 @@ pub const BASE_STORAGE_ERRORS: [StorageError; 3] = [
     StorageError::FaultyDisk,
     StorageError::FaultyRemoteDisk,
 ];
+
+impl TryFrom<std::io::Error> for StorageError {
+    type Error = std::io::Error;
+
+    fn try_from(err: std::io::Error) -> Result<Self, Self::Error> {
+        use crate::fs;
+        if fs::err_not_found(&err) || fs::err_not_dir(&err) || fs::err_is_dir(&err) {
+            return Ok(StorageError::FileNotFound);
+        } else if fs::err_permission(&err) {
+            return Ok(StorageError::FileAccessDenied);
+        } else if fs::err_too_many_files(&err) {
+            return Ok(StorageError::TooManyOpenFiles);
+        } else if fs::err_io(&err) {
+            return Ok(StorageError::FaultyDisk);
+        } else if fs::err_invalid_arg(&err) {
+            return Ok(StorageError::UnsupportedDisk);
+        } else if fs::err_no_space(&err) {
+            return Ok(StorageError::DiskFull);
+        }
+        Err(err)
+    }
+}

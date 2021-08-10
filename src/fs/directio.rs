@@ -38,7 +38,7 @@ impl OpenOptionsDirectIo for fs::OpenOptions {
         // F_NOCACHE: Turns data caching off/on.
         // A non-zero value in arg turns data caching off.
         // A value of zero in arg turns data caching on.
-        let res = libc::fcntl(file.as_raw_fd(), libc::F_NOCACHE, 1);
+        let res = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_NOCACHE, 1) };
         let _ = nix::errno::Errno::result(res)?;
         Ok(file)
     }
@@ -90,11 +90,13 @@ impl FileDirectIo for fs::File {
 impl FileDirectIo for fs::File {
     fn direct_io(&self, enable: bool) -> anyhow::Result<()> {
         use std::os::unix::io::AsRawFd;
-        let res = libc::fcntl(
-            self.as_raw_fd(),
-            libc::F_NOCACHE,
-            if enable { 1 } else { 0 },
-        );
+        let res = unsafe {
+            libc::fcntl(
+                self.as_raw_fd(),
+                libc::F_NOCACHE,
+                if enable { 1 } else { 0 },
+            )
+        };
         let _ = nix::errno::Errno::result(res)?;
         Ok(())
     }

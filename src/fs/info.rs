@@ -28,7 +28,7 @@ pub async fn get_info<P: AsRef<Path>>(path: P) -> anyhow::Result<Info> {
         used: s.block_size() as u64 * (s.blocks() - s.blocks_free()) as u64,
         files: s.files() as u64,
         ffree: s.files_free() as u64,
-        fs_type: get_fs_type(s.filesystem_type()).to_owned(),
+        fs_type: get_fs_type(&s).to_owned(),
     };
 
     // Check for overflows.
@@ -90,12 +90,20 @@ pub async fn get_info<P: AsRef<Path>>(path: P) -> anyhow::Result<Info> {
     Ok(info)
 }
 
-#[cfg(target_family = "unix")]
-fn get_fs_type(fs_type: nix::sys::statfs::FsType) -> &'static str {
+#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "android"))]
+fn get_fs_type(stat: &nix::sys::statfs::Statfs) -> &'static str {
     FS_TYPE_STRING_MAP
-        .get(&(fs_type.0 as u64))
+        .get(&(stat.filesystem_type().0 as u64))
         .map(|t| *t)
         .unwrap_or_else(|| "UNKNOWN")
+}
+
+#[cfg(all(
+    target_family = "unix",
+    not(any(target_os = "linux", target_os = "android"))
+))]
+fn get_fs_type(stat: &nix::sys::statfs::Statfs) -> &str {
+    stat.filesystem_type_name()
 }
 
 #[cfg(target_family = "windows")]

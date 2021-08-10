@@ -125,3 +125,38 @@ fn parse_compress_includes(include: &str) -> anyhow::Result<Vec<String>> {
     }
     Ok(includes)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_compress_includes() {
+        let cases: [(&str, Vec<String>, bool); 7] = [
+            // Invalid input
+            (",,,", Vec::new(), false),
+            ("", Vec::new(), false),
+            (",", Vec::new(), false),
+            ("/", Vec::new(), false),
+            ("text/*,/", Vec::new(), false),
+            // Valid input
+            (
+                ".txt,.log",
+                vec![".txt".to_string(), ".log".to_string()],
+                true,
+            ),
+            (
+                "text/*,application/json",
+                vec!["text/*".to_string(), "application/json".to_string()],
+                true,
+            ),
+        ];
+        for (drive_str, expected_patterns, success) in cases.iter() {
+            let result = parse_compress_includes(drive_str);
+            match result {
+                Ok(result) => assert_eq!(result, *expected_patterns),
+                Err(_) => assert!(!success),
+            }
+        }
+    }
+}

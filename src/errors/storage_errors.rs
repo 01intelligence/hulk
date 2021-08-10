@@ -81,8 +81,8 @@ pub enum StorageError {
     #[error("bit-rot hash algorithm is invalid")]
     BitrotHashAlgoInvalid,
 
-    #[error("Rename across devices not allowed, please fix your backend configuration")]
-    CrossDeviceLink,
+    #[error("Rename across devices ({0} -> {1}) not allowed, please fix your backend configuration")]
+    CrossDeviceLink(String, String),
 
     #[error("The disk size is less than 900MiB threshold")]
     MinDiskSize,

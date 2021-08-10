@@ -30,3 +30,6 @@ build-allow-warnings:
 
 check:
 	cargo clippy
+
+doc:
+	RUSTDOCFLAGS="--enable-index-page -Zunstable-options" cargo doc --no-deps

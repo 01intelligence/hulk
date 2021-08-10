@@ -49,6 +49,10 @@ pub fn err_not_found(err: &std::io::Error) -> bool {
     false
 }
 
+pub fn err_cross_device(err: &std::io::Error) -> bool {
+    is_libc_err(err, libc::EXDEV)
+}
+
 pub fn err_too_many_files(err: &std::io::Error) -> bool {
     is_libc_err(err, libc::ENFILE) || is_libc_err(err, libc::EMFILE)
 }

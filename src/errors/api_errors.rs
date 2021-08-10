@@ -54,7 +54,7 @@ impl ApiErrorResponse {
 }
 
 /// S3 Error codes, non exhaustive list.
-/// Refer: http://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.htm
+/// Refer: <http://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.htm>
 #[non_exhaustive]
 #[derive(Debug, Copy, Clone)]
 pub enum ApiError {

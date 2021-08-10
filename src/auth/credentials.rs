@@ -7,7 +7,7 @@ use constant_time_eq::constant_time_eq;
 use jsonwebtoken::{encode, Algorithm, DecodingKey, EncodingKey, Header};
 use lazy_static::lazy_static;
 use rand::Rng;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::jwt;

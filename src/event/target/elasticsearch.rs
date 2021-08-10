@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Default)]
-pub struct ElasticsearchArgs {
-}
+pub struct ElasticsearchArgs {}

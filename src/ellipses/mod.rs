@@ -1,7 +1,8 @@
+use std::slice::Iter;
+
 use anyhow::{anyhow, bail};
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::slice::Iter;
 
 lazy_static! {
     // Regex to extract ellipses syntax inputs.

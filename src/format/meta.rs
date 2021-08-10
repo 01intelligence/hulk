@@ -20,6 +20,6 @@ const FORMAT_META_VERSION_V1: &str = "1";
 // fields of this struct and deal with related migration.
 struct FormatMetaV1 {
     version: String, // Version of the format config.
-    format: String, // The backend format type, supports two values 'xl' and 'fs'.
-    id: String, // The identifier for the deployment.
+    format: String,  // The backend format type, supports two values 'xl' and 'fs'.
+    id: String,      // The identifier for the deployment.
 }

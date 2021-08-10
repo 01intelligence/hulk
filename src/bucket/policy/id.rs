@@ -16,7 +16,10 @@ mod tests {
         let cases = [
             (ID::from("DenyEncryptionSt1"), true),
             (ID::from(""), true),
-            (unsafe { ID::from_utf8_unchecked(vec![b'a', b'a', b'\xe2']) }, false),
+            (
+                unsafe { ID::from_utf8_unchecked(vec![b'a', b'a', b'\xe2']) },
+                false,
+            ),
         ];
 
         for (key, expected_result) in cases.iter() {

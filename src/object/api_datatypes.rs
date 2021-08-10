@@ -122,8 +122,6 @@ pub struct ListObjectsV2Info {
     pub prefixes: Vec<String>,
 }
 
-pub struct ObjectToDelete {
-}
+pub struct ObjectToDelete {}
 
-pub struct DeletedObject {
-}
+pub struct DeletedObject {}

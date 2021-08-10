@@ -5,9 +5,9 @@ use anyhow::ensure;
 use lazy_static::lazy_static;
 
 use super::*;
-use crate::disk::get_info;
 use crate::ellipses;
 use crate::errors::{TypedError, UiError};
+use crate::fs::get_info;
 use crate::strset::StringSet;
 
 // Supported set sizes this is used to find the optimal

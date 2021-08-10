@@ -1,3 +1,2 @@
 // TODO
-pub struct DnsCache {
-}
+pub struct DnsCache {}

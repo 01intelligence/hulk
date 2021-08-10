@@ -8,5 +8,4 @@ pub enum BitrotAlgorithm {
     HighwayHash256,
 }
 
-pub struct BitrotVerifier {
-}
+pub struct BitrotVerifier {}

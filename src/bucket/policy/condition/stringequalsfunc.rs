@@ -121,7 +121,11 @@ pub(super) fn new_string_not_equals_func(
     })))
 }
 
-pub(super) fn validate_string_equals_values(name: Name, key: Key, values: &StringSet) -> anyhow::Result<()> {
+pub(super) fn validate_string_equals_values(
+    name: Name,
+    key: Key,
+    values: &StringSet,
+) -> anyhow::Result<()> {
     for s in values.as_slice() {
         match key {
             S3X_AMZ_COPY_SOURCE => {

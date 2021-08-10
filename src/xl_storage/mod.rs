@@ -9,9 +9,9 @@ use tokio::fs;
 use tokio::io::AsyncWriteExt;
 pub use types::*;
 
-use crate::disk::OpenOptionsDirectIo;
 use crate::endpoint::Endpoint;
 use crate::errors::{StorageError, TypedError};
+use crate::fs::OpenOptionsDirectIo;
 use crate::{config, globals, utils};
 
 const NULL_VERSION_ID: &str = "null";
@@ -65,13 +65,13 @@ impl XlStorage {
             true
         } else {
             let mut root_disk =
-                crate::disk::is_root_disk(path.as_ref(), crate::globals::SLASH_SEPARATOR)?;
+                crate::fs::is_root_disk(path.as_ref(), crate::globals::SLASH_SEPARATOR)?;
             // If for some reason we couldn't detect the
             // root disk use - HULK_ROOTDISK_THRESHOLD_SIZE
             // to figure out if the disk is root disk or not.
             if !root_disk {
                 if let Ok(root_disk_size) = std::env::var(config::ENV_ROOT_DISK_THRESHOLD_SIZE) {
-                    let info = crate::disk::get_info(path).await?;
+                    let info = crate::fs::get_info(path).await?;
                     let size = byte_unit::Byte::from_str(&root_disk_size)?;
                     // Size of the disk is less than the threshold or
                     // equal to the size of the disk at path, treat
@@ -103,13 +103,13 @@ impl XlStorage {
         let tmp_file = format!(".writable-check-{}.tmp", hex::encode(rnd));
         let tmp_file =
             crate::object::path_join(&[&xl.disk_path, globals::SYSTEM_RESERVED_BUCKET, &tmp_file]);
-        use crate::disk::OpenOptionsDirectIo;
+        use crate::fs::OpenOptionsDirectIo;
         let mut file = fs::OpenOptions::new()
             .create_new(true)
             .write(true)
             .open_direct_io(&tmp_file)
             .await?;
-        let mut aligned_buf = crate::disk::AlignedBlock::new(4096);
+        let mut aligned_buf = crate::fs::AlignedBlock::new(4096);
         utils::rng_seed_now().fill(aligned_buf.as_mut());
         let _ = file.write_all(aligned_buf.as_ref()).await?;
         drop(file);
@@ -124,7 +124,7 @@ impl XlStorage {
         }
         let volume_dir = self.get_volume_dir(volume)?;
 
-        if let Err(mut err) = crate::disk::access(&volume_dir) {
+        if let Err(mut err) = crate::fs::access(&volume_dir) {
             if err.kind() == std::io::ErrorKind::NotFound {}
         }
 

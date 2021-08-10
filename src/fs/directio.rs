@@ -34,13 +34,13 @@ impl OpenOptionsDirectIo for fs::OpenOptions {
         path: impl AsRef<Path> + Send + 'async_trait,
     ) -> anyhow::Result<fs::File> {
         use std::os::unix::io::AsRawFd;
-        let file = self.custom_flags(libc::O_DIRECT).open(path).await?;
+        let file = self.open(path).await?;
         // F_NOCACHE: Turns data caching off/on.
         // A non-zero value in arg turns data caching off.
         // A value of zero in arg turns data caching on.
         let res = libc::fcntl(file.as_raw_fd(), libc::F_NOCACHE, 1);
-        let _ = nix::error::Errno::result(res)?;
-        file
+        let _ = nix::errno::Errno::result(res)?;
+        Ok(file)
     }
 }
 
@@ -95,7 +95,7 @@ impl FileDirectIo for fs::File {
             libc::F_NOCACHE,
             if enable { 1 } else { 0 },
         );
-        let _ = nix::error::Errno::result(res)?;
+        let _ = nix::errno::Errno::result(res)?;
         Ok(())
     }
 }

@@ -40,6 +40,7 @@ pub mod mount;
 pub mod net;
 pub mod object;
 pub mod objectcache;
+pub mod pool;
 pub mod proto;
 pub mod pubsub;
 pub mod router;

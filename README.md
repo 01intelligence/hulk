@@ -1,6 +1,6 @@
-# hulk
+# hulk [![build status](https://github.com/01intelligence/hulk/actions/workflows/build-and-test.yml/badge.svg?branch=master)](https://github.com/01intelligence/hulk/actions/workflows/build-and-test.yml)
 
-Hulk is a Rust implementaion of the high performance object storage.
+Hulk is a Rust implementation of the high performance object storage.
 
 ## Building
 

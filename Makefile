@@ -33,3 +33,7 @@ check:
 
 doc:
 	RUSTDOCFLAGS="--enable-index-page -Zunstable-options" cargo doc --no-deps
+
+download-libs:
+	curl -o npcap-sdk-1.10.zip https://nmap.org/npcap/dist/npcap-sdk-1.10.zip
+	unzip -o npcap-sdk-1.10.zip Lib/**

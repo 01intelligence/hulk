@@ -19,10 +19,13 @@ jobs:
         include:
           - os: ubuntu-latest
           - os: windows-latest
+            download_libs: true
           - os: macos-latest
 
     steps:
     - uses: actions/checkout@v2
+    - if: ${{ matrix.download_libs }}
+      run: make download-libs
     - name: Install latest nightly
       uses: actions-rs/toolchain@v1
       with:

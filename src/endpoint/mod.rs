@@ -678,4 +678,107 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_endpoints_new() {
+        let cases = vec![
+            (&["/d1", "/d2", "/d3", "/d4"][..], false),
+            (
+                &[
+                    "http://localhost/d1",
+                    "http://localhost/d2",
+                    "http://localhost/d3",
+                    "http://localhost/d4",
+                ][..],
+                false,
+            ),
+            (
+                &[
+                    "http://example.org/d1",
+                    "http://example.com/d1",
+                    "http://example.net/d1",
+                    "http://example.edu/d1",
+                ][..],
+                false,
+            ),
+            (
+                &[
+                    "http://localhost/d1",
+                    "http://localhost/d2",
+                    "http://example.org/d1",
+                    "http://example.org/d2",
+                ][..],
+                false,
+            ),
+            (
+                &[
+                    "https://localhost:9000/d1",
+                    "https://localhost:9001/d2",
+                    "https://localhost:9002/d3",
+                    "https://localhost:9003/d4",
+                ][..],
+                false,
+            ),
+            (
+                &[
+                    "https://127.0.0.1:9000/d1",
+                    "https://127.0.0.1:9001/d1",
+                    "https://127.0.0.1:9002/d1",
+                    "https://127.0.0.1:9003/d1",
+                ][..],
+                false,
+            ),
+            (&["d1", "d2", "d3", "d1"][..], true),
+            (&["d1", "d2", "d3", "./d1"][..], true),
+            (
+                &[
+                    "http://localhost/d1",
+                    "http://localhost/d2",
+                    "http://localhost/d1",
+                    "http://localhost/d4",
+                ][..],
+                true,
+            ),
+            (
+                &[
+                    "ftp://server/d1",
+                    "http://server/d2",
+                    "http://server/d3",
+                    "http://server/d4",
+                ][..],
+                true,
+            ),
+            (&["d1", "http://localhost/d2", "d3", "d4"][..], true),
+            (
+                &[
+                    "http://example.org/d1",
+                    "https://example.com/d1",
+                    "http://example.net/d1",
+                    "https://example.edut/d1",
+                ][..],
+                true,
+            ),
+            (
+                &[
+                    "192.168.1.210:9000/tmp/dir0",
+                    "192.168.1.210:9000/tmp/dir1",
+                    "192.168.1.210:9000/tmp/dir2",
+                    "192.168.110:9000/tmp/dir3",
+                ][..],
+                false,
+            ),
+        ];
+        for (args, expected_err) in cases.into_iter() {
+            let endpoints = Endpoints::new(args);
+            match endpoints {
+                Err(err) => assert!(
+                    expected_err,
+                    "unexpected err: {}, {:?}",
+                    err.to_string(),
+                    args
+                ),
+                Ok(_) => assert!(!expected_err, "expected err but none occurred: {:?}", args),
+            }
+        }
+    }
 }

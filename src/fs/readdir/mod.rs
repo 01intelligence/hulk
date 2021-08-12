@@ -1,11 +1,20 @@
+#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
+mod fs;
+#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
 mod readdir;
-#[cfg(unix)]
+#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
 mod readdir_impl;
+#[cfg(unix)]
+mod time;
 
 use std::path::Path;
 
-use tokio::fs;
+#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
+pub async fn read_dir(dir_path: impl AsRef<Path>) -> std::io::Result<readdir::ReadDir> {
+    readdir::read_dir(dir_path).await
+}
 
-pub async fn read_dir(dir_path: impl AsRef<Path>) {
-    // fs::read_dir();
+#[cfg(not(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd")))]
+pub async fn read_dir(dir_path: impl AsRef<Path>) -> std::io::Result<tokio::fs::ReadDir> {
+    tokio::fs::read_dir(dir_path).await
 }

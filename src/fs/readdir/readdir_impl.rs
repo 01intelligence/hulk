@@ -2,11 +2,14 @@ use std::ffi::{CStr, CString, OsStr, OsString};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::{io, mem, ptr};
+use std::{fmt, io, mem, ptr};
 
 use lazy_static::lazy_static;
 #[cfg(any(all(target_os = "linux", target_env = "gnu"), target_os = "macos",))]
 use libc::c_char;
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+use libc::SYS_getdents as SYS_getdents64;
+use libc::{c_int, mode_t};
 /*
 pub struct dirent64 {
     pub d_ino: ino64_t,
@@ -16,12 +19,8 @@ pub struct dirent64 {
     pub d_name: [c_char; 256],
 }
 */
-use libc::{c_int, mode_t};
-#[cfg(not(any(target_os = "linux")))]
-use libc::{
-    dirent as dirent64, lstat as lstat64, off_t as off64_t, stat as stat64,
-    SYS_getdents as SYS_getdents64,
-};
+#[cfg(not(target_os = "linux"))]
+use libc::{dirent as dirent64, lstat as lstat64, off_t as off64_t, stat as stat64};
 #[cfg(any(target_os = "linux"))]
 use libc::{dirent64, fstatat64, lstat64, off64_t, stat64, SYS_getdents64};
 use memoffset::offset_of;
@@ -163,15 +162,15 @@ struct InnerReadDir {
     root: PathBuf,
 }
 
-struct DirInfo<'a> {
-    guard: BytesPoolGuard<'a, DIRENT_BUF_SIZE>, // guard of buffer for directory I/O
-    nbuf: usize,                                // length of buf; return value from getdents
-    bufp: usize,                                // location of next record in buf
+struct DirInfo {
+    guard: BytesPoolGuard<'static, DIRENT_BUF_SIZE>, // guard of buffer for directory I/O
+    nbuf: usize,                                     // length of buf; return value from getdents
+    bufp: usize,                                     // location of next record in buf
 }
 
-pub struct ReadDir<'a> {
+pub struct ReadDir {
     inner: Arc<InnerReadDir>,
-    dir_info: Option<DirInfo<'a>>,
+    dir_info: Option<DirInfo>,
 }
 
 pub struct DirEntry {
@@ -407,7 +406,14 @@ impl DirEntry {
     }
 }
 
-pub fn readdir(p: &Path) -> io::Result<ReadDir> {
+impl fmt::Debug for DirEntry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("DirEntry").field(&self.path()).finish()
+    }
+}
+
+pub fn readdir(p: impl AsRef<Path>) -> io::Result<ReadDir> {
+    let p = p.as_ref();
     let root = p.to_path_buf();
     let p = cstr(p)?;
     unsafe {
@@ -424,6 +430,42 @@ pub fn readdir(p: &Path) -> io::Result<ReadDir> {
     }
 }
 
+impl FilePermissions {
+    pub fn readonly(&self) -> bool {
+        // check if any class (owner, group, others) has write permission
+        self.mode & 0o222 == 0
+    }
+
+    pub fn set_readonly(&mut self, readonly: bool) {
+        if readonly {
+            // remove write permission for all classes; equivalent to `chmod a-w <file>`
+            self.mode &= !0o222;
+        } else {
+            // add write permission for all classes; equivalent to `chmod a+w <file>`
+            self.mode |= 0o222;
+        }
+    }
+    pub fn mode(&self) -> u32 {
+        self.mode as u32
+    }
+}
+
+impl FileType {
+    pub fn is_dir(&self) -> bool {
+        self.is(libc::S_IFDIR)
+    }
+    pub fn is_file(&self) -> bool {
+        self.is(libc::S_IFREG)
+    }
+    pub fn is_symlink(&self) -> bool {
+        self.is(libc::S_IFLNK)
+    }
+
+    pub fn is(&self, mode: mode_t) -> bool {
+        self.mode & libc::S_IFMT == mode
+    }
+}
+
 const BLOCK_SIZE: usize = 8192;
 const DIRENT_BUF_SIZE: usize = BLOCK_SIZE * 128;
 const DIRENT_BUF_POOL_MAX_SIZE: usize = 1024 * 8;
@@ -433,10 +475,17 @@ lazy_static! {
         Arc::new(BytesPool::new(DIRENT_BUF_POOL_MAX_SIZE));
 }
 
-impl<'a> Iterator for ReadDir<'a> {
+impl fmt::Debug for ReadDir {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&*self.inner.root, f)
+    }
+}
+
+impl Iterator for ReadDir {
     type Item = io::Result<DirEntry>;
 
     fn next(&mut self) -> Option<io::Result<DirEntry>> {
+        // If no dir_info, create one.
         let d = if self.dir_info.is_none() {
             let guard = match tokio::task::block_in_place(|| {
                 tokio::runtime::Handle::current().block_on(async { DIRENT_BUF_POOL.get().await })
@@ -487,6 +536,7 @@ impl<'a> Iterator for ReadDir<'a> {
                 return None;
             }
             let rec = &buf[..rec_len];
+            d.bufp += rec_len;
             let ino = entry.d_ino;
             if ino == 0 {
                 continue;

@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::{io, mem, ptr};
 
+use lazy_static::lazy_static;
 #[cfg(any(all(target_os = "linux", target_env = "gnu"), target_os = "macos",))]
 use libc::c_char;
 /*
@@ -15,17 +16,22 @@ pub struct dirent64 {
     pub d_name: [c_char; 256],
 }
 */
-use libc::{c_int, dirent64, mode_t};
-#[cfg(any(target_os = "linux"))]
-use libc::{fstatat64, lstat64, off64_t, stat64};
+use libc::{c_int, mode_t};
 #[cfg(not(any(target_os = "linux")))]
-use libc::{lstat as lstat64, off_t as off64_t, stat as stat64};
+use libc::{
+    dirent as dirent64, lstat as lstat64, off_t as off64_t, stat as stat64,
+    SYS_getdents as SYS_getdents64,
+};
+#[cfg(any(target_os = "linux"))]
+use libc::{dirent64, fstatat64, lstat64, off64_t, stat64, SYS_getdents64};
+use memoffset::offset_of;
 use thiserror::Error;
 
-use crate::sys::cvt;
+use crate::pool::{BytesPool, BytesPoolGuard};
 use crate::sys::time::SystemTime;
 #[cfg(any(all(target_os = "linux", target_env = "gnu"), target_os = "macos",))]
 use crate::sys::weak::syscall;
+use crate::sys::{cvt, cvt_r};
 
 // FIXME: This should be available on Linux with all `target_env`.
 // But currently only glibc exposes `statx` fn and structs.
@@ -157,8 +163,15 @@ struct InnerReadDir {
     root: PathBuf,
 }
 
-pub struct ReadDir {
+struct DirInfo<'a> {
+    guard: BytesPoolGuard<'a, DIRENT_BUF_SIZE>, // guard of buffer for directory I/O
+    nbuf: usize,                                // length of buf; return value from getdents
+    bufp: usize,                                // location of next record in buf
+}
+
+pub struct ReadDir<'a> {
     inner: Arc<InnerReadDir>,
+    dir_info: Option<DirInfo<'a>>,
 }
 
 pub struct DirEntry {
@@ -271,6 +284,8 @@ enum Error {
     CreationTimeUnavailableForFilesystem,
     #[error("creation time is not available on this platform currently")]
     CreationTimeUnavailableForPlatform,
+    #[error("dirent buffer pool out of memory")]
+    DirentBufferPoolOutOfMemory,
 }
 
 impl DirEntry {
@@ -368,9 +383,8 @@ impl DirEntry {
         target_os = "dragonfly"
     ))]
     fn name_bytes(&self) -> &[u8] {
-        use crate::slice;
         unsafe {
-            slice::from_raw_parts(
+            std::slice::from_raw_parts(
                 self.entry.d_name.as_ptr() as *const u8,
                 self.entry.d_namlen as usize,
             )
@@ -390,6 +404,114 @@ impl DirEntry {
 
     pub fn file_name_os_str(&self) -> &OsStr {
         OsStr::from_bytes(self.name_bytes())
+    }
+}
+
+pub fn readdir(p: &Path) -> io::Result<ReadDir> {
+    let root = p.to_path_buf();
+    let p = cstr(p)?;
+    unsafe {
+        let fd = libc::open(p.as_ptr(), libc::O_RDONLY | libc::O_DIRECTORY);
+        if fd == -1 {
+            Err(io::Error::last_os_error())
+        } else {
+            let inner = InnerReadDir { fd, root };
+            Ok(ReadDir {
+                inner: Arc::new(inner),
+                dir_info: None,
+            })
+        }
+    }
+}
+
+const BLOCK_SIZE: usize = 8192;
+const DIRENT_BUF_SIZE: usize = BLOCK_SIZE * 128;
+const DIRENT_BUF_POOL_MAX_SIZE: usize = 1024 * 8;
+
+lazy_static! {
+    static ref DIRENT_BUF_POOL: Arc<BytesPool<DIRENT_BUF_SIZE>> =
+        Arc::new(BytesPool::new(DIRENT_BUF_POOL_MAX_SIZE));
+}
+
+impl<'a> Iterator for ReadDir<'a> {
+    type Item = io::Result<DirEntry>;
+
+    fn next(&mut self) -> Option<io::Result<DirEntry>> {
+        let d = if self.dir_info.is_none() {
+            let guard = match tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(async { DIRENT_BUF_POOL.get().await })
+            }) {
+                Err(err) => {
+                    return Some(Err(io::Error::new(
+                        io::ErrorKind::OutOfMemory,
+                        Error::DirentBufferPoolOutOfMemory,
+                    )));
+                }
+                Ok(guard) => guard,
+            };
+
+            self.dir_info.insert(DirInfo {
+                guard,
+                nbuf: 0,
+                bufp: 0,
+            })
+        } else {
+            self.dir_info.as_mut().unwrap()
+        };
+
+        let buf: &mut [u8] = &mut d.guard;
+        loop {
+            // Refill the buffer if necessary
+            if d.bufp >= d.nbuf {
+                d.bufp = 0;
+                let fd = self.inner.fd;
+                let buf_ptr = buf.as_mut_ptr() as *mut u8;
+                let buf_len = buf.len();
+                match cvt_r(|| unsafe { libc::syscall(SYS_getdents64, fd, buf_ptr, buf_len) }) {
+                    Ok(n) => d.nbuf = n as usize,
+                    Err(err) => return Some(Err(err)),
+                }
+                if d.nbuf <= 0 {
+                    return None;
+                }
+            }
+
+            // Drain the buffer
+            let buf = &buf[d.bufp..d.nbuf];
+            let entry: &dirent64 = unsafe { (buf.as_ptr() as *const dirent64).as_ref().unwrap() };
+            if offset_of!(dirent64, d_reclen) + mem::size_of::<libc::c_ushort>() > buf.len() {
+                return None;
+            }
+            let rec_len = entry.d_reclen as usize;
+            if rec_len > buf.len() {
+                return None;
+            }
+            let rec = &buf[..rec_len];
+            let ino = entry.d_ino;
+            if ino == 0 {
+                continue;
+            }
+            let name_offset = offset_of!(dirent64, d_name);
+            if name_offset >= rec_len {
+                return None;
+            }
+            let name_len = rec_len - name_offset;
+            let mut name: &[u8] = &rec[name_offset..name_offset + name_len];
+            for (i, c) in name.iter().enumerate() {
+                if *c == 0 {
+                    name = &name[..i];
+                    break;
+                }
+            }
+            // Check for useless names before allocating a string.
+            if name == b"." || name == b".." {
+                continue;
+            }
+            return Some(Ok(DirEntry {
+                entry: *entry,
+                dir: Arc::clone(&self.inner),
+            }));
+        }
     }
 }
 

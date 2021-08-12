@@ -1852,6 +1852,7 @@ dependencies = [
  "log",
  "maplit",
  "md-5",
+ "memoffset",
  "mime",
  "nix 0.20.0",
  "notify",

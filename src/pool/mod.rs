@@ -44,7 +44,7 @@ impl<T: Default + Sync + Send> TypedPool<T> {
         TypedPool(TypedPoolInner::DeadPool(deadpool::TypedPool::new(max_size)))
     }
 
-    async fn get(&self) -> anyhow::Result<TypedPoolGuard<'_, T>> {
+    pub async fn get(&self) -> anyhow::Result<TypedPoolGuard<'_, T>> {
         match &self.0 {
             TypedPoolInner::DeadPool(pool) => match pool.try_get().await {
                 Ok(guard) => Ok(TypedPoolGuard(TypedPoolGuardInner::DeadPool(guard.into()))),
@@ -95,7 +95,7 @@ impl<const SIZE: usize> BytesPool<SIZE> {
         BytesPool(BytesPoolInner::DeadPool(deadpool::BytesPool::new(max_size)))
     }
 
-    async fn get(&self) -> anyhow::Result<BytesPoolGuard<'_, SIZE>> {
+    pub async fn get(&self) -> anyhow::Result<BytesPoolGuard<'_, SIZE>> {
         match &self.0 {
             BytesPoolInner::DeadPool(pool) => match pool.try_get().await {
                 Ok(guard) => Ok(BytesPoolGuard(BytesPoolGuardInner::DeadPool(guard.into()))),

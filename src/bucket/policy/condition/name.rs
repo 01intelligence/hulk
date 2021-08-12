@@ -117,8 +117,6 @@ impl<'de, 'a> Deserialize<'de> for Name<'a> {
 
 #[cfg(test)]
 mod tests {
-    use bstr::ByteSlice;
-
     use super::*;
 
     #[test]
@@ -147,77 +145,51 @@ mod tests {
     }
 
     #[test]
-    fn test_name_marshal_json() {
+    fn test_name_serialize_json() {
         let cases = [
-            (STRING_EQUALS, "\"StringEquals\"".as_bytes(), false),
-            (STRING_NOT_EQUALS, "\"StringNotEquals\"".as_bytes(), false),
-            (STRING_LIKE, "\"StringLike\"".as_bytes(), false),
-            (STRING_NOT_LIKE, "\"StringNotLike\"".as_bytes(), false),
-            (IP_ADDRESS, "\"IpAddress\"".as_bytes(), false),
-            (NOT_IP_ADDRESS, "\"NotIpAddress\"".as_bytes(), false),
-            (NULL, "\"Null\"".as_bytes(), false),
-            (Name("foo"), "".as_bytes(), true),
+            (STRING_EQUALS, "\"StringEquals\"", false),
+            (STRING_NOT_EQUALS, "\"StringNotEquals\"", false),
+            (STRING_LIKE, "\"StringLike\"", false),
+            (STRING_NOT_LIKE, "\"StringNotLike\"", false),
+            (IP_ADDRESS, "\"IpAddress\"", false),
+            (NOT_IP_ADDRESS, "\"NotIpAddress\"", false),
+            (NULL, "\"Null\"", false),
+            (Name("foo"), "", true),
         ];
 
         for (key, expected_result, expect_err) in cases {
-            let error: bool;
-            match serde_json::to_vec(&key) {
+            match serde_json::to_string(&key) {
                 Ok(result) => {
-                    error = false;
+                    assert!(!expect_err, "don't expect an error");
                     assert_eq!(
-                        error, expect_err,
+                        &result, expected_result,
                         "key: '{}', expected: {}, got: {}",
-                        key, expect_err, error
-                    );
-                    assert_eq!(
-                        result, expected_result,
-                        "key: '{}', expected: {:?}, got: {:?}",
                         key, expected_result, result
                     );
                 }
-                Err(_) => {
-                    error = true;
-                    assert_eq!(
-                        error, expect_err,
-                        "key: '{}', expected: {}, got: {}",
-                        key, expect_err, error
-                    );
-                }
+                Err(_) => assert!(expect_err, "expect an error")
             }
         }
     }
 
     #[test]
-    fn test_name_unmarshal_json() {
+    fn test_name_deserialize_json() {
         let cases = [
-            ("\"StringEquals\"".as_bytes(), STRING_EQUALS, false),
-            ("\"foo\"".as_bytes(), Name(""), true),
+            ("\"StringEquals\"", STRING_EQUALS, false),
+            ("\"foo\"", Name(""), true),
         ];
 
         for (key, expected_result, expect_err) in cases {
-            let error: bool;
-            match serde_json::from_slice::<Name>(key) {
+            match serde_json::from_str::<Name>(key) {
                 Ok(result) => {
-                    error = false;
-                    assert_eq!(
-                        error, expect_err,
-                        "key: '{:?}', expected: {}, got: {}",
-                        key, expect_err, error
-                    );
+                    assert!(!expect_err, "don't expect an error");
                     assert_eq!(
                         result, expected_result,
                         "key: '{:?}', expected: {}, got: {}",
                         key, expected_result, result
                     );
                 }
-                Err(_) => {
-                    error = true;
-                    assert_eq!(
-                        error, expect_err,
-                        "key: '{:?}', expected: {}, got: {}",
-                        key, expect_err, error
-                    );
-                }
+                Err(_) => assert!(expect_err, "expect an error")
             }
         }
     }

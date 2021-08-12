@@ -22,7 +22,7 @@ impl fmt::Display for Value {
 }
 
 // Unique list of values.
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ValueSet(pub HashSet<Value>);
 
 impl ValueSet {

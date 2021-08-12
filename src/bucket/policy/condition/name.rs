@@ -167,7 +167,7 @@ mod tests {
                         key, expected_result, result
                     );
                 }
-                Err(_) => assert!(expect_err, "expect an error")
+                Err(_) => assert!(expect_err, "expect an error"),
             }
         }
     }
@@ -189,7 +189,7 @@ mod tests {
                         key, expected_result, result
                     );
                 }
-                Err(_) => assert!(expect_err, "expect an error")
+                Err(_) => assert!(expect_err, "expect an error"),
             }
         }
     }

@@ -190,11 +190,10 @@ mod tests {
         Ok(())
     }
 
-    // TODO: get a more perfect implement
     #[test]
     fn test_new_null_func() -> anyhow::Result<()> {
         let case1_fn = new_null_func(S3_PREFIX, ValueSet::new(vec![Value::Bool(true)]))?;
-        let case2_fn = new_null_func(S3_PREFIX, ValueSet::new(vec![Value::Bool(true)]))?;
+        let case2_fn = new_null_func(S3_PREFIX, ValueSet::new(vec![Value::Bool(false)]))?;
 
         let cases = [
             (
@@ -243,11 +242,14 @@ mod tests {
             match result {
                 Ok(result) => {
                     if let Ok(expected_result) = expected_result {
-                        // assert_eq!(
-                        //     result, expected_result,
-                        //     "key: '{:?}', expected: {:?}, got {:?}",
-                        //     key_cache, expected_result, result,
-                        // );
+                        assert_eq!(
+                            result.to_string(),
+                            expected_result.to_string(),
+                            "key: '{:?}', expected: {}, got {}",
+                            key_cache,
+                            expected_result,
+                            result,
+                        );
                     } else {
                         bail!("not expected an error");
                     }
@@ -255,9 +257,12 @@ mod tests {
                 Err(err) => {
                     if let Err(expected_result) = expected_result {
                         assert_eq!(
-                            err.to_string(), expected_result.to_string(),
+                            err.to_string(),
+                            expected_result.to_string(),
                             "key: '{}', expected: {}, got: {}",
-                            key_cache, expected_result, err
+                            key_cache,
+                            expected_result,
+                            err
                         );
                     } else {
                         bail!("expected an error");

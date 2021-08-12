@@ -32,6 +32,8 @@ jobs:
           toolchain: nightly
           override: true
           components: rustfmt, clippy
+    - name: Run rustfmt
+      run: cargo fmt -- --check
     - uses: actions/cache@v2
       with:
         path: |
@@ -45,13 +47,3 @@ jobs:
       run: cargo build --verbose
     - name: Run tests
       run: cargo test --verbose
-    - name: Run cargo-tarpaulin
-      if: matrix.os == 'ubuntu-latest'
-      uses: actions-rs/tarpaulin@v0.1
-      with:
-        args: '-- --test-threads 1'
-    - name: Upload to Codecov
-      if: matrix.os == 'ubuntu-latest'
-      uses: codecov/codecov-action@v1.0.2
-      with:
-        token: ${{secrets.CODECOV_TOKEN}}

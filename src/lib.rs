@@ -10,6 +10,9 @@
 #![feature(hash_set_entry)]
 #![feature(option_get_or_insert_default)]
 #![feature(error_iter)]
+#![feature(concat_idents)]
+#![feature(decl_macro)]
+#![feature(io_error_uncategorized)]
 
 pub mod admin;
 pub mod auth;
@@ -50,6 +53,7 @@ pub mod serde;
 pub mod signals;
 pub mod storage;
 pub mod strset;
+pub(crate) mod sys;
 pub mod tags;
 pub mod trie;
 pub mod utils;

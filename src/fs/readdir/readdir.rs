@@ -1,5 +1,4 @@
 use std::ffi::OsString;
-use std::fs::{FileType, Metadata};
 use std::future::Future;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -11,11 +10,14 @@ use futures_core::ready;
 use futures_util::future::poll_fn;
 use tokio::task::{spawn_blocking, JoinHandle};
 
+use super::fs::{FileType, Metadata};
+use super::readdir_impl;
+
 pub async fn read_dir(path: impl AsRef<Path>) -> io::Result<ReadDir> {
     let path = path.as_ref().to_owned();
-    let std = asyncify(|| std::fs::read_dir(path)).await?;
+    let read_dir = asyncify(|| readdir_impl::readdir(path)).await?;
 
-    Ok(ReadDir(State::Idle(Some(std))))
+    Ok(ReadDir(State::Idle(Some(read_dir))))
 }
 
 #[derive(Debug)]
@@ -24,8 +26,13 @@ pub struct ReadDir(State);
 
 #[derive(Debug)]
 enum State {
-    Idle(Option<std::fs::ReadDir>),
-    Pending(JoinHandle<(Option<io::Result<std::fs::DirEntry>>, std::fs::ReadDir)>),
+    Idle(Option<readdir_impl::ReadDir>),
+    Pending(
+        JoinHandle<(
+            Option<io::Result<readdir_impl::DirEntry>>,
+            readdir_impl::ReadDir,
+        )>,
+    ),
 }
 
 impl ReadDir {
@@ -71,7 +78,7 @@ impl DirEntry {
 }
 
 #[derive(Debug)]
-pub struct DirEntry(Arc<std::fs::DirEntry>);
+pub struct DirEntry(Arc<readdir_impl::DirEntry>);
 
 impl DirEntry {
     pub fn path(&self) -> PathBuf {
@@ -84,16 +91,16 @@ impl DirEntry {
 
     pub async fn metadata(&self) -> io::Result<Metadata> {
         let std = self.0.clone();
-        asyncify(move || std.metadata()).await
+        asyncify(move || std.metadata().map(Metadata)).await
     }
 
     pub async fn file_type(&self) -> io::Result<FileType> {
         let std = self.0.clone();
-        asyncify(move || std.file_type()).await
+        asyncify(move || std.file_type().map(FileType)).await
     }
 
     #[cfg(unix)]
-    pub(super) fn as_inner(&self) -> &std::fs::DirEntry {
+    pub(super) fn as_inner(&self) -> &readdir_impl::DirEntry {
         &self.0
     }
 }

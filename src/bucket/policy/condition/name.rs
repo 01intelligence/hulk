@@ -185,7 +185,7 @@ mod tests {
                     assert!(!expect_err, "don't expect an error");
                     assert_eq!(
                         result, expected_result,
-                        "key: '{:?}', expected: {}, got: {}",
+                        "key: '{}', expected: {}, got: {}",
                         key, expected_result, result
                     );
                 }

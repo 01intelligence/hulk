@@ -100,6 +100,7 @@ tokio-stream = "0.1.7"
 deadpool = "0.8.2"
 slab = "0.4.4"
 bumpalo = "3.7.0"
+cfg-if = "1.0.0"
 
 [dependencies.actix-cors]
 git = 'https://github.com/actix/actix-extras'

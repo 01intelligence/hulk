@@ -1,4 +1,6 @@
-mod read_dir;
+mod readdir;
+#[cfg(unix)]
+mod readdir_impl;
 
 use std::path::Path;
 

@@ -13,8 +13,8 @@ pub use types::*;
 
 use crate::endpoint::Endpoint;
 use crate::errors::{AsError, StorageError, TypedError};
-use crate::fs::{err_io, err_not_found, err_permission, OpenOptionsDirectIo};
-use crate::{config, fs, globals, utils};
+use crate::fs::{check_path_length, err_io, err_not_found, err_permission, OpenOptionsDirectIo};
+use crate::{config, fs, globals, storage, utils};
 
 const NULL_VERSION_ID: &str = "null";
 const BLOCK_SIZE_SMALL: usize = 128 * utils::KIB; // Default r/w block size for smaller objects.
@@ -81,6 +81,14 @@ impl XlStorage {
 
     pub fn close(&mut self) -> anyhow::Result<()> {
         Ok(())
+    }
+
+    pub fn get_disk_id(&self) -> anyhow::Result<&str> {
+        todo!()
+    }
+
+    pub fn set_disk_id(&mut self, id: String) {
+        // Nothing to do.
     }
 
     pub fn get_disk_location(&self) -> (isize, isize, isize) {
@@ -192,6 +200,25 @@ impl XlStorage {
                 }
             }
         }
+    }
+
+    pub async fn make_volumes(&self, volumes: &[&str]) -> anyhow::Result<()> {
+        for volume in volumes {
+            if let Err(err) = self.make_volume(volume).await {
+                if let Some(err) = err.as_error::<StorageError>() {
+                    if let &StorageError::VolumeExists = err {
+                        continue;
+                    }
+                }
+                return Err(err);
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn list_volumes(&self) -> anyhow::Result<Vec<storage::VolInfo>> {
+        let _ = check_path_length(&self.disk_path)?;
+        todo!()
     }
 
     fn get_volume_dir(&self, volume: &str) -> anyhow::Result<String> {

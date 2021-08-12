@@ -22,7 +22,7 @@ impl StorageApi {
         todo!()
     }
 
-    pub fn endpoint(&self) -> crate::endpoint::Endpoint {
+    pub fn endpoint(&self) -> &crate::endpoint::Endpoint {
         todo!()
     }
 
@@ -189,15 +189,10 @@ impl StorageApi {
     pub async fn read_all(&self, volume: &str, path: &str) -> anyhow::Result<Vec<u8>> {
         todo!()
     }
-    pub async fn get_disk_location(&self) -> anyhow::Result<(usize, usize, usize)> {
+    pub fn get_disk_location(&self) -> (usize, usize, usize) {
         todo!()
     }
-    pub async fn set_disk_location(
-        &mut self,
-        pool_idx: usize,
-        set_idx: usize,
-        disk_idx: usize,
-    ) -> anyhow::Result<()> {
+    pub fn set_disk_location(&mut self, pool_idx: isize, set_idx: isize, disk_idx: isize) {
         todo!()
     }
 }

@@ -8,8 +8,13 @@ pub fn now() -> DateTime {
     Utc::now()
 }
 
+pub fn min_datetime() -> DateTime {
+    chrono::MIN_DATETIME
+}
+
 pub trait DateTimeExt<Tz: TimeZone> {
     fn duration_offset(self, other: chrono::DateTime<Tz>) -> std::time::Duration;
+    fn is_min(&self) -> bool;
 }
 
 impl DateTimeExt<Utc> for DateTime {
@@ -20,5 +25,9 @@ impl DateTimeExt<Utc> for DateTime {
         } else {
             offset.to_std().unwrap()
         }
+    }
+
+    fn is_min(&self) -> bool {
+        self == &chrono::MIN_DATETIME
     }
 }

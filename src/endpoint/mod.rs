@@ -110,6 +110,10 @@ impl Endpoint {
         self.url.scheme() == "https"
     }
 
+    pub fn host(&self) -> &str {
+        self.url.host_str().unwrap_or_default()
+    }
+
     pub async fn update_is_local(&mut self) -> anyhow::Result<()> {
         if !self.is_local {
             self.is_local = is_local_host(

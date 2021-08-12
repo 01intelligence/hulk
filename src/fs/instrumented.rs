@@ -14,6 +14,15 @@ pub async fn rename(src_path: impl AsRef<Path>, dst_path: impl AsRef<Path>) -> s
     fs::rename(src_path, dst_path).await
 }
 
+pub async fn remove(path: impl AsRef<Path>) -> std::io::Result<()> {
+    let meta = fs::metadata(path.as_ref()).await?;
+    if meta.is_dir() {
+        fs::remove_dir(path).await
+    } else {
+        fs::remove_file(path).await
+    }
+}
+
 pub async fn remove_all(path: impl AsRef<Path>) -> std::io::Result<()> {
     let meta = fs::metadata(path.as_ref()).await?;
     if meta.is_dir() {
@@ -23,6 +32,7 @@ pub async fn remove_all(path: impl AsRef<Path>) -> std::io::Result<()> {
     }
 }
 
+// TODO: async
 pub fn access(path: impl AsRef<Path>) -> std::io::Result<()> {
     use faccess::{AccessMode, PathExt};
     path.as_ref().access(AccessMode::READ | AccessMode::WRITE)

@@ -15,4 +15,4 @@ pub use path::*;
 pub use readdir::*;
 pub use reliable::*;
 pub use root_disk::*;
-pub use tokio::fs::{metadata, OpenOptions};
+pub use tokio::fs::{metadata, File};

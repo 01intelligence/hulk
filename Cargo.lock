@@ -1891,6 +1891,7 @@ dependencies = [
  "time 0.2.26",
  "tokio 1.9.0",
  "tokio-stream",
+ "tokio-test",
  "tokio-util 0.6.7",
  "tonic",
  "tonic-build",
@@ -4079,6 +4080,19 @@ dependencies = [
  "futures-core",
  "pin-project-lite 0.2.6",
  "tokio 1.9.0",
+]
+
+[[package]]
+name = "tokio-test"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "53474327ae5e166530d17f2d956afcb4f8a004de581b3cae10f12006bc8163e3"
+dependencies = [
+ "async-stream",
+ "bytes 1.0.1",
+ "futures-core",
+ "tokio 1.9.0",
+ "tokio-stream",
 ]
 
 [[package]]

@@ -33,7 +33,7 @@ jobs:
           override: true
           components: rustfmt, clippy
     - name: Run rustfmt
-      run: cargo fmt -- --check
+      run: make fmt-check
     - uses: actions/cache@v2
       with:
         path: |
@@ -44,6 +44,6 @@ jobs:
           target/
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
     - name: Build
-      run: cargo build --verbose
+      run: make build
     - name: Run tests
-      run: cargo test --verbose
+      run: make test

@@ -1,3 +1,4 @@
+#![feature(test)]
 #![feature(backtrace)]
 #![feature(backtrace_frames)]
 #![feature(type_name_of_val)]
@@ -38,6 +39,7 @@ pub mod iam;
 pub mod jwt;
 pub mod lock;
 pub mod logger;
+pub mod macros;
 pub mod metacache;
 pub mod mount;
 pub mod net;

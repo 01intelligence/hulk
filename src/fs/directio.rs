@@ -16,7 +16,7 @@ pub trait OpenOptionsDirectIo {
 
 #[cfg(all(target_family = "unix", not(target_os = "macos")))]
 #[async_trait]
-impl OpenOptionsDirectIo for fs::OpenOptions {
+impl OpenOptionsDirectIo for super::OpenOptions {
     async fn open_direct_io(
         &mut self,
         path: impl AsRef<Path> + Send + 'async_trait,
@@ -28,7 +28,7 @@ impl OpenOptionsDirectIo for fs::OpenOptions {
 
 #[cfg(target_os = "macos")]
 #[async_trait]
-impl OpenOptionsDirectIo for fs::OpenOptions {
+impl OpenOptionsDirectIo for super::OpenOptions {
     async fn open_direct_io(
         &mut self,
         path: impl AsRef<Path> + Send + 'async_trait,
@@ -46,7 +46,7 @@ impl OpenOptionsDirectIo for fs::OpenOptions {
 
 #[cfg(target_family = "windows")]
 #[async_trait]
-impl OpenOptionsDirectIo for fs::OpenOptions {
+impl OpenOptionsDirectIo for super::OpenOptions {
     async fn open_direct_io(
         &mut self,
         path: impl AsRef<Path> + Send + 'async_trait,

@@ -18,3 +18,6 @@ pub async fn read_dir(dir_path: impl AsRef<Path>) -> std::io::Result<readdir::Re
 pub async fn read_dir(dir_path: impl AsRef<Path>) -> std::io::Result<tokio::fs::ReadDir> {
     tokio::fs::read_dir(dir_path).await
 }
+
+#[cfg(test)]
+mod tests;

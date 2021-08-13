@@ -430,6 +430,13 @@ pub fn readdir(p: impl AsRef<Path>) -> io::Result<ReadDir> {
     }
 }
 
+impl Drop for InnerReadDir {
+    fn drop(&mut self) {
+        let r = unsafe { libc::close(self.fd) };
+        debug_assert_eq!(r, 0);
+    }
+}
+
 impl FilePermissions {
     pub fn readonly(&self) -> bool {
         // check if any class (owner, group, others) has write permission
@@ -508,48 +515,48 @@ impl Iterator for ReadDir {
             self.dir_info.as_mut().unwrap()
         };
 
-        let buf: &mut [u8] = &mut d.guard;
+        let dirent_buf: &mut [u8] = &mut d.guard;
         loop {
             // Refill the buffer if necessary
             if d.bufp >= d.nbuf {
                 d.bufp = 0;
                 let fd = self.inner.fd;
-                let buf_ptr = buf.as_mut_ptr() as *mut u8;
-                let buf_len = buf.len();
+                let buf_ptr = dirent_buf.as_mut_ptr() as *mut u8;
+                let buf_len = dirent_buf.len();
                 match cvt_r(|| unsafe { libc::syscall(SYS_getdents64, fd, buf_ptr, buf_len) }) {
                     Ok(n) => d.nbuf = n as usize,
                     Err(err) => return Some(Err(err)),
                 }
                 if d.nbuf <= 0 {
-                    return None;
+                    return None; // EOF
                 }
             }
 
             // Drain the buffer
-            let buf = &buf[d.bufp..d.nbuf];
+            let buf = &dirent_buf[d.bufp..d.nbuf];
             let entry: &dirent64 = unsafe { (buf.as_ptr() as *const dirent64).as_ref().unwrap() };
             if offset_of!(dirent64, d_reclen) + mem::size_of::<libc::c_ushort>() > buf.len() {
-                return None;
+                return None; // EOF, ignore any unexpected condition
             }
             let rec_len = entry.d_reclen as usize;
             if rec_len > buf.len() {
-                return None;
+                return None; // EOF, ignore any unexpected condition
             }
             let rec = &buf[..rec_len];
-            d.bufp += rec_len;
+            d.bufp += rec_len; // advance location to next record
             let ino = entry.d_ino;
             if ino == 0 {
                 continue;
             }
             let name_offset = offset_of!(dirent64, d_name);
             if name_offset >= rec_len {
-                return None;
+                return None; // EOF, ignore any unexpected condition
             }
             let name_len = rec_len - name_offset;
             let mut name: &[u8] = &rec[name_offset..name_offset + name_len];
             for (i, c) in name.iter().enumerate() {
                 if *c == 0 {
-                    name = &name[..i];
+                    name = &name[..i]; // truncate tail NULL char
                     break;
                 }
             }

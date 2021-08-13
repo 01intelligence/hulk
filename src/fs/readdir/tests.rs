@@ -92,6 +92,7 @@ fn bench_tokio_readdir_10k(b: &mut Bencher) {
 }
 
 #[test]
+#[cfg_attr(tarpaulin, ignore)]
 fn bench_self_readdir_1m() {
     test::bench::run_once(|b| {
         let n = 1000000;
@@ -101,6 +102,7 @@ fn bench_self_readdir_1m() {
 
 #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
 #[test]
+#[cfg_attr(tarpaulin, ignore)]
 fn bench_tokio_readdir_1m() {
     test::bench::run_once(|b| {
         let n = 1000000;

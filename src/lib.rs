@@ -14,6 +14,7 @@
 #![feature(concat_idents)]
 #![feature(decl_macro)]
 #![feature(io_error_uncategorized)]
+#![feature(async_closure)]
 
 pub mod admin;
 pub mod auth;

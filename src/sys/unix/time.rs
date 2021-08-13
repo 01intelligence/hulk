@@ -415,8 +415,10 @@ mod inner {
         }
     }
 
+    #[allow(non_camel_case_types)]
     #[cfg(not(target_os = "dragonfly"))]
     pub type clock_t = libc::c_int;
+    #[allow(non_camel_case_types)]
     #[cfg(target_os = "dragonfly")]
     pub type clock_t = libc::c_ulong;
 

@@ -576,6 +576,25 @@ fn cstr(path: &Path) -> io::Result<CString> {
     Ok(CString::new(path.as_os_str().as_bytes())?)
 }
 
+pub fn stat(p: &Path) -> io::Result<FileAttr> {
+    let p = cstr(p)?;
+
+    cfg_has_statx! {
+        if let Some(ret) = unsafe { try_statx(
+            libc::AT_FDCWD,
+            p.as_ptr(),
+            libc::AT_STATX_SYNC_AS_STAT,
+            libc::STATX_ALL,
+        ) } {
+            return ret;
+        }
+    }
+
+    let mut stat: stat64 = unsafe { mem::zeroed() };
+    cvt(unsafe { stat64(p.as_ptr(), &mut stat) })?;
+    Ok(FileAttr::from_stat64(stat))
+}
+
 fn lstat(p: &Path) -> io::Result<FileAttr> {
     let p = cstr(p)?;
 

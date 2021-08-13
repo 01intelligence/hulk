@@ -7,16 +7,132 @@ mod readdir_impl;
 #[cfg(unix)]
 mod time;
 
-use std::path::Path;
+#[cfg(not(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd")))]
+use std::fs::FileType;
+use std::fs::Metadata;
+use std::io;
+use std::io::Error;
+use std::path::{Path, PathBuf};
+use std::task::{Context, Poll};
 
 #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
-pub async fn read_dir(dir_path: impl AsRef<Path>) -> std::io::Result<readdir::ReadDir> {
+use fs::FileType;
+use futures_core::Stream;
+#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
+use readdir::{DirEntry, ReadDir};
+#[cfg(not(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd")))]
+use tokio::fs::{DirEntry, ReadDir};
+
+use crate::fs::{err_not_found, err_too_many_symlinks};
+use crate::utils::OsStrExt;
+
+#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
+pub async fn read_dir(dir_path: impl AsRef<Path>) -> std::io::Result<ReadDir> {
     readdir::read_dir(dir_path).await
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd")))]
-pub async fn read_dir(dir_path: impl AsRef<Path>) -> std::io::Result<tokio::fs::ReadDir> {
+pub async fn read_dir(dir_path: impl AsRef<Path>) -> std::io::Result<ReadDir> {
     tokio::fs::read_dir(dir_path).await
+}
+
+#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
+pub async fn metadata(path: impl AsRef<Path>) -> std::io::Result<fs::Metadata> {
+    fs::metadata(path).await
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd")))]
+pub async fn metadata(path: impl AsRef<Path>) -> std::io::Result<std::fs::Metadata> {
+    tokio::fs::metadata(path).await
+}
+
+pub struct ReadDirEntries<P: AsRef<Path>>(P, Option<ReadDir>);
+
+impl<P: AsRef<Path>> ReadDirEntries<P> {
+    pub fn new(dir_path: P) -> ReadDirEntries<P> {
+        ReadDirEntries(dir_path, None)
+    }
+
+    pub async fn next_entry(&mut self) -> io::Result<Option<(String, FileType)>> {
+        let stream = if self.1.is_none() {
+            let stream = read_dir(self.0.as_ref()).await?;
+            self.1.insert(stream)
+        } else {
+            self.1.as_mut().unwrap()
+        };
+        while let Some(entry) = stream.next_entry().await? {
+            let mut typ = entry.file_type().await?;
+            let path = entry.path();
+
+            if typ.is_symlink() {
+                // Traverse symlinks.
+                let meta = match metadata(&path).await {
+                    Ok(meta) => meta,
+                    Err(err) => {
+                        // It got deleted in the meantime, not found
+                        // or returns too many symlinks, ignore this
+                        // file/directory.
+                        if err_not_found(&err) && err_too_many_symlinks(&err) {
+                            continue;
+                        }
+                        return Err(err.into());
+                    }
+                };
+                // Ignore symlinked directories.
+                if meta.is_dir() {
+                    continue;
+                }
+                typ = meta.file_type();
+            }
+
+            let name = path.as_str()?;
+            let name = if typ.is_file() {
+                name.to_owned()
+            } else if typ.is_dir() {
+                name.to_owned() + crate::globals::SLASH_SEPARATOR
+            } else {
+                continue;
+            };
+
+            return Ok(Some((name, typ)));
+        }
+
+        Ok(None)
+    }
+}
+
+pub async fn read_dir_entries(dir_path: impl AsRef<Path>) -> std::io::Result<Vec<String>> {
+    read_dir_entries_n(dir_path, usize::MAX).await
+}
+
+pub async fn read_dir_entries_n(
+    dir_path: impl AsRef<Path>,
+    mut n: usize,
+) -> std::io::Result<Vec<String>> {
+    let mut entries = Vec::new();
+    let mut stream = ReadDirEntries::new(dir_path);
+    while let Some((name, _)) = stream.next_entry().await? {
+        if n == 0 {
+            break;
+        }
+        n -= 1;
+        entries.push(name);
+    }
+    Ok(entries)
+}
+
+pub async fn asyncify<F, T>(f: F) -> io::Result<T>
+where
+    F: FnOnce() -> io::Result<T> + Send + 'static,
+    T: Send + 'static,
+{
+    match tokio::task::spawn_blocking(f).await {
+        Ok(res) => res,
+        Err(_) => Err(io::Error::new(
+            io::ErrorKind::Other,
+            "background task failed",
+        )),
+    }
 }
 
 #[cfg(test)]

@@ -1,8 +1,14 @@
 use std::io;
+use std::path::Path;
 
-use super::readdir_impl;
 use super::time::SystemTime;
+use super::{asyncify, readdir_impl};
 use crate::sys::{AsInner, FromInner};
+
+pub async fn metadata<P: AsRef<Path>>(path: P) -> io::Result<Metadata> {
+    let path = path.as_ref().to_owned();
+    asyncify(move || readdir_impl::stat(&path).map(Metadata)).await
+}
 
 #[derive(Clone)]
 pub struct Metadata(pub(super) readdir_impl::FileAttr);

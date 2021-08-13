@@ -7,6 +7,7 @@ impl super::Valid for ID {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use super::super::Valid;
     use super::*;

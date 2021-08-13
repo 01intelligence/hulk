@@ -6,7 +6,7 @@ use serde::ser::{Serialize, Serializer};
 
 use crate::bucket::policy::Valid;
 
-#[derive(Eq, PartialEq, Hash, Clone)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub struct Name<'a>(&'a str);
 
 pub(super) const STRING_EQUALS: Name = Name("StringEquals");
@@ -112,5 +112,85 @@ impl<'de, 'a> Deserialize<'de> for Name<'a> {
         }
 
         deserializer.deserialize_str(NameVisitor)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_name_is_valid() {
+        let cases = [
+            (STRING_EQUALS, true),
+            (STRING_NOT_EQUALS, true),
+            (STRING_LIKE, true),
+            (STRING_NOT_LIKE, true),
+            (IP_ADDRESS, true),
+            (NOT_IP_ADDRESS, true),
+            (NULL, true),
+            (Name("foo"), false),
+        ];
+
+        for (key, expected_result) in cases.iter() {
+            assert_eq!(
+                key.is_valid(),
+                *expected_result,
+                "key: '{}', expected: {}, got: {}",
+                key,
+                expected_result,
+                key.is_valid()
+            );
+        }
+    }
+
+    #[test]
+    fn test_name_serialize_json() {
+        let cases = [
+            (STRING_EQUALS, "\"StringEquals\"", false),
+            (STRING_NOT_EQUALS, "\"StringNotEquals\"", false),
+            (STRING_LIKE, "\"StringLike\"", false),
+            (STRING_NOT_LIKE, "\"StringNotLike\"", false),
+            (IP_ADDRESS, "\"IpAddress\"", false),
+            (NOT_IP_ADDRESS, "\"NotIpAddress\"", false),
+            (NULL, "\"Null\"", false),
+            (Name("foo"), "", true),
+        ];
+
+        for (key, expected_result, expect_err) in cases {
+            match serde_json::to_string(&key) {
+                Ok(result) => {
+                    assert!(!expect_err, "don't expect an error");
+                    assert_eq!(
+                        &result, expected_result,
+                        "key: '{}', expected: {}, got: {}",
+                        key, expected_result, result
+                    );
+                }
+                Err(_) => assert!(expect_err, "expect an error"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_name_deserialize_json() {
+        let cases = [
+            ("\"StringEquals\"", STRING_EQUALS, false),
+            ("\"foo\"", Name(""), true),
+        ];
+
+        for (key, expected_result, expect_err) in cases {
+            match serde_json::from_str::<Name>(key) {
+                Ok(result) => {
+                    assert!(!expect_err, "don't expect an error");
+                    assert_eq!(
+                        result, expected_result,
+                        "key: '{}', expected: {}, got: {}",
+                        key, expected_result, result
+                    );
+                }
+                Err(_) => assert!(expect_err, "expect an error"),
+            }
+        }
     }
 }

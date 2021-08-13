@@ -167,3 +167,342 @@ fn values_to_ip_nets(name: Name, values: &ValueSet) -> anyhow::Result<Vec<IpNet>
     ip_nets.sort_unstable();
     Ok(ip_nets)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ip_address_func_evaluate() -> anyhow::Result<()> {
+        let func = new_ip_address_func(
+            AWS_SOURCE_IP,
+            ValueSet::new(vec![Value::String("192.168.1.0/24".to_string())]),
+        )?;
+
+        let cases = [
+            (
+                &func,
+                HashMap::from([("SourceIp".to_string(), vec!["192.168.1.10".to_string()])]),
+                true,
+            ),
+            (
+                &func,
+                HashMap::from([("SourceIp".to_string(), vec!["192.168.2.10".to_string()])]),
+                false,
+            ),
+            (&func, HashMap::new(), false),
+            (
+                &func,
+                HashMap::from([("delimiter".to_string(), vec!["/".to_string()])]),
+                false,
+            ),
+        ];
+
+        for (key, values, expected_result) in cases {
+            let result = key.evaluate(&values);
+
+            assert_eq!(
+                result, expected_result,
+                "key: '{}', expected: {}, got: {}",
+                key, expected_result, result
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_ip_address_func_key() -> anyhow::Result<()> {
+        let func = new_ip_address_func(
+            AWS_SOURCE_IP,
+            ValueSet::new(vec![Value::String("192.168.1.0/24".to_string())]),
+        )?;
+
+        let cases = [(func, AWS_SOURCE_IP)];
+
+        for (key, expected_result) in cases {
+            let result = key.key();
+
+            assert_eq!(
+                result, expected_result,
+                "key: '{}', expected: {}, got: {}",
+                key, expected_result, result
+            )
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_ip_address_func_to_map() -> anyhow::Result<()> {
+        let func1 = new_ip_address_func(
+            AWS_SOURCE_IP,
+            ValueSet::new(vec![Value::String("192.168.1.0/24".to_string())]),
+        )?;
+        let func2 = new_ip_address_func(
+            AWS_SOURCE_IP,
+            ValueSet::new(vec![
+                Value::String("192.168.1.0/24".to_string()),
+                Value::String("10.1.10.1/32".to_string()),
+            ]),
+        )?;
+
+        let func1_res = HashMap::from([(
+            AWS_SOURCE_IP,
+            ValueSet::new(vec![Value::String("192.168.1.0/24".to_string())]),
+        )]);
+        let func2_res = HashMap::from([(
+            AWS_SOURCE_IP,
+            ValueSet::new(vec![
+                Value::String("192.168.1.0/24".to_string()),
+                Value::String("10.1.10.1/32".to_string()),
+            ]),
+        )]);
+
+        let cases = [(func1, func1_res), (func2, func2_res)];
+
+        for (key, expected_result) in cases {
+            let result = key.to_map();
+
+            assert_eq!(
+                result, expected_result,
+                "key: '{}', expected: {:?}, got: {:?}",
+                key, expected_result, result
+            );
+        }
+
+        Ok(())
+    }
+
+    fn test_not_ip_address_func_evaluate() -> anyhow::Result<()> {
+        let func = new_not_ip_address_func(
+            AWS_SOURCE_IP,
+            ValueSet::new(vec![Value::String("192.168.1.0/24".to_string())]),
+        )?;
+
+        let cases = [
+            (
+                &func,
+                HashMap::from([("SourceIp".to_string(), vec!["192.168.2.10".to_string()])]),
+                true,
+            ),
+            (&func, HashMap::new(), true),
+            (
+                &func,
+                HashMap::from([("delimiter".to_string(), vec!["/".to_string()])]),
+                true,
+            ),
+            (
+                &func,
+                HashMap::from([("SourceIp".to_string(), vec!["192.168.1.10".to_string()])]),
+                true,
+            ),
+        ];
+
+        for (key, values, expected_result) in cases {
+            let result = key.evaluate(&values);
+            assert_eq!(
+                result, expected_result,
+                "key: '{}', expected: {}, got: {}",
+                key, expected_result, result
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_not_ip_address_func_key() -> anyhow::Result<()> {
+        let func = new_not_ip_address_func(
+            AWS_SOURCE_IP,
+            ValueSet::new(vec![Value::String("192.168.1.0/24".to_string())]),
+        )?;
+
+        let cases = [(func, AWS_SOURCE_IP)];
+
+        for (key, expected_result) in cases {
+            let result = key.key();
+
+            assert_eq!(
+                result, expected_result,
+                "key: '{}', expected: {}, got: {}",
+                key, expected_result, result
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_not_ip_address_func_to_map() -> anyhow::Result<()> {
+        let func1 = new_not_ip_address_func(
+            AWS_SOURCE_IP,
+            ValueSet::new(vec![Value::String("192.168.1.0/24".to_string())]),
+        )?;
+        let func2 = new_not_ip_address_func(
+            AWS_SOURCE_IP,
+            ValueSet::new(vec![
+                Value::String("192.168.1.0/24".to_string()),
+                Value::String("10.1.10.1/32".to_string()),
+            ]),
+        )?;
+
+        let func1_res = HashMap::from([(
+            AWS_SOURCE_IP,
+            ValueSet::new(vec![Value::String("192.168.1.0/24".to_string())]),
+        )]);
+        let func2_res = HashMap::from([(
+            AWS_SOURCE_IP,
+            ValueSet::new(vec![
+                Value::String("192.168.1.0/24".to_string()),
+                Value::String("10.1.10.1/32".to_string()),
+            ]),
+        )]);
+
+        let cases = [(func1, func1_res), (func2, func2_res)];
+
+        for (key, expected_result) in cases {
+            let result = key.to_map();
+
+            assert_eq!(
+                result, expected_result,
+                "key: '{}', expected: {:?}, got: {:?}",
+                key, expected_result, result
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_new_ip_address_func() -> anyhow::Result<()> {
+        let func1 = new_ip_address_func(
+            AWS_SOURCE_IP,
+            ValueSet::new(vec![Value::String("192.168.1.0/24".to_string())]),
+        )?;
+        let func2 = new_ip_address_func(
+            AWS_SOURCE_IP,
+            ValueSet::new(vec![
+                Value::String("192.168.1.0/24".to_string()),
+                Value::String("10.1.10.1/32".to_string()),
+            ]),
+        )?;
+
+        let cases = [
+            (
+                AWS_SOURCE_IP,
+                ValueSet::new(vec![Value::String("192.168.1.0/24".to_string())]),
+                Some(&func1),
+                false,
+            ),
+            (
+                AWS_SOURCE_IP,
+                ValueSet::new(vec![
+                    Value::String("192.168.1.0/24".to_string()),
+                    Value::String("10.1.10.1/32".to_string()),
+                ]),
+                Some(&func2),
+                false,
+            ),
+            // Unsupported key error.
+            (S3_PREFIX, ValueSet::new(vec![Value::String("192.168.1.0/24".to_string())]), None, true),
+            // Invalid value error.
+            (AWS_SOURCE_IP, ValueSet::new(vec![Value::String("node1.example.org".to_string())]), None, true),
+            // Invalid CIDR format error.
+            (AWS_SOURCE_IP, ValueSet::new(vec![Value::String("192.168.1.0.0/24".to_string())]), None, true),
+        ];
+
+        for (key, values, expected_result, expect_err) in cases {
+            let key_cache = key.clone();
+            let values_cache = values.clone();
+            let result = new_ip_address_func(key, values);
+
+            if let Some(expected_result) = expected_result {
+                match result {
+                    Ok(result) => {
+                        assert_eq!(
+                            result.to_string(),
+                            expected_result.to_string(),
+                            "key: '{}', values: '{:?}', expected: {}, got: {}",
+                            key_cache,
+                            values_cache,
+                            expected_result,
+                            result
+                        )
+                    }
+                    Err(_) => {
+                        assert!(expect_err, "expect an error");
+                    }
+                }
+            };
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_new_not_ip_address_func() -> anyhow::Result<()> {
+        let func1 = new_not_ip_address_func(
+            AWS_SOURCE_IP,
+            ValueSet::new(vec![Value::String("192.168.1.0/24".to_string())]),
+        )?;
+        let func2 = new_not_ip_address_func(
+            AWS_SOURCE_IP,
+            ValueSet::new(vec![
+                Value::String("192.168.1.0/24".to_string()),
+                Value::String("10.1.10.1/32".to_string()),
+            ]),
+        )?;
+
+        let cases = [
+            (
+                AWS_SOURCE_IP,
+                ValueSet::new(vec![Value::String("192.168.1.0/24".to_string())]),
+                Some(&func1),
+                false,
+            ),
+            (
+                AWS_SOURCE_IP,
+                ValueSet::new(vec![
+                    Value::String("192.168.1.0/24".to_string()),
+                    Value::String("10.1.10.1/32".to_string()),
+                ]),
+                Some(&func2),
+                false,
+            ),
+            // Unsupported key error.
+            (S3_PREFIX, ValueSet::new(vec![Value::String("192.168.1.0/24".to_string())]), None, true),
+            // Invalid value error.
+            (AWS_SOURCE_IP, ValueSet::new(vec![Value::String("node1.example.org".to_string())]), None, true),
+            // Invalid CIDR format error.
+            (AWS_SOURCE_IP, ValueSet::new(vec![Value::String("192.168.1.0.0/24".to_string())]), None, true),
+        ];
+
+        for (key, values, expected_result, expect_err) in cases {
+            let key_cache = key.clone();
+            let values_cache = values.clone();
+            let result = new_not_ip_address_func(key, values);
+
+            if let Some(expected_result) = expected_result {
+                match result {
+                    Ok(result) => {
+                        assert_eq!(
+                            result.to_string(),
+                            expected_result.to_string(),
+                            "key: '{}', values: '{:?}', expected: {}, got: {}",
+                            key_cache,
+                            values_cache,
+                            expected_result,
+                            result
+                        )
+                    }
+                    Err(_) => {
+                        assert!(expect_err, "expect an error");
+                    }
+                }
+            };
+        }
+
+        Ok(())
+    }
+}

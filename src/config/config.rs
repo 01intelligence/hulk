@@ -4,6 +4,7 @@ use std::sync::{Arc, RwLock};
 
 use anyhow::{anyhow, bail};
 use lazy_static::lazy_static;
+use maplit::hashmap;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
@@ -627,11 +628,13 @@ pub fn kv_fields<'a>(input: &'a str, keys: &[&str]) -> Vec<&'a str> {
         .enumerate()
         .map(|(i, index)| {
             let mut j = i + 1;
-            if j > value_indexes.len() {
-                j = value_indexes.len();
+            if j < value_indexes.len() {
+                let s = &input[*index..value_indexes[j]];
+                s.trim()
+            } else {
+                let s = &input[*index..];
+                s.trim()
             }
-            let s = &input[*index..value_indexes[j]];
-            s.trim()
         })
         .collect()
 }
@@ -643,4 +646,95 @@ fn sanitize_value(v: &str) -> &str {
         .chain(KV_SINGLE_QUOTE.chars())
         .collect::<Vec<char>>();
     v.trim().trim_matches(&quotes[..])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_config_kv_fields() {
+        let cases: [(&str, Vec<&str>, HashMap<&str, &str>); 8] = [
+            // No keys present
+            ("", vec!["comment"], HashMap::new()),
+            // No keys requested for tokenizing
+            (
+                r#"comment="Hi this is my comment =""#,
+                vec![],
+                HashMap::new(),
+            ),
+            // Single key requested and present
+            (
+                r#"comment="Hi this is my comment =""#,
+                vec!["comment"],
+                hashmap! {
+                    r#"comment="Hi this is my comment =""# => ""
+                },
+            ),
+            // Keys and input order of k=v is same.
+            (
+                r#"connection_string="host=localhost port=2832" comment="really long comment""#,
+                vec!["connection_string", "comment"],
+                hashmap! {
+                    r#"connection_string="host=localhost port=2832""# => "",
+                    r#"comment="really long comment""# => "",
+                },
+            ),
+            // Keys with spaces in between
+            (
+                r#"enable=on format=namespace connection_string=" host=localhost port=5432 dbname = cesnietor sslmode=disable" table=holicrayoli"#,
+                vec!["enable", "connection_string", "comment", "format", "table"],
+                hashmap! {
+                    r#"enable=on"# => "",
+                    r#"format=namespace"# => "",
+                    r#"connection_string=" host=localhost port=5432 dbname = cesnietor sslmode=disable""# => "",
+                    r#"table=holicrayoli"# => "",
+                },
+            ),
+            // One of the keys is not present and order of input has changed.
+            (
+                r#"comment="really long comment" connection_string="host=localhost port=2832""#,
+                vec!["connection_string", "comment", "format"],
+                hashmap! {
+                    r#"connection_string="host=localhost port=2832""# => "",
+                    r#"comment="really long comment""# => "",
+                },
+            ),
+            // Incorrect delimiter, expected fields should be empty.
+            (
+                r#"comment:"really long comment" connection_string:"host=localhost port=2832""#,
+                vec!["connection_string", "comment"],
+                HashMap::new(),
+            ),
+            // Incorrect type of input v/s required keys.
+            (
+                r#"comme="really long comment" connection_str="host=localhost port=2832""#,
+                vec!["connection_string", "comment"],
+                HashMap::new(),
+            ),
+        ];
+        for (input, keys, expected_fields) in cases.iter() {
+            let result = kv_fields(input, keys);
+            assert_eq!(result.len(), expected_fields.len());
+            for field in result.iter() {
+                assert!(expected_fields.contains_key(field));
+            }
+        }
+    }
+
+    #[test]
+    fn test_config_valid_region() {
+        let cases: [(&str, bool); 7] = [
+            ("us-east-1", true),
+            ("us_east", true),
+            ("helloWorld", true),
+            ("-fdslka", false),
+            ("^00[", false),
+            ("my region", false),
+            ("%%$#!", false),
+        ];
+        for (name, success) in cases.iter() {
+            assert_eq!(VALID_REGION_REGEX.is_match(name), *success);
+        }
+    }
 }

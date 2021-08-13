@@ -5,6 +5,7 @@ pub use rand::Rng;
 use rand::SeedableRng;
 use tokio::time::{timeout, Duration, Instant};
 
+pub mod assert;
 mod atomic;
 mod datetime;
 mod str;

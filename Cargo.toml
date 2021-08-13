@@ -102,6 +102,7 @@ slab = "0.4.4"
 bumpalo = "3.7.0"
 cfg-if = "1.0.0"
 memoffset = "0.6.4"
+tokio-test = "0.4.2"
 
 [dependencies.actix-cors]
 git = 'https://github.com/actix/actix-extras'

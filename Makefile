@@ -16,27 +16,43 @@ export HULK_BUILD_GIT_BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD 2> /dev/
 default: build
 
 clean:
-	cargo clean
+	cargo +nightly clean
 
 all: build
 
 build: export HULK_PROFILE=debug
 build:
-	cargo build --no-default-features
+	cargo +nightly build --verbose --no-default-features
 
 build-allow-warnings: export HULK_PROFILE=debug
 build-allow-warnings:
-	RUSTFLAGS="-A warnings" cargo build --no-default-features
+	RUSTFLAGS="-A warnings" cargo +nightly build --no-default-features
+
+test:
+	cargo +nightly test --verbose --no-default-features -- --skip bench
 
 test-allow-warnings: export HULK_PROFILE=debug
 test-allow-warnings:
-	RUSTFLAGS="-A warnings" cargo test --no-default-features
+	RUSTFLAGS="-A warnings" cargo +nightly test --no-default-features -- --skip bench
+
+bench:
+	cargo +nightly bench --verbose --no-default-features
+
+bench-allow-warnings: export HULK_PROFILE=debug
+bench-allow-warnings:
+	RUSTFLAGS="-A warnings" cargo +nightly bench --no-default-features
+
+fmt:
+	cargo fmt
+
+fmt-check:
+	cargo fmt -- --check
 
 check:
-	cargo clippy
+	cargo +nightly clippy
 
 doc:
-	RUSTDOCFLAGS="--enable-index-page -Zunstable-options" cargo doc --no-deps
+	RUSTDOCFLAGS="--enable-index-page -Zunstable-options" cargo +nightly doc --no-deps
 
 download-libs:
 	curl -o npcap-sdk-1.10.zip https://nmap.org/npcap/dist/npcap-sdk-1.10.zip

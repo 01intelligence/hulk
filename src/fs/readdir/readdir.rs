@@ -11,7 +11,7 @@ use futures_util::future::poll_fn;
 use tokio::task::{spawn_blocking, JoinHandle};
 
 use super::fs::{FileType, Metadata};
-use super::readdir_impl;
+use super::{asyncify, readdir_impl};
 
 pub async fn read_dir(path: impl AsRef<Path>) -> io::Result<ReadDir> {
     let path = path.as_ref().to_owned();
@@ -102,19 +102,5 @@ impl DirEntry {
     #[cfg(unix)]
     pub(super) fn as_inner(&self) -> &readdir_impl::DirEntry {
         &self.0
-    }
-}
-
-async fn asyncify<F, T>(f: F) -> io::Result<T>
-where
-    F: FnOnce() -> io::Result<T> + Send + 'static,
-    T: Send + 'static,
-{
-    match spawn_blocking(f).await {
-        Ok(res) => res,
-        Err(_) => Err(io::Error::new(
-            io::ErrorKind::Other,
-            "background task failed",
-        )),
     }
 }

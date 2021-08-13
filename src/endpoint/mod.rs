@@ -181,15 +181,18 @@ impl Endpoints {
         self.0.iter().map(|e| e.to_string()).collect()
     }
 
-    fn check_cross_device_mounts(&self) -> anyhow::Result<()> {
+    async fn check_cross_device_mounts(&self) -> anyhow::Result<()> {
         let mut abs_paths = Vec::new();
         for e in &self.0 {
             if e.is_local {
-                abs_paths.push(std::fs::canonicalize(
-                    e.url
-                        .to_file_path()
-                        .map_err(|_| anyhow::anyhow!("invalid file path"))?,
-                )?)
+                abs_paths.push(
+                    crate::fs::canonicalize(
+                        e.url
+                            .to_file_path()
+                            .map_err(|_| anyhow::anyhow!("invalid file path"))?,
+                    )
+                    .await?,
+                )
             }
         }
         crate::mount::check_cross_device(&abs_paths)
@@ -351,6 +354,7 @@ pub(self) async fn create_endpoints(
         // Check for cross device mounts if any.
         endpoints
             .check_cross_device_mounts()
+            .await
             .map_err(|e| UiError::InvalidFSEndpoint.msg(e.to_string()))?;
 
         return Ok((endpoints, SetupType::Fs));
@@ -360,6 +364,7 @@ pub(self) async fn create_endpoints(
         let eps = Endpoints::new(args)
             .map_err(|e| UiError::InvalidErasureEndpoints.msg(e.to_string()))?;
         eps.check_cross_device_mounts()
+            .await
             .map_err(|e| UiError::InvalidErasureEndpoints.msg(e.to_string()))?;
         endpoints.extend(eps.0.into_iter());
     }

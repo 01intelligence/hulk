@@ -1,3 +1,5 @@
+//! Instrument metrics for used filesystem operations from [`tokio::fs`].
+
 use std::path::Path;
 
 use tokio::fs;

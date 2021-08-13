@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
@@ -10,6 +9,9 @@ use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
 use rustls::internal::pemfile::{certs as extract_certs, pkcs8_private_keys};
 use rustls::sign::{any_supported_type, CertifiedKey};
 use rustls::{ClientHello, ResolvesServerCert};
+use tokio::io::AsyncReadExt;
+
+use crate::fs::File;
 
 pub struct Manager {
     certs: Arc<RwLock<HashMap<KeyCert, CertifiedKey>>>,
@@ -27,7 +29,7 @@ impl Manager {
         todo!()
     }
 
-    fn watch_file_events(&mut self) -> anyhow::Result<()> {
+    async fn watch_file_events(&mut self) -> anyhow::Result<()> {
         let certs = Arc::clone(&self.certs);
         let handler = move |res: notify::Result<notify::Event>| -> anyhow::Result<()> {
             match res {
@@ -47,8 +49,25 @@ impl Manager {
                             {
                                 continue;
                             }
-                            let cert_file = &mut BufReader::new(File::open(&pair.cert_file)?);
-                            let key_file = &mut BufReader::new(File::open(&pair.key_file)?);
+                            let (cert_file, key_file) =
+                                tokio::task::block_in_place(|| -> std::io::Result<_> {
+                                    tokio::runtime::Handle::current().block_on(async {
+                                        let mut cert_file = Vec::new();
+                                        File::open(&pair.cert_file)
+                                            .await?
+                                            .read_to_end(&mut cert_file)
+                                            .await?;
+                                        let mut key_file = Vec::new();
+                                        File::open(&pair.key_file)
+                                            .await?
+                                            .read_to_end(&mut key_file)
+                                            .await?;
+                                        Ok((cert_file, key_file))
+                                    })
+                                })?;
+
+                            let cert_file = &mut BufReader::new(&cert_file[..]);
+                            let key_file = &mut BufReader::new(&key_file[..]);
                             let cert_chain =
                                 extract_certs(cert_file).map_err(|_| anyhow!("invalid certs"))?;
                             cert_chain.first().ok_or_else(|| anyhow!("invalid certs"))?;

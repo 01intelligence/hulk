@@ -218,7 +218,22 @@ impl XlStorage {
 
     pub async fn list_volumes(&self) -> anyhow::Result<Vec<storage::VolInfo>> {
         let _ = check_path_length(&self.disk_path)?;
-        todo!()
+        let entries = fs::read_dir_entries(&self.disk_path).await?;
+        Ok(entries
+            .into_iter()
+            .filter_map(|entry| {
+                if !entry.ends_with(crate::globals::SLASH_SEPARATOR)
+                    || !is_valid_volume_name(&entry)
+                {
+                    // Skip if entry is neither a directory not a valid volume name.
+                    return None;
+                }
+                Some(storage::VolInfo {
+                    name: entry,
+                    created: utils::min_datetime(),
+                })
+            })
+            .collect())
     }
 
     fn get_volume_dir(&self, volume: &str) -> anyhow::Result<String> {

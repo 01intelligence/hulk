@@ -405,11 +405,26 @@ mod tests {
                 false,
             ),
             // Unsupported key error.
-            (S3_PREFIX, ValueSet::new(vec![Value::String("192.168.1.0/24".to_string())]), None, true),
+            (
+                S3_PREFIX,
+                ValueSet::new(vec![Value::String("192.168.1.0/24".to_string())]),
+                None,
+                true,
+            ),
             // Invalid value error.
-            (AWS_SOURCE_IP, ValueSet::new(vec![Value::String("node1.example.org".to_string())]), None, true),
+            (
+                AWS_SOURCE_IP,
+                ValueSet::new(vec![Value::String("node1.example.org".to_string())]),
+                None,
+                true,
+            ),
             // Invalid CIDR format error.
-            (AWS_SOURCE_IP, ValueSet::new(vec![Value::String("192.168.1.0.0/24".to_string())]), None, true),
+            (
+                AWS_SOURCE_IP,
+                ValueSet::new(vec![Value::String("192.168.1.0.0/24".to_string())]),
+                None,
+                true,
+            ),
         ];
 
         for (key, values, expected_result, expect_err) in cases {
@@ -471,11 +486,26 @@ mod tests {
                 false,
             ),
             // Unsupported key error.
-            (S3_PREFIX, ValueSet::new(vec![Value::String("192.168.1.0/24".to_string())]), None, true),
+            (
+                S3_PREFIX,
+                ValueSet::new(vec![Value::String("192.168.1.0/24".to_string())]),
+                None,
+                true,
+            ),
             // Invalid value error.
-            (AWS_SOURCE_IP, ValueSet::new(vec![Value::String("node1.example.org".to_string())]), None, true),
+            (
+                AWS_SOURCE_IP,
+                ValueSet::new(vec![Value::String("node1.example.org".to_string())]),
+                None,
+                true,
+            ),
             // Invalid CIDR format error.
-            (AWS_SOURCE_IP, ValueSet::new(vec![Value::String("192.168.1.0.0/24".to_string())]), None, true),
+            (
+                AWS_SOURCE_IP,
+                ValueSet::new(vec![Value::String("192.168.1.0.0/24".to_string())]),
+                None,
+                true,
+            ),
         ];
 
         for (key, values, expected_result, expect_err) in cases {

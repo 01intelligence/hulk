@@ -4,6 +4,7 @@ Hulk is a Rust implementation of the high performance object storage.
 
 [![build status](https://github.com/01intelligence/hulk/actions/workflows/build-and-test.yml/badge.svg?branch=master&event=push)](https://github.com/01intelligence/hulk/actions/workflows/build-and-test.yml)
 [![codecov](https://codecov.io/gh/01intelligence/hulk/branch/master/graph/badge.svg?token=IPYPXRBY61)](https://codecov.io/gh/01intelligence/hulk)
+![Apache 2.0 licensed](https://img.shields.io/badge/license-Apache%202-blue)
 
 ## Building
 

@@ -3,7 +3,6 @@ mod types;
 
 use std::borrow::Cow;
 use std::io::Error;
-use std::path::Path;
 
 pub use format_utils::*;
 use lazy_static::lazy_static;
@@ -14,6 +13,7 @@ pub use types::*;
 use crate::endpoint::Endpoint;
 use crate::errors::{AsError, StorageError, TypedError};
 use crate::fs::{check_path_length, err_io, err_not_found, err_permission, OpenOptionsDirectIo};
+use crate::utils::Path;
 use crate::{config, fs, globals, storage, utils};
 
 const NULL_VERSION_ID: &str = "null";
@@ -265,8 +265,8 @@ pub async fn get_valid_path(path: &str) -> anyhow::Result<Cow<'_, Path>> {
     }
 
     // Disallow relative paths, figure out absolute paths.
-    use path_absolutize::Absolutize;
-    let path = std::path::Path::new(path).absolutize()?;
+    use crate::utils::PathAbsolutize;
+    let path = crate::utils::Path::new(path).absolutize()?;
 
     use std::io::ErrorKind;
     match fs::metadata(path.as_ref()).await {

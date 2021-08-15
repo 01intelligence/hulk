@@ -1,10 +1,9 @@
-use std::path::Path;
-
 use const_format::concatcp;
 use relative_path::{RelativePath, RelativePathBuf};
 use tokio::io::AsyncRead;
 
 use super::*;
+use crate::utils::Path;
 
 pub const SLASH_SEPARATOR: &str = "/";
 
@@ -28,19 +27,6 @@ const COMP_READ_AHEAD_SIZE: usize = 100 << 20;
 const COMP_READ_AHEAD_BUFFERS: usize = 5;
 // Size of each buffer.
 const COMP_READ_AHEAD_BUF_SIZE: usize = 1 << 20;
-
-pub trait PathExt {
-    fn file_name(&self) -> Option<&str>;
-}
-
-impl<T: AsRef<str>> PathExt for T {
-    fn file_name(&self) -> Option<&str> {
-        match Path::new(self.as_ref()).file_name() {
-            None => None,
-            Some(s) => s.to_str(),
-        }
-    }
-}
 
 // Join paths and retains trailing SlashSeparator of the last element.
 pub fn path_join(elements: &[&str]) -> String {

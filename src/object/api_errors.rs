@@ -1,9 +1,9 @@
 use std::fmt;
-use std::path::Path;
 
 use thiserror::Error;
 
 use crate::errors::AsError;
+use crate::utils::Path;
 
 #[derive(Debug, Error)]
 pub struct GenericError {

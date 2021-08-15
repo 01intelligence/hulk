@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::io::BufReader;
-use std::path::Path;
 use std::sync::{Arc, RwLock};
 
 use anyhow::anyhow;
@@ -12,6 +11,7 @@ use rustls::{ClientHello, ResolvesServerCert};
 use tokio::io::AsyncReadExt;
 
 use crate::fs::File;
+use crate::utils::Path;
 
 pub struct Manager {
     certs: Arc<RwLock<HashMap<KeyCert, CertifiedKey>>>,

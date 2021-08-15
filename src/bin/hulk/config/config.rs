@@ -2,7 +2,7 @@ use bstr::ByteSlice;
 use const_format::concatcp;
 use hulk::admin::ConfigHistoryEntry;
 use hulk::errors::AsError;
-use hulk::object::{ObjectLayer, PathExt, SYSTEM_META_BUCKET};
+use hulk::object::{ObjectLayer, SYSTEM_META_BUCKET};
 use hulk::utils::StrExt;
 use hulk::{admin, config, hash, object};
 use thiserror::Error;
@@ -175,8 +175,7 @@ pub async fn list_server_config_history(
             )
             .await?;
         for obj in &res.objects {
-            let obj_name = obj
-                .name
+            let obj_name = hulk::utils::Path::new(&obj.name)
                 .file_name()
                 .ok_or_else(|| anyhow::anyhow!("invalid config history entry restore_id"))?;
             let data = if with_data {

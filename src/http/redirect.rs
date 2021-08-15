@@ -33,7 +33,7 @@ pub fn redirect(req: &HttpRequest, url: &str, status_code: StatusCode) -> HttpRe
             // No leading http://server
             if url.is_empty() || url.chars().nth(0).unwrap() != '/' {
                 // Make relative path absolute
-                if let Some(old_dir) = std::path::Path::new(old_path).parent() {
+                if let Some(old_dir) = crate::utils::Path::new(old_path).parent() {
                     url = Cow::Owned(old_dir.to_string_lossy().into_owned() + url.as_ref());
                 }
             }

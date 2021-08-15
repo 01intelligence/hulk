@@ -16,11 +16,12 @@ async fn generate_dir(n: usize) -> (tempfile::TempDir, HashMap<PathBuf, fs::File
         let rnd = utils::rng_seed_now().gen::<[u8; 8]>();
         let tmp_file = format!("test-readdir-{}.tmp", hex::encode(rnd));
         let tmp_file = dir.path().join(tmp_file);
+        let tmp_file: &utils::Path = tmp_file.as_path().try_into().unwrap();
         let file = assert_ok!(
             fs::OpenOptions::new()
                 .write(true)
                 .create_new(true)
-                .open(tmp_file.as_path())
+                .open(tmp_file)
                 .await
         );
         files.insert(assert_ok!(tmp_file.canonicalize()), file);

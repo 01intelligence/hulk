@@ -1,7 +1,8 @@
-use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use anyhow::ensure;
+
+use crate::utils::{Path, PathBuf};
 
 #[cfg(target_os = "linux")]
 pub fn check_cross_device<P: AsRef<Path>>(abs_paths: &[P]) -> anyhow::Result<()> {
@@ -36,7 +37,7 @@ pub fn check_cross_device<P: AsRef<Path>>(abs_paths: &[P]) -> anyhow::Result<()>
 #[cfg(target_os = "linux")]
 pub fn is_likely_mount_point<P: AsRef<Path>>(path: P) -> bool {
     use nix::sys::stat::{lstat, SFlag};
-    let s1 = match lstat(path.as_ref()) {
+    let s1 = match lstat(path.as_ref().as_std_path()) {
         Err(_) => {
             return false;
         }
@@ -48,7 +49,12 @@ pub fn is_likely_mount_point<P: AsRef<Path>>(path: P) -> bool {
         return false;
     }
 
-    let s2 = match lstat(path.as_ref().parent().unwrap_or_else(|| Path::new("/"))) {
+    let s2 = match lstat(
+        path.as_ref()
+            .parent()
+            .unwrap_or_else(|| Path::new("/"))
+            .as_std_path(),
+    ) {
         Err(_) => {
             return false;
         }

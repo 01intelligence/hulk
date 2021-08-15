@@ -1,8 +1,8 @@
-use std::path::Path;
-
 use async_trait::async_trait;
 use tokio::fs;
 use tokio::fs::File;
+
+use crate::utils::Path;
 
 const ALIGN_SIZE: usize = 4096;
 
@@ -10,7 +10,7 @@ const ALIGN_SIZE: usize = 4096;
 pub trait OpenOptionsDirectIo {
     async fn open_direct_io(
         &mut self,
-        path: impl AsRef<Path> + Send + 'async_trait,
+        path: impl AsRef<Path> + Send + Sync + 'async_trait,
     ) -> anyhow::Result<fs::File>;
 }
 
@@ -19,7 +19,7 @@ pub trait OpenOptionsDirectIo {
 impl OpenOptionsDirectIo for super::OpenOptions {
     async fn open_direct_io(
         &mut self,
-        path: impl AsRef<Path> + Send + 'async_trait,
+        path: impl AsRef<Path> + Send + Sync + 'async_trait,
     ) -> anyhow::Result<fs::File> {
         let file = self.custom_flags(libc::O_DIRECT).open(path).await?;
         Ok(file)
@@ -31,7 +31,7 @@ impl OpenOptionsDirectIo for super::OpenOptions {
 impl OpenOptionsDirectIo for super::OpenOptions {
     async fn open_direct_io(
         &mut self,
-        path: impl AsRef<Path> + Send + 'async_trait,
+        path: impl AsRef<Path> + Send + Sync + 'async_trait,
     ) -> anyhow::Result<fs::File> {
         use std::os::unix::io::AsRawFd;
         let file = self.open(path).await?;
@@ -49,7 +49,7 @@ impl OpenOptionsDirectIo for super::OpenOptions {
 impl OpenOptionsDirectIo for super::OpenOptions {
     async fn open_direct_io(
         &mut self,
-        path: impl AsRef<Path> + Send + 'async_trait,
+        path: impl AsRef<Path> + Send + Sync + 'async_trait,
     ) -> anyhow::Result<File> {
         // Do not support O_DIRECT on Windows.
         let file = self.open(path).await?;

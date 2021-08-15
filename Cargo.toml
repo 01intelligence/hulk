@@ -103,6 +103,7 @@ bumpalo = "3.7.0"
 cfg-if = "1.0.0"
 memoffset = "0.6.4"
 tokio-test = "0.4.2"
+camino = "1.0.5"
 
 [dependencies.actix-cors]
 git = 'https://github.com/actix/actix-extras'
@@ -115,6 +116,7 @@ reed-solomon-erasure = { git = 'https://github.com/01intelligence/reed-solomon-e
 actix-web = { git = 'https://github.com/01intelligence/actix-web', branch = 'master' }
 quick-xml = { git = 'https://github.com/01intelligence/quick-xml', branch = 'golang_xml' }
 mime = { git = 'https://github.com/01intelligence/mime', branch = '0.3.x' }
+camino = { git = 'https://github.com/01intelligence/camino', branch = 'master' }
 
 [target.'cfg(unix)'.dependencies]
 pprof = "0.4.3"

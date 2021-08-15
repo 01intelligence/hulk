@@ -1,13 +1,12 @@
 use std::convert::TryFrom;
 use std::io::ErrorKind;
-use std::path::Path;
 
 use super::*;
 use crate::errors::StorageError;
+use crate::utils::Path;
 
 pub async fn reliable_mkdir_all(path: impl AsRef<Path>, mode: u32) -> anyhow::Result<()> {
-    let path_str = path.as_ref().to_string_lossy();
-    let _ = check_path_length(path_str.as_ref())?;
+    let _ = check_path_length(path.as_ref().as_str())?;
 
     if let Err(err) = reliable_mkdir_all_inner(path, mode).await {
         return if err_not_dir(&err) {

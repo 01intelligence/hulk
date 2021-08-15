@@ -234,7 +234,7 @@ fn parse_cache_drives(drives: &str) -> anyhow::Result<Vec<String>> {
     }
     for d in &endpoints {
         ensure!(
-            std::path::Path::new(d).is_absolute(),
+            crate::utils::Path::new(d).is_absolute(),
             errors::UiError::InvalidCacheDrivesValue
                 .msg(format!("cache dir should be absolute path: {}", d))
         );

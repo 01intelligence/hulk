@@ -24,7 +24,8 @@ use readdir::{DirEntry, ReadDir};
 use tokio::fs::{DirEntry, ReadDir};
 
 use crate::fs::{err_not_found, err_too_many_symlinks};
-use crate::utils::OsStrExt;
+use crate::prelude::*;
+use crate::utils::PathExt;
 
 #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
 pub async fn read_dir(dir_path: impl AsRef<Path>) -> std::io::Result<ReadDir> {
@@ -85,11 +86,16 @@ impl<P: AsRef<Path>> ReadDirEntries<P> {
                 typ = meta.file_type();
             }
 
-            let name = path.as_str()?;
+            let name = path
+                .to_str()
+                .ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::Other, "PathBuf contains invalid UTF-8")
+                })?
+                .to_owned();
             let name = if typ.is_file() {
-                name.to_owned()
+                name
             } else if typ.is_dir() {
-                name.to_owned() + crate::globals::SLASH_SEPARATOR
+                name + crate::globals::SLASH_SEPARATOR
             } else {
                 continue;
             };

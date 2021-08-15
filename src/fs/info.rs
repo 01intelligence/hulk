@@ -1,8 +1,9 @@
 use std::collections::HashMap;
-use std::path::Path;
 
 use lazy_static::lazy_static;
 use maplit::hashmap;
+
+use crate::utils::Path;
 
 pub struct Info {
     pub total: u64,
@@ -17,7 +18,7 @@ pub struct Info {
 pub async fn get_info<P: AsRef<Path>>(path: P) -> anyhow::Result<Info> {
     use nix::sys::statfs::{statfs, Statfs};
     use nix::NixPath;
-    let s = statfs(path.as_ref())?;
+    let s = statfs(path.as_ref().as_std_path())?;
 
     // https://stackoverflow.com/questions/54823541/what-do-f-bsize-and-f-frsize-in-struct-statvfs-stand-for
 
@@ -109,7 +110,8 @@ fn get_fs_type(stat: &nix::sys::statfs::Statfs) -> &str {
 #[cfg(target_family = "windows")]
 fn get_fs_type(path: &Path) -> String {
     use std::ffi::{OsStr, OsString};
-    use std::path::{Component, Prefix};
+
+    use crate::utils::{Component, Prefix};
 
     let path = match path.components().next() {
         Some(Component::Prefix(prefix)) => match prefix.kind() {

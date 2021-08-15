@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::fmt;
 
 use anyhow::ensure;
@@ -17,6 +18,8 @@ use std::net::IpAddr;
 pub use ellipses::*;
 pub use net::*;
 pub use setup_type::*;
+
+use crate::utils::PathExt;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum EndpointType {
@@ -86,7 +89,7 @@ impl Endpoint {
                 "invalid URL endpoint format: missing scheme http or https"
             );
             use path_absolutize::*;
-            let path = std::path::Path::new(arg).absolutize()?;
+            let path = crate::utils::Path::new(arg).absolutize()?;
             let path = path_clean::clean(
                 path.to_str()
                     .ok_or_else(|| anyhow::anyhow!("invalid path"))?,
@@ -182,7 +185,7 @@ impl Endpoints {
     }
 
     async fn check_cross_device_mounts(&self) -> anyhow::Result<()> {
-        let mut abs_paths = Vec::new();
+        let mut abs_paths = Vec::<crate::utils::PathBuf>::new();
         for e in &self.0 {
             if e.is_local {
                 abs_paths.push(
@@ -191,7 +194,8 @@ impl Endpoints {
                             .to_file_path()
                             .map_err(|_| anyhow::anyhow!("invalid file path"))?,
                     )
-                    .await?,
+                    .await?
+                    .try_into()?,
                 )
             }
         }

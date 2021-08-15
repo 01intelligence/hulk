@@ -798,6 +798,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a4f925191b4367301851c6d99b09890311d74b0d43f274c0b34c86d308a3663"
 
 [[package]]
+name = "camino"
+version = "1.0.5"
+source = "git+https://github.com/01intelligence/camino?branch=master#6c99cce3155a0a1ec7aec849ffac49d6fef0bdaa"
+
+[[package]]
 name = "cc"
 version = "1.0.68"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1819,6 +1824,7 @@ dependencies = [
  "byteorder",
  "bytes 1.0.1",
  "cached",
+ "camino",
  "cc",
  "cfg-if 1.0.0",
  "chrono",

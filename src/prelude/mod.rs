@@ -4,3 +4,4 @@ pub use std::io::prelude::*;
 pub use std::ops::{Deref, DerefMut};
 
 pub use crate::fs::MetadataExt;
+pub use crate::utils::{PathAbsolutize, PathClean};

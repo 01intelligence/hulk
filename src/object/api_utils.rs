@@ -10,14 +10,14 @@ pub const SLASH_SEPARATOR: &str = "/";
 // System meta bucket.
 pub const SYSTEM_META_BUCKET: &str = ".hulk.sys";
 // Multipart meta prefix.
-const MPART_META_PREFIX: &str = "multipart";
+pub const MPART_META_PREFIX: &str = "multipart";
 // System Multipart meta prefix.
-const SYSTEM_META_MULTIPART_BUCKET: &str =
+pub const SYSTEM_META_MULTIPART_BUCKET: &str =
     concatcp!(SYSTEM_META_BUCKET, SLASH_SEPARATOR, MPART_META_PREFIX);
 // System tmp meta prefix.
-const SYSTEM_META_TMP_BUCKET: &str = concatcp!(SYSTEM_META_BUCKET, "/tmp");
+pub const SYSTEM_META_TMP_BUCKET: &str = concatcp!(SYSTEM_META_BUCKET, "/tmp");
 // System tmp meta prefix for deleted objects.
-const SYSTEM_META_TMP_DELETED_BUCKET: &str = concatcp!(SYSTEM_META_TMP_BUCKET, "/.trash");
+pub const SYSTEM_META_TMP_DELETED_BUCKET: &str = concatcp!(SYSTEM_META_TMP_BUCKET, "/.trash");
 
 // DNS separator (period), used for bucket name validation.
 const DNS_DELIMITER: &str = ".";

@@ -20,8 +20,6 @@ pub use ellipses::*;
 pub use net::*;
 pub use setup_type::*;
 
-use crate::utils::PathExt;
-
 #[derive(Debug, Eq, PartialEq)]
 pub enum EndpointType {
     Path,

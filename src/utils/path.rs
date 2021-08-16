@@ -40,3 +40,13 @@ impl PathAbsolutize for Path {
         Ok(path)
     }
 }
+
+pub trait PathClean {
+    fn clean(&self) -> PathBuf; // TODO: Cow
+}
+
+impl PathClean for Path {
+    fn clean(&self) -> PathBuf {
+        path_clean::clean(self.as_str()).into()
+    }
+}

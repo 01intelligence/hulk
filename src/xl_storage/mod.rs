@@ -10,11 +10,15 @@ use path_absolutize::Absolutize;
 use tokio::io::AsyncWriteExt;
 pub use types::*;
 
+use crate::admin::TraceType::Storage;
 use crate::endpoint::Endpoint;
 use crate::errors::{AsError, StorageError, TypedError};
-use crate::fs::{check_path_length, err_io, err_not_found, err_permission, OpenOptionsDirectIo};
+use crate::fs::{
+    check_path_length, err_dir_not_empty, err_io, err_not_dir, err_not_found, err_permission,
+    OpenOptionsDirectIo,
+};
 use crate::prelude::*;
-use crate::utils::Path;
+use crate::utils::{Path, PathBuf};
 use crate::{config, fs, globals, storage, utils};
 
 const NULL_VERSION_ID: &str = "null";
@@ -259,6 +263,167 @@ impl XlStorage {
             name: volume.to_owned(),
             created: meta.created_at(),
         })
+    }
+
+    pub async fn delete_volume(&self, volume: &str, force_delete: bool) -> anyhow::Result<()> {
+        let volume_dir = self.get_volume_dir(volume)?;
+
+        match if force_delete {
+            fs::reliable_rename(
+                volume_dir,
+                Path::new(&self.disk_path)
+                    .join(crate::object::SYSTEM_META_TMP_DELETED_BUCKET)
+                    .join(uuid::Uuid::new_v4().to_string()),
+            )
+            .await
+        } else {
+            fs::remove(volume_dir)
+                .await
+                .map_err(|err| anyhow::Error::from(err))
+        } {
+            Err(err) => {
+                return if let Some(ierr) = err.as_error::<std::io::Error>() {
+                    if err_not_found(ierr) {
+                        Err(StorageError::VolumeNotFound.into())
+                    } else if err_dir_not_empty(ierr) {
+                        Err(StorageError::VolumeNotEmpty.into())
+                    } else if err_permission(ierr) {
+                        Err(StorageError::DiskAccessDenied.into())
+                    } else if err_io(ierr) {
+                        Err(StorageError::FaultyDisk.into())
+                    } else {
+                        Err(err)
+                    }
+                } else {
+                    Err(err)
+                };
+            }
+            Ok(()) => Ok(()),
+        }
+    }
+
+    pub async fn list_dir(
+        &self,
+        volume: &str,
+        dir_path: &str,
+        count: usize,
+    ) -> anyhow::Result<Vec<String>> {
+        let volume_dir = self.get_volume_dir(volume)?;
+
+        let dir_path = crate::object::path_join(&[&volume_dir, dir_path]);
+        match if count > 0 {
+            fs::read_dir_entries(dir_path).await
+        } else {
+            fs::read_dir_entries_n(dir_path, count).await
+        } {
+            Err(err) => {
+                if err_not_found(&err) {
+                    if let Err(err) = fs::access(volume_dir).await {
+                        if err_not_found(&err) {
+                            return Err(StorageError::VolumeNotFound.into());
+                        } else if err_io(&err) {
+                            return Err(StorageError::FaultyDisk.into());
+                        }
+                    }
+                }
+                return Err(err.into());
+            }
+            Ok(entries) => Ok(entries),
+        }
+    }
+
+    pub async fn delete_version(
+        &self,
+        volume: &str,
+        path: &str,
+        file: &storage::FileInfo,
+        force_delete_marker: bool,
+    ) -> anyhow::Result<()> {
+        if path.ends_with(globals::SLASH_SEPARATOR) {}
+        Ok(())
+    }
+
+    pub async fn delete(&self, volume: &str, path: &str, recursive: bool) -> anyhow::Result<()> {
+        let volume_dir = self.get_volume_dir(volume)?;
+        if let Err(err) = fs::access(&volume_dir).await {
+            return if err_not_found(&err) {
+                Err(StorageError::VolumeNotFound.into())
+            } else if err_permission(&err) {
+                Err(StorageError::VolumeAccessDenied.into())
+            } else if err_io(&err) {
+                Err(StorageError::FaultyDisk.into())
+            } else {
+                Err(err.into())
+            };
+        }
+
+        let path = crate::object::path_join(&[&volume_dir, path]);
+        check_path_length(&path)?;
+
+        self.delete_file(&volume_dir, &path, recursive).await
+    }
+
+    #[async_recursion::async_recursion]
+    pub async fn delete_file(
+        &self,
+        base_path: &str,
+        delete_path: &str,
+        recursive: bool,
+    ) -> anyhow::Result<()> {
+        if base_path.is_empty() || delete_path.is_empty() {
+            return Ok(());
+        }
+
+        let is_dir = delete_path.ends_with(globals::SLASH_SEPARATOR);
+        let base_path = Path::new(base_path).clean();
+        let delete_path = Path::new(delete_path).clean();
+        if !delete_path.starts_with(&base_path) || &delete_path == &base_path {
+            return Ok(());
+        }
+
+        if let Err(err) = if recursive {
+            fs::reliable_rename(
+                &delete_path,
+                Path::new(&self.disk_path)
+                    .join(crate::object::SYSTEM_META_TMP_DELETED_BUCKET)
+                    .join(uuid::Uuid::new_v4().to_string()),
+            )
+            .await
+        } else {
+            fs::remove(&delete_path)
+                .await
+                .map_err(|err| anyhow::Error::from(err))
+        } {
+            return if let Some(ierr) = err.as_error::<std::io::Error>() {
+                if err_not_found(ierr) {
+                    Ok(())
+                } else if err_dir_not_empty(ierr) {
+                    if is_dir {
+                        Err(StorageError::FileNotFound.into())
+                    } else {
+                        Ok(())
+                    }
+                } else if err_permission(ierr) {
+                    Err(StorageError::FileAccessDenied.into())
+                } else if err_io(ierr) {
+                    Err(StorageError::FaultyDisk.into())
+                } else {
+                    Err(err)
+                }
+            } else {
+                Err(err)
+            };
+        }
+
+        if let Some(delete_path) = delete_path.parent() {
+            // Delete parent directory obviously not recursively. Errors for
+            // parent directories shouldn't trickle down.
+            let _ = self
+                .delete_file(base_path.as_str(), delete_path.as_str(), false)
+                .await;
+        }
+
+        Ok(())
     }
 
     fn get_volume_dir(&self, volume: &str) -> anyhow::Result<String> {

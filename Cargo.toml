@@ -104,6 +104,7 @@ cfg-if = "1.0.0"
 memoffset = "0.6.4"
 tokio-test = "0.4.2"
 camino = "1.0.5"
+async-recursion = "0.3.2"
 
 [dependencies.actix-cors]
 git = 'https://github.com/actix/actix-extras'

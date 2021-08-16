@@ -40,24 +40,21 @@ async fn reliable_mkdir_all_inner(path: impl AsRef<Path>, mode: u32) -> std::io:
     }
 }
 
-async fn reliable_rename(
+pub async fn reliable_rename(
     src_path: impl AsRef<Path>,
     dst_path: impl AsRef<Path>,
 ) -> anyhow::Result<()> {
-    let src_path_str = src_path.as_ref().to_string_lossy();
-    let dst_path_str = dst_path.as_ref().to_string_lossy();
-    let _ = check_path_length(src_path_str.as_ref())?;
-    let _ = check_path_length(dst_path_str.as_ref())?;
-    if let Err(err) = reliable_rename_inner(src_path.as_ref(), dst_path.as_ref()).await {
+    let src_path = src_path.as_ref();
+    let dst_path = dst_path.as_ref();
+    let _ = check_path_length(src_path.as_str())?;
+    let _ = check_path_length(dst_path.as_str())?;
+    if let Err(err) = reliable_rename_inner(src_path, dst_path).await {
         return if err_not_found(&err) {
             Err(StorageError::FileNotFound.into())
         } else if err_not_dir(&err) {
             Err(StorageError::FileAccessDenied.into())
         } else if err_cross_device(&err) {
-            Err(
-                StorageError::CrossDeviceLink(src_path_str.to_string(), dst_path_str.to_string())
-                    .into(),
-            )
+            Err(StorageError::CrossDeviceLink(src_path.to_string(), dst_path.to_string()).into())
         } else if err_already_exists(&err) {
             Err(StorageError::IsNotRegular.into())
         } else {
@@ -91,7 +88,7 @@ async fn reliable_rename_inner(
     }
 }
 
-async fn reliable_remove_all(path: impl AsRef<Path>) -> anyhow::Result<()> {
+pub async fn reliable_remove_all(path: impl AsRef<Path>) -> anyhow::Result<()> {
     let path_str = path.as_ref().to_string_lossy();
     let _ = check_path_length(path_str.as_ref())?;
 

@@ -3,7 +3,7 @@
 use tokio::fs;
 
 use crate::feature;
-use crate::utils::Path;
+use crate::utils::{DateTime, Path};
 
 #[derive(Clone, Debug)]
 pub struct OpenOptions(fs::OpenOptions);
@@ -142,8 +142,35 @@ pub async fn remove_all(path: impl AsRef<Path>) -> std::io::Result<()> {
     }
 }
 
-// TODO: async
-pub fn access(path: impl AsRef<Path>) -> std::io::Result<()> {
+pub async fn access(path: impl AsRef<Path>) -> std::io::Result<()> {
     use faccess::{AccessMode, PathExt};
-    path.as_ref().access(AccessMode::READ | AccessMode::WRITE)
+    let path = path.as_ref().to_owned();
+    super::asyncify(move || path.access(AccessMode::READ | AccessMode::WRITE)).await
+}
+
+pub async fn metadata(path: impl AsRef<Path>) -> std::io::Result<std::fs::Metadata> {
+    fs::metadata(path.as_ref()).await
+}
+
+pub trait MetadataExt {
+    fn modified_at(&self) -> crate::utils::DateTime;
+    fn accessed_at(&self) -> crate::utils::DateTime;
+    fn created_at(&self) -> crate::utils::DateTime;
+}
+
+impl MetadataExt for std::fs::Metadata {
+    fn modified_at(&self) -> DateTime {
+        // Available on Unix/Windows, so unwrap is safe.
+        self.modified().unwrap().into()
+    }
+
+    fn accessed_at(&self) -> DateTime {
+        // Available on Unix/Windows, so unwrap is safe.
+        self.accessed().unwrap().into()
+    }
+
+    fn created_at(&self) -> DateTime {
+        // Available on Unix/Windows, so unwrap is safe.
+        self.created().unwrap().into()
+    }
 }

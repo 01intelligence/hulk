@@ -3,7 +3,8 @@
 use tokio::fs;
 
 use crate::feature;
-use crate::utils::{DateTime, Path};
+use crate::prelude::*;
+use crate::utils::{DateTime, Path, PathBuf};
 
 #[derive(Clone, Debug)]
 pub struct OpenOptions(fs::OpenOptions);
@@ -150,6 +151,12 @@ pub async fn access(path: impl AsRef<Path>) -> std::io::Result<()> {
 
 pub async fn metadata(path: impl AsRef<Path>) -> std::io::Result<std::fs::Metadata> {
     fs::metadata(path.as_ref()).await
+}
+
+pub async fn canonicalize(path: impl AsRef<Path>) -> std::io::Result<PathBuf> {
+    fs::canonicalize(path.as_ref())
+        .await
+        .map(|p| p.try_into().unwrap())
 }
 
 pub trait MetadataExt {

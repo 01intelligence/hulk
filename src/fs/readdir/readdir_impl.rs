@@ -27,7 +27,6 @@ use memoffset::offset_of;
 use thiserror::Error;
 
 use crate::pool::{BytesPool, BytesPoolGuard};
-use crate::sys::time::SystemTime;
 #[cfg(any(all(target_os = "linux", target_env = "gnu"), target_os = "macos",))]
 use crate::sys::weak::syscall;
 use crate::sys::{cvt, cvt_r};
@@ -178,11 +177,6 @@ pub struct DirEntry {
     dir: Arc<InnerReadDir>,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct FilePermissions {
-    mode: mode_t,
-}
-
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct FileType {
     mode: mode_t,
@@ -203,77 +197,10 @@ cfg_has_statx! {{
 }}
 
 impl FileAttr {
-    pub fn size(&self) -> u64 {
-        self.stat.st_size as u64
-    }
-    pub fn perm(&self) -> FilePermissions {
-        FilePermissions {
-            mode: (self.stat.st_mode as mode_t),
-        }
-    }
-
     pub fn file_type(&self) -> FileType {
         FileType {
             mode: self.stat.st_mode as mode_t,
         }
-    }
-}
-
-impl FileAttr {
-    pub fn modified(&self) -> io::Result<SystemTime> {
-        Ok(SystemTime::from(libc::timespec {
-            tv_sec: self.stat.st_mtime as libc::time_t,
-            tv_nsec: self.stat.st_mtime_nsec as _,
-        }))
-    }
-
-    pub fn accessed(&self) -> io::Result<SystemTime> {
-        Ok(SystemTime::from(libc::timespec {
-            tv_sec: self.stat.st_atime as libc::time_t,
-            tv_nsec: self.stat.st_atime_nsec as _,
-        }))
-    }
-
-    #[cfg(any(
-        target_os = "freebsd",
-        target_os = "openbsd",
-        target_os = "macos",
-        target_os = "ios"
-    ))]
-    pub fn created(&self) -> io::Result<SystemTime> {
-        Ok(SystemTime::from(libc::timespec {
-            tv_sec: self.stat.st_birthtime as libc::time_t,
-            tv_nsec: self.stat.st_birthtime_nsec as libc::c_long,
-        }))
-    }
-
-    #[cfg(not(any(
-        target_os = "freebsd",
-        target_os = "openbsd",
-        target_os = "macos",
-        target_os = "ios"
-    )))]
-    pub fn created(&self) -> io::Result<SystemTime> {
-        cfg_has_statx! {
-            if let Some(ext) = &self.statx_extra_fields {
-                return if (ext.stx_mask & libc::STATX_BTIME) != 0 {
-                    Ok(SystemTime::from(libc::timespec {
-                        tv_sec: ext.stx_btime.tv_sec as libc::time_t,
-                        tv_nsec: ext.stx_btime.tv_nsec as _,
-                    }))
-                } else {
-                    Err(io::Error::new(
-                        io::ErrorKind::Uncategorized,
-                        Error::CreationTimeUnavailableForFilesystem,
-                    ))
-                };
-            }
-        }
-
-        Err(io::Error::new(
-            io::ErrorKind::Unsupported,
-            Error::CreationTimeUnavailableForPlatform,
-        ))
     }
 }
 
@@ -437,42 +364,6 @@ impl Drop for InnerReadDir {
     }
 }
 
-impl FilePermissions {
-    pub fn readonly(&self) -> bool {
-        // check if any class (owner, group, others) has write permission
-        self.mode & 0o222 == 0
-    }
-
-    pub fn set_readonly(&mut self, readonly: bool) {
-        if readonly {
-            // remove write permission for all classes; equivalent to `chmod a-w <file>`
-            self.mode &= !0o222;
-        } else {
-            // add write permission for all classes; equivalent to `chmod a+w <file>`
-            self.mode |= 0o222;
-        }
-    }
-    pub fn mode(&self) -> u32 {
-        self.mode as u32
-    }
-}
-
-impl FileType {
-    pub fn is_dir(&self) -> bool {
-        self.is(libc::S_IFDIR)
-    }
-    pub fn is_file(&self) -> bool {
-        self.is(libc::S_IFREG)
-    }
-    pub fn is_symlink(&self) -> bool {
-        self.is(libc::S_IFLNK)
-    }
-
-    pub fn is(&self, mode: mode_t) -> bool {
-        self.mode & libc::S_IFMT == mode
-    }
-}
-
 const BLOCK_SIZE: usize = 8192;
 const DIRENT_BUF_SIZE: usize = BLOCK_SIZE * 128;
 const DIRENT_BUF_POOL_MAX_SIZE: usize = 1024 * 8;
@@ -574,25 +465,6 @@ impl Iterator for ReadDir {
 
 fn cstr(path: &Path) -> io::Result<CString> {
     Ok(CString::new(path.as_os_str().as_bytes())?)
-}
-
-pub fn stat(p: &Path) -> io::Result<FileAttr> {
-    let p = cstr(p)?;
-
-    cfg_has_statx! {
-        if let Some(ret) = unsafe { try_statx(
-            libc::AT_FDCWD,
-            p.as_ptr(),
-            libc::AT_STATX_SYNC_AS_STAT,
-            libc::STATX_ALL,
-        ) } {
-            return ret;
-        }
-    }
-
-    let mut stat: stat64 = unsafe { mem::zeroed() };
-    cvt(unsafe { stat64(p.as_ptr(), &mut stat) })?;
-    Ok(FileAttr::from_stat64(stat))
 }
 
 fn lstat(p: &Path) -> io::Result<FileAttr> {

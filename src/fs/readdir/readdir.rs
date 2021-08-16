@@ -10,7 +10,6 @@ use futures_core::ready;
 use futures_util::future::poll_fn;
 use tokio::task::{spawn_blocking, JoinHandle};
 
-use super::fs::{FileType, Metadata};
 use super::{asyncify, readdir_impl};
 
 pub async fn read_dir(path: impl AsRef<Path>) -> io::Result<ReadDir> {
@@ -72,7 +71,6 @@ impl ReadDir {
 #[cfg(unix)]
 impl DirEntry {
     pub fn ino(&self) -> u64 {
-        use std::os::unix::fs::DirEntryExt;
         self.as_inner().ino()
     }
 }
@@ -89,18 +87,34 @@ impl DirEntry {
         self.0.file_name()
     }
 
-    pub async fn metadata(&self) -> io::Result<Metadata> {
+    pub async fn metadata(&self) -> io::Result<std::fs::Metadata> {
         let std = self.0.clone();
-        asyncify(move || std.metadata().map(Metadata)).await
+        asyncify(move || std.metadata().map(|m| Metadata(m).to_std())).await
     }
 
-    pub async fn file_type(&self) -> io::Result<FileType> {
+    pub async fn file_type(&self) -> io::Result<std::fs::FileType> {
         let std = self.0.clone();
-        asyncify(move || std.file_type().map(FileType)).await
+        asyncify(move || std.file_type().map(|f| FileType(f).to_std())).await
     }
 
     #[cfg(unix)]
     pub(super) fn as_inner(&self) -> &readdir_impl::DirEntry {
         &self.0
+    }
+}
+
+pub struct Metadata(readdir_impl::FileAttr);
+
+pub struct FileType(readdir_impl::FileType);
+
+impl Metadata {
+    pub fn to_std(self) -> std::fs::Metadata {
+        unsafe { std::mem::transmute(self) }
+    }
+}
+
+impl FileType {
+    pub fn to_std(self) -> std::fs::FileType {
+        unsafe { std::mem::transmute(self) }
     }
 }

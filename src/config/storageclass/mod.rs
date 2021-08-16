@@ -199,3 +199,110 @@ pub fn lookup_config(kvs: &KVS, set_drive_count: u8) -> anyhow::Result<Config> {
     let _ = validate_parity(cfg.standard.parity, cfg.rrs.parity, set_drive_count)?;
     Ok(cfg)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_storage_class_parse() {
+        let cases: [(&str, StorageClass, &str); 6] = [
+            ("EC:3", StorageClass { parity: 3 }, ""),
+            ("EC:4", StorageClass { parity: 4 }, ""),
+            (
+                "AB:4",
+                StorageClass { parity: 4 },
+                "supported scheme is 'EC', but not 'AB'",
+            ),
+            (
+                "EC:4:5",
+                StorageClass { parity: 4 },
+                "too many sections in 'EC:4:5'",
+            ),
+            ("EC:A", StorageClass { parity: 4 }, "invalid parity 'A'"),
+            ("AB", StorageClass { parity: 4 }, "too few sections in 'AB'"),
+        ];
+        for (storage_class_env, want_sc, expected_error) in cases.iter() {
+            let result = parse_storage_class(storage_class_env);
+            match result {
+                Ok(result) => {
+                    assert_eq!(result.parity, want_sc.parity);
+                    assert_eq!("", *expected_error);
+                }
+                Err(err) => assert_eq!(err.to_string(), *expected_error),
+            }
+        }
+    }
+
+    #[test]
+    fn test_storage_class_validate_parity() {
+        let cases: [(u8, u8, bool, u8); 9] = [
+            (2, 4, true, 16),
+            (3, 3, true, 16),
+            (0, 0, true, 16),
+            (1, 4, false, 16),
+            (7, 6, false, 16),
+            (9, 0, false, 16),
+            (9, 9, false, 16),
+            (2, 9, false, 16),
+            (9, 2, false, 16),
+        ];
+        for (rrs_parity, ss_parity, success, set_drive_count) in cases.iter() {
+            let result = validate_parity(*ss_parity, *rrs_parity, *set_drive_count);
+            match result {
+                Ok(_) => assert!(success),
+                Err(_) => assert!(!success),
+            }
+        }
+    }
+
+    #[test]
+    fn test_storage_class_parity_count() {
+        let cases: [(&str, u8, u8, u8); 6] = [
+            (RRS, 16, 14, 2),
+            (STANDARD, 16, 8, 8),
+            ("", 16, 8, 8),
+            (RRS, 16, 9, 7),
+            (STANDARD, 16, 10, 6),
+            ("", 16, 9, 7),
+        ];
+        for (i, (sc, disks_count, expected_data, expected_parity)) in cases.iter().enumerate() {
+            let mut cfg = Config {
+                standard: StorageClass { parity: 8 },
+                rrs: StorageClass { parity: 0 },
+                dma: String::new(),
+            };
+
+            if i + 1 == 4 {
+                cfg.rrs.parity = 7;
+            }
+            if i + 1 == 5 {
+                cfg.standard.parity = 6;
+            }
+            if i + 1 == 6 {
+                cfg.standard.parity = 7;
+            }
+
+            let result = cfg.get_parity_for_sc(sc);
+            assert_eq!(disks_count - result, *expected_data);
+            assert_eq!(result, *expected_parity);
+        }
+    }
+
+    #[test]
+    fn test_storage_class_is_valid_kind() {
+        let cases: [(&str, bool); 7] = [
+            ("STANDARD", true),
+            ("REDUCED_REDUNDANCY", true),
+            ("", false),
+            ("INVALID", false),
+            ("123", false),
+            ("MINIO_STORAGE_CLASS_RRS", false),
+            ("MINIO_STORAGE_CLASS_STANDARD", false),
+        ];
+        for (sc, want) in cases.iter() {
+            let result = is_valid(sc);
+            assert_eq!(result, *want);
+        }
+    }
+}

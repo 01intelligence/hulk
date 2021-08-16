@@ -13,6 +13,7 @@ pub use types::*;
 use crate::endpoint::Endpoint;
 use crate::errors::{AsError, StorageError, TypedError};
 use crate::fs::{check_path_length, err_io, err_not_found, err_permission, OpenOptionsDirectIo};
+use crate::prelude::*;
 use crate::utils::Path;
 use crate::{config, fs, globals, storage, utils};
 
@@ -87,7 +88,7 @@ impl XlStorage {
         todo!()
     }
 
-    pub fn set_disk_id(&mut self, id: String) {
+    pub fn set_disk_id(&mut self, _id: String) {
         // Nothing to do.
     }
 
@@ -170,7 +171,7 @@ impl XlStorage {
         }
         let volume_dir = self.get_volume_dir(volume)?;
 
-        match fs::access(&volume_dir) {
+        match fs::access(&volume_dir).await {
             Ok(_) => Err(StorageError::VolumeExists.into()),
             Err(mut err) => {
                 let mut any_err: anyhow::Error;
@@ -234,6 +235,30 @@ impl XlStorage {
                 })
             })
             .collect())
+    }
+
+    pub async fn stat_volume(&self, volume: &str) -> anyhow::Result<storage::VolInfo> {
+        let volume_dir = self.get_volume_dir(volume)?;
+
+        let meta = match fs::metadata(volume_dir).await {
+            Err(err) => {
+                return if err_not_found(&err) {
+                    Err(StorageError::VolumeNotFound.into())
+                } else if err_permission(&err) {
+                    Err(StorageError::DiskAccessDenied.into())
+                } else if err_io(&err) {
+                    Err(StorageError::FaultyDisk.into())
+                } else {
+                    Err(err.into())
+                }
+            }
+            Ok(meta) => meta,
+        };
+
+        Ok(storage::VolInfo {
+            name: volume.to_owned(),
+            created: meta.created_at(),
+        })
     }
 
     fn get_volume_dir(&self, volume: &str) -> anyhow::Result<String> {

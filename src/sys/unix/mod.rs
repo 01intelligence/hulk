@@ -2,8 +2,6 @@ use std::io::ErrorKind;
 #[macro_use]
 pub mod weak;
 
-pub mod time;
-
 #[doc(hidden)]
 pub trait IsMinusOne {
     fn is_minus_one(&self) -> bool;

@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use tokio::fs;
 use tokio::fs::File;
 
 use crate::utils::Path;
@@ -11,7 +10,7 @@ pub trait OpenOptionsDirectIo {
     async fn open_direct_io(
         &mut self,
         path: impl AsRef<Path> + Send + Sync + 'async_trait,
-    ) -> anyhow::Result<fs::File>;
+    ) -> anyhow::Result<File>;
 }
 
 #[cfg(all(target_family = "unix", not(target_os = "macos")))]
@@ -20,7 +19,7 @@ impl OpenOptionsDirectIo for super::OpenOptions {
     async fn open_direct_io(
         &mut self,
         path: impl AsRef<Path> + Send + Sync + 'async_trait,
-    ) -> anyhow::Result<fs::File> {
+    ) -> anyhow::Result<File> {
         let file = self.custom_flags(libc::O_DIRECT).open(path).await?;
         Ok(file)
     }
@@ -32,7 +31,7 @@ impl OpenOptionsDirectIo for super::OpenOptions {
     async fn open_direct_io(
         &mut self,
         path: impl AsRef<Path> + Send + Sync + 'async_trait,
-    ) -> anyhow::Result<fs::File> {
+    ) -> anyhow::Result<File> {
         use std::os::unix::io::AsRawFd;
         let file = self.open(path).await?;
         // F_NOCACHE: Turns data caching off/on.
@@ -68,7 +67,7 @@ pub trait FileDirectIo {
 }
 
 #[cfg(all(target_family = "unix", not(target_os = "macos")))]
-impl FileDirectIo for fs::File {
+impl FileDirectIo for File {
     fn direct_io(&self, enable: bool) -> anyhow::Result<()> {
         use std::os::unix::io::AsRawFd;
 
@@ -87,7 +86,7 @@ impl FileDirectIo for fs::File {
 }
 
 #[cfg(target_os = "macos")]
-impl FileDirectIo for fs::File {
+impl FileDirectIo for File {
     fn direct_io(&self, enable: bool) -> anyhow::Result<()> {
         use std::os::unix::io::AsRawFd;
         let res = unsafe {
@@ -103,7 +102,7 @@ impl FileDirectIo for fs::File {
 }
 
 #[cfg(target_family = "windows")]
-impl FileDirectIo for fs::File {
+impl FileDirectIo for File {
     fn direct_io(&self, _enable: bool) -> anyhow::Result<()> {
         Ok(())
     }

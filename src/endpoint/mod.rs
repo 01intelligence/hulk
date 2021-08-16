@@ -8,6 +8,7 @@ use path_absolutize::Absolutize;
 use crate::errors::UiError;
 use crate::globals::*;
 use crate::strset::StringSet;
+use crate::utils::{Path, PathBuf};
 
 mod ellipses;
 mod net;
@@ -89,7 +90,7 @@ impl Endpoint {
                 "invalid URL endpoint format: missing scheme http or https"
             );
             use path_absolutize::*;
-            let path = crate::utils::Path::new(arg).absolutize()?;
+            let path = Path::new(arg).absolutize()?;
             let path = path_clean::clean(
                 path.to_str()
                     .ok_or_else(|| anyhow::anyhow!("invalid path"))?,
@@ -185,18 +186,15 @@ impl Endpoints {
     }
 
     async fn check_cross_device_mounts(&self) -> anyhow::Result<()> {
-        let mut abs_paths = Vec::<crate::utils::PathBuf>::new();
+        let mut abs_paths = Vec::<PathBuf>::new();
         for e in &self.0 {
             if e.is_local {
-                abs_paths.push(
-                    crate::fs::canonicalize(
-                        e.url
-                            .to_file_path()
-                            .map_err(|_| anyhow::anyhow!("invalid file path"))?,
-                    )
-                    .await?
-                    .try_into()?,
-                )
+                let path: PathBuf = e
+                    .url
+                    .to_file_path()
+                    .map_err(|_| anyhow::anyhow!("invalid file path"))?
+                    .try_into()?;
+                abs_paths.push(crate::fs::canonicalize(path).await?.try_into()?)
             }
         }
         crate::mount::check_cross_device(&abs_paths)

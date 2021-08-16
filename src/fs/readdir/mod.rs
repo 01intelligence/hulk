@@ -1,22 +1,14 @@
 #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
-mod fs;
-#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
 mod readdir;
 #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
 mod readdir_impl;
-#[cfg(unix)]
-mod time;
 
-#[cfg(not(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd")))]
-use std::fs::FileType;
-use std::fs::Metadata;
+use std::fs::{FileType, Metadata};
 use std::io;
 use std::io::Error;
 use std::path::{Path, PathBuf};
 use std::task::{Context, Poll};
 
-#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
-use fs::FileType;
 use futures_core::Stream;
 #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
 use readdir::{DirEntry, ReadDir};
@@ -25,7 +17,6 @@ use tokio::fs::{DirEntry, ReadDir};
 
 use crate::fs::{err_not_found, err_too_many_symlinks};
 use crate::prelude::*;
-use crate::utils::PathExt;
 
 #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
 pub async fn read_dir(dir_path: impl AsRef<Path>) -> std::io::Result<ReadDir> {
@@ -35,16 +26,6 @@ pub async fn read_dir(dir_path: impl AsRef<Path>) -> std::io::Result<ReadDir> {
 #[cfg(not(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd")))]
 pub async fn read_dir(dir_path: impl AsRef<Path>) -> std::io::Result<ReadDir> {
     tokio::fs::read_dir(dir_path).await
-}
-
-#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
-pub async fn metadata(path: impl AsRef<Path>) -> std::io::Result<fs::Metadata> {
-    fs::metadata(path).await
-}
-
-#[cfg(not(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd")))]
-pub async fn metadata(path: impl AsRef<Path>) -> std::io::Result<std::fs::Metadata> {
-    tokio::fs::metadata(path).await
 }
 
 pub struct ReadDirEntries<P: AsRef<Path>>(P, Option<ReadDir>);
@@ -63,11 +44,14 @@ impl<P: AsRef<Path>> ReadDirEntries<P> {
         };
         while let Some(entry) = stream.next_entry().await? {
             let mut typ = entry.file_type().await?;
-            let path = entry.path();
+            let path: crate::utils::PathBuf = entry
+                .path()
+                .try_into()
+                .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
 
             if typ.is_symlink() {
                 // Traverse symlinks.
-                let meta = match metadata(&path).await {
+                let meta = match crate::fs::metadata(&path).await {
                     Ok(meta) => meta,
                     Err(err) => {
                         // It got deleted in the meantime, not found

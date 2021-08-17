@@ -7,13 +7,13 @@ use crate::pool::slab::BytesGuard;
 mod deadpool;
 mod slab;
 
-pub struct TypedPoolGuard<'a, T: Default + Sync + Send>(TypedPoolGuardInner<'a, T>);
-enum TypedPoolGuardInner<'a, T: Default + Sync + Send> {
+pub struct TypedPoolGuard<'a, T: Default + Send>(TypedPoolGuardInner<'a, T>);
+enum TypedPoolGuardInner<'a, T: Default + Send> {
     DeadPool(deadpool::TypedGuard<T>),
     Slab(slab::TypedGuard<'a, T>),
 }
 
-impl<'a, T: Default + Sync + Send> Deref for TypedPoolGuard<'a, T> {
+impl<'a, T: Default + Send> Deref for TypedPoolGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -24,7 +24,7 @@ impl<'a, T: Default + Sync + Send> Deref for TypedPoolGuard<'a, T> {
     }
 }
 
-impl<'a, T: Default + Sync + Send> DerefMut for TypedPoolGuard<'a, T> {
+impl<'a, T: Default + Send> DerefMut for TypedPoolGuard<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         match &mut self.0 {
             TypedPoolGuardInner::DeadPool(guard) => guard.deref_mut(),
@@ -33,13 +33,13 @@ impl<'a, T: Default + Sync + Send> DerefMut for TypedPoolGuard<'a, T> {
     }
 }
 
-pub struct TypedPool<T: Default + Sync + Send>(TypedPoolInner<T>);
-enum TypedPoolInner<T: Default + Sync + Send> {
+pub struct TypedPool<T: Default + Send>(TypedPoolInner<T>);
+enum TypedPoolInner<T: Default + Send> {
     DeadPool(deadpool::TypedPool<T>),
     Slab(slab::TypedPool<T>),
 }
 
-impl<T: Default + Sync + Send> TypedPool<T> {
+impl<T: Default + Send> TypedPool<T> {
     pub fn new(max_size: usize) -> Self {
         TypedPool(TypedPoolInner::DeadPool(deadpool::TypedPool::new(max_size)))
     }

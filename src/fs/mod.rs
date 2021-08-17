@@ -1,3 +1,4 @@
+mod buf_reader;
 mod directio;
 mod errors;
 mod info;
@@ -7,6 +8,7 @@ mod readdir;
 mod reliable;
 mod root_disk;
 
+pub use buf_reader::*;
 pub use directio::*;
 pub use errors::*;
 pub use info::*;

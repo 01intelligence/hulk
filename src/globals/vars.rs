@@ -54,6 +54,8 @@ pub struct Globals {
 
     pub api_config: Arc<Mutex<ApiConfig>>,
 
+    pub storage_class: Arc<Mutex<crate::config::storageclass::Config>>,
+
     // IsSSL indicates if the server is configured with SSL.
     pub is_tls: Arc<AtomicBool>,
 

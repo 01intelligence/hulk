@@ -4,17 +4,17 @@ use std::ops::{Deref, DerefMut};
 use async_trait::async_trait;
 use deadpool::managed::{Manager, Object, Pool, RecycleResult};
 
-pub(super) struct TypedGuard<T: Default + Sync + Send>(Object<TypedManager<T>>);
+pub(super) struct TypedGuard<T: Default + Send>(Object<TypedManager<T>>);
 
-pub(super) struct TypedPool<T: Default + Sync + Send>(Pool<TypedManager<T>>);
+pub(super) struct TypedPool<T: Default + Send>(Pool<TypedManager<T>>);
 
-impl<T: Default + Sync + Send> From<Object<TypedManager<T>>> for TypedGuard<T> {
+impl<T: Default + Send> From<Object<TypedManager<T>>> for TypedGuard<T> {
     fn from(obj: Object<TypedManager<T>>) -> Self {
         TypedGuard(obj)
     }
 }
 
-impl<T: Default + Sync + Send> Deref for TypedGuard<T> {
+impl<T: Default + Send> Deref for TypedGuard<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -22,19 +22,19 @@ impl<T: Default + Sync + Send> Deref for TypedGuard<T> {
     }
 }
 
-impl<T: Default + Sync + Send> DerefMut for TypedGuard<T> {
+impl<T: Default + Send> DerefMut for TypedGuard<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.0.deref_mut()
     }
 }
 
-impl<T: Default + Sync + Send> TypedPool<T> {
+impl<T: Default + Send> TypedPool<T> {
     pub(super) fn new(max_size: usize) -> Self {
         TypedPool(Pool::new(TypedManager(PhantomData), max_size))
     }
 }
 
-impl<T: Default + Sync + Send> Deref for TypedPool<T> {
+impl<T: Default + Send> Deref for TypedPool<T> {
     type Target = Pool<TypedManager<T>>;
 
     fn deref(&self) -> &Self::Target {
@@ -42,10 +42,10 @@ impl<T: Default + Sync + Send> Deref for TypedPool<T> {
     }
 }
 
-pub(super) struct TypedManager<T>(PhantomData<T>);
+pub(super) struct TypedManager<T>(PhantomData<fn() -> T>);
 
 #[async_trait]
-impl<T: Default + Sync + Send> Manager for TypedManager<T> {
+impl<T: Default + Send> Manager for TypedManager<T> {
     type Type = T;
     type Error = std::convert::Infallible;
 

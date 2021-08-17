@@ -35,7 +35,7 @@ impl<'a, T> DerefMut for TypedGuard<'a, T> {
 
 pub(super) struct TypedPool<T>(Arc<RwLock<(Slab<T>, Vec<usize>)>>);
 
-impl<T: Default + Sync + Send> TypedPool<T> {
+impl<T: Default> TypedPool<T> {
     pub(super) fn new(max_size: usize) -> Self {
         TypedPool(Arc::new(RwLock::new((
             Slab::with_capacity(max_size),

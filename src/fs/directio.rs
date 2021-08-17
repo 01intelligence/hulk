@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use tokio::fs::File;
 
+use crate::prelude::{Deref, DerefMut};
 use crate::utils::Path;
 
 const ALIGN_SIZE: usize = 4096;
@@ -10,7 +11,7 @@ pub trait OpenOptionsDirectIo {
     async fn open_direct_io(
         &mut self,
         path: impl AsRef<Path> + Send + Sync + 'async_trait,
-    ) -> anyhow::Result<File>;
+    ) -> std::io::Result<File>;
 }
 
 #[cfg(all(target_family = "unix", not(target_os = "macos")))]
@@ -19,7 +20,7 @@ impl OpenOptionsDirectIo for super::OpenOptions {
     async fn open_direct_io(
         &mut self,
         path: impl AsRef<Path> + Send + Sync + 'async_trait,
-    ) -> anyhow::Result<File> {
+    ) -> std::io::Result<File> {
         let file = self.custom_flags(libc::O_DIRECT).open(path).await?;
         Ok(file)
     }
@@ -31,14 +32,15 @@ impl OpenOptionsDirectIo for super::OpenOptions {
     async fn open_direct_io(
         &mut self,
         path: impl AsRef<Path> + Send + Sync + 'async_trait,
-    ) -> anyhow::Result<File> {
+    ) -> std::io::Result<File> {
         use std::os::unix::io::AsRawFd;
         let file = self.open(path).await?;
         // F_NOCACHE: Turns data caching off/on.
         // A non-zero value in arg turns data caching off.
         // A value of zero in arg turns data caching on.
         let res = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_NOCACHE, 1) };
-        let _ = nix::errno::Errno::result(res)?;
+        let _ = nix::errno::Errno::result(res)
+            .map_err(|e| std::io::Error::from(e.as_errno().unwrap()))?;
         Ok(file)
     }
 }
@@ -49,7 +51,7 @@ impl OpenOptionsDirectIo for super::OpenOptions {
     async fn open_direct_io(
         &mut self,
         path: impl AsRef<Path> + Send + Sync + 'async_trait,
-    ) -> anyhow::Result<File> {
+    ) -> std::io::Result<File> {
         // Do not support O_DIRECT on Windows.
         let file = self.open(path).await?;
         Ok(file)
@@ -131,14 +133,41 @@ impl Drop for AlignedBlock {
     }
 }
 
-impl AsRef<[u8]> for AlignedBlock {
-    fn as_ref(&self) -> &[u8] {
+unsafe impl Send for AlignedBlock {}
+unsafe impl Sync for AlignedBlock {}
+
+impl Deref for AlignedBlock {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
         unsafe { std::slice::from_raw_parts(self.ptr.as_ref(), self.layout.size()) }
     }
 }
 
-impl AsMut<[u8]> for AlignedBlock {
-    fn as_mut(&mut self) -> &mut [u8] {
+impl DerefMut for AlignedBlock {
+    fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { std::slice::from_raw_parts_mut(self.ptr.as_mut(), self.layout.size()) }
+    }
+}
+
+pub struct SizedAlignedBlock<const SIZE: usize>(AlignedBlock);
+
+impl<const SIZE: usize> Default for SizedAlignedBlock<SIZE> {
+    fn default() -> Self {
+        SizedAlignedBlock(AlignedBlock::new(SIZE))
+    }
+}
+
+impl<const SIZE: usize> Deref for SizedAlignedBlock<SIZE> {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<const SIZE: usize> DerefMut for SizedAlignedBlock<SIZE> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }

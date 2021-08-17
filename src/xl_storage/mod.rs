@@ -1,22 +1,22 @@
 mod format_utils;
 mod types;
 
-use std::borrow::Cow;
 use std::io::Error;
 
 pub use format_utils::*;
 use lazy_static::lazy_static;
 use path_absolutize::Absolutize;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 pub use types::*;
 
 use crate::admin::TraceType::Storage;
 use crate::endpoint::Endpoint;
 use crate::errors::{AsError, StorageError, TypedError};
 use crate::fs::{
-    check_path_length, err_dir_not_empty, err_io, err_not_dir, err_not_found, err_permission,
-    OpenOptionsDirectIo,
+    check_path_length, err_dir_not_empty, err_invalid_arg, err_io, err_is_dir, err_not_dir,
+    err_not_found, err_permission, err_too_many_files, err_too_many_symlinks, OpenOptionsDirectIo,
 };
+use crate::pool::{TypedPool, TypedPoolGuard};
 use crate::prelude::*;
 use crate::utils::{Path, PathBuf};
 use crate::{config, fs, globals, storage, utils};
@@ -43,6 +43,19 @@ const SMALL_FILE_THRESHOLD: usize = 128 * utils::KIB; // Optimized for NVMe/SSDs
 
 // XL metadata file carries per object metadata.
 const XL_STORAGE_FORMAT_FILE: &str = "xl.meta";
+
+const XL_POOL_SMALL_MAX_SIZE: usize = 1024 * 32;
+const XL_POOL_LARGE_MAX_SIZE: usize = 1024 * 2;
+const XL_POOL_REALLY_LARGE_MAX_SIZE: usize = 1024;
+
+lazy_static! {
+    static ref XL_POOL_SMALL: Arc<TypedPool<fs::SizedAlignedBlock<BLOCK_SIZE_SMALL>>> =
+        Arc::new(TypedPool::new(XL_POOL_SMALL_MAX_SIZE));
+    static ref XL_POOL_LARGE: Arc<TypedPool<fs::SizedAlignedBlock<BLOCK_SIZE_LARGE>>> =
+        Arc::new(TypedPool::new(XL_POOL_LARGE_MAX_SIZE));
+    static ref XL_POOL_REALLY_LARGE: Arc<TypedPool<fs::SizedAlignedBlock<BLOCK_SIZE_REALLY_LARGE>>> =
+        Arc::new(TypedPool::new(XL_POOL_REALLY_LARGE_MAX_SIZE));
+}
 
 // Storage backed by a disk.
 pub(super) struct XlStorage {
@@ -161,7 +174,7 @@ impl XlStorage {
             .open_direct_io(&tmp_file)
             .await?;
         let mut aligned_buf = fs::AlignedBlock::new(4096);
-        utils::rng_seed_now().fill(aligned_buf.as_mut());
+        utils::rng_seed_now().fill(&mut *aligned_buf);
         let _ = file.write_all(aligned_buf.as_ref()).await?;
         drop(file);
         let _ = fs::remove(&tmp_file).await;
@@ -332,6 +345,13 @@ impl XlStorage {
         }
     }
 
+    pub async fn read_all(&self, volume: &str, path: &str) -> anyhow::Result<Vec<u8>> {
+        let volume_dir = self.get_volume_dir(volume)?;
+        let file_path = crate::object::path_join(&[&volume_dir, path]);
+        check_path_length(&file_path)?;
+        todo!()
+    }
+
     pub async fn delete_version(
         &self,
         volume: &str,
@@ -339,7 +359,9 @@ impl XlStorage {
         file: &storage::FileInfo,
         force_delete_marker: bool,
     ) -> anyhow::Result<()> {
-        if path.ends_with(globals::SLASH_SEPARATOR) {}
+        if path.ends_with(globals::SLASH_SEPARATOR) {
+            return self.delete(volume, path, false).await;
+        }
         Ok(())
     }
 
@@ -357,10 +379,11 @@ impl XlStorage {
             };
         }
 
-        let path = crate::object::path_join(&[&volume_dir, path]);
-        check_path_length(&path)?;
+        let file_path = crate::object::path_join(&[&volume_dir, path]);
+        check_path_length(&file_path)?;
 
-        self.delete_file(&volume_dir, &path, recursive).await
+        // Delete file, and also delete parent directory if it's empty.
+        self.delete_file(&volume_dir, &file_path, recursive).await
     }
 
     #[async_recursion::async_recursion]
@@ -431,6 +454,65 @@ impl XlStorage {
             "" | "." | ".." => Err(StorageError::VolumeNotFound.into()),
             _ => Ok(crate::object::path_join(&[&self.disk_path, volume])),
         }
+    }
+
+    async fn read_all_data(
+        volume_dir: &str,
+        file_path: &str,
+        require_direct_io: bool,
+    ) -> anyhow::Result<Vec<u8>> {
+        let mut guard = None;
+        let mut r = match if require_direct_io {
+            match fs::OpenOptions::new()
+                .read(true)
+                .open_direct_io(file_path)
+                .await
+            {
+                Ok(r) => {
+                    guard = Some(XL_POOL_SMALL.get().await?);
+                    Ok(Box::pin(fs::BufReader::new(guard.as_mut().unwrap(), r))
+                        as Pin<Box<dyn tokio::io::AsyncRead>>)
+                }
+                Err(err) => Err(err),
+            }
+        } else {
+            fs::OpenOptions::new()
+                .read(true)
+                .open(file_path)
+                .await
+                .map(|r| Box::pin(r) as Pin<Box<dyn tokio::io::AsyncRead>>)
+        } {
+            Err(err) => {
+                if err_not_found(&err) {
+                    if let Err(err) = fs::access(volume_dir).await {
+                        if err_not_found(&err) {
+                            return Err(StorageError::VolumeNotFound.into());
+                        }
+                    }
+                    return Err(StorageError::FileNotFound.into());
+                } else if err_permission(&err) {
+                    return Err(StorageError::FileAccessDenied.into());
+                } else if err_not_dir(&err) || err_is_dir(&err) {
+                    return Err(StorageError::FileNotFound.into());
+                } else if err_io(&err) {
+                    return Err(StorageError::FaultyDisk.into());
+                } else if err_too_many_files(&err) {
+                    return Err(StorageError::TooManyOpenFiles.into());
+                } else if err_invalid_arg(&err) {
+                    if let Ok(meta) = fs::metadata(file_path).await {
+                        if meta.is_dir() {
+                            return Err(StorageError::FileNotFound.into());
+                        }
+                    }
+                    return Err(StorageError::UnsupportedDisk.into());
+                }
+                return Err(err.into());
+            }
+            Ok(r) => r,
+        };
+        let mut buf = Vec::new();
+        r.read_to_end(&mut buf).await?;
+        Ok(buf)
     }
 }
 

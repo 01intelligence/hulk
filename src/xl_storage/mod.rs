@@ -86,7 +86,7 @@ impl XlStorage {
     }
 
     pub fn last_conn(&self) -> utils::DateTime {
-        utils::min_datetime()
+        utils::MIN_DATETIME
     }
 
     pub fn is_local(&self) -> bool {
@@ -252,7 +252,7 @@ impl XlStorage {
                 }
                 Some(storage::VolInfo {
                     name: entry,
-                    created: utils::min_datetime(),
+                    created: utils::MIN_DATETIME,
                 })
             })
             .collect())

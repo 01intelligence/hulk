@@ -8,9 +8,7 @@ pub fn now() -> DateTime {
     Utc::now()
 }
 
-pub fn min_datetime() -> DateTime {
-    chrono::MIN_DATETIME
-}
+pub const MIN_DATETIME: DateTime = chrono::MIN_DATETIME;
 
 pub trait DateTimeExt<Tz: TimeZone> {
     fn duration_offset(self, other: chrono::DateTime<Tz>) -> std::time::Duration;

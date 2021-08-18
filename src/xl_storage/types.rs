@@ -18,7 +18,7 @@ pub struct ErasureInfo {
     pub parity_blocks: usize,
     pub block_size: u64,
     pub index: usize,
-    pub distribution: Vec<usize>,
+    pub distribution: Vec<u8>,
     pub checksums: Vec<ChecksumInfo>,
 }
 

@@ -2,6 +2,11 @@ use serde::{Deserialize, Serialize};
 
 use super::*;
 
+pub const TRANSITION_STATUS: &str = "transition-status";
+pub const TRANSITIONED_OBJECT_NAME: &str = "transitioned-object";
+pub const TRANSITIONED_VERSION_ID: &str = "transitioned-versionID";
+pub const TRANSITION_TIER: &str = "transition-tier";
+
 #[derive(Serialize, Deserialize)]
 pub enum RestoreRequestType {
     #[serde(rename = "SELECT")]

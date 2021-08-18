@@ -57,7 +57,7 @@ dyn-clone = "1.0.4"
 path-clean = "0.1.0"
 reed-solomon-erasure = { version = "4.0.2", features = ["simd-accel"] }
 relative-path = "1.4.0"
-uuid = { version = "0.8.2", features = ["v4"] }
+uuid = { version = "0.8.2", features = ["v4", "serde"] }
 url = "2.2.2"
 colored = "2.0.0"
 pnet = "0.28.0"
@@ -105,6 +105,9 @@ memoffset = "0.6.4"
 tokio-test = "0.4.2"
 camino = "1.0.5"
 async-recursion = "0.3.2"
+serde_repr = "0.1.7"
+rmp = "0.8.10"
+twox-hash = "1.6.1"
 
 [dependencies.actix-cors]
 git = 'https://github.com/actix/actix-extras'

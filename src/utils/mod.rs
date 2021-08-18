@@ -8,12 +8,14 @@ use tokio::time::{timeout, Duration, Instant};
 pub mod assert;
 mod atomic;
 mod datetime;
+mod hash;
 mod path;
 mod str;
 mod units;
 
 pub use atomic::*;
 pub use datetime::*;
+pub use hash::*;
 pub use path::*;
 pub use units::*;
 

@@ -21,7 +21,7 @@ impl OpenOptionsDirectIo for super::OpenOptions {
         &mut self,
         path: impl AsRef<Path> + Send + Sync + 'async_trait,
     ) -> std::io::Result<File> {
-        let file = self.custom_flags(libc::O_DIRECT).open(path).await?;
+        let file = self.append_custom_flags(libc::O_DIRECT).open(path).await?;
         Ok(file)
     }
 }

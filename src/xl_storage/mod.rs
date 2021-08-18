@@ -1,4 +1,6 @@
 mod format_utils;
+mod format_v2;
+mod noatime;
 mod types;
 
 use std::io::Error;
@@ -16,9 +18,11 @@ use crate::fs::{
     check_path_length, err_dir_not_empty, err_invalid_arg, err_io, err_is_dir, err_not_dir,
     err_not_found, err_permission, err_too_many_files, err_too_many_symlinks, OpenOptionsDirectIo,
 };
+use crate::globals::Guard;
 use crate::pool::{TypedPool, TypedPoolGuard};
 use crate::prelude::*;
 use crate::utils::{Path, PathBuf};
+use crate::xl_storage::noatime::OpenOptionsNoAtime;
 use crate::{config, fs, globals, storage, utils};
 
 const NULL_VERSION_ID: &str = "null";
@@ -349,7 +353,9 @@ impl XlStorage {
         let volume_dir = self.get_volume_dir(volume)?;
         let file_path = crate::object::path_join(&[&volume_dir, path]);
         check_path_length(&file_path)?;
-        todo!()
+        let require_direct_io = &globals::GLOBALS.storage_class.guard().dma
+            == crate::config::storageclass::DMA_READ_WRITE;
+        read_all_data(&volume_dir, &file_path, require_direct_io).await
     }
 
     pub async fn delete_version(
@@ -362,7 +368,36 @@ impl XlStorage {
         if path.ends_with(globals::SLASH_SEPARATOR) {
             return self.delete(volume, path, false).await;
         }
-        Ok(())
+        let buf = match self
+            .read_all(
+                volume,
+                &crate::object::path_join(&[path, XL_STORAGE_FORMAT_FILE]),
+            )
+            .await
+        {
+            Err(err) => {
+                if let Some(&StorageError::FileNotFound) = err.as_error::<StorageError>() {
+                    return Err(err);
+                }
+                if file.deleted && force_delete_marker {}
+                if !file.version_id.is_empty() {
+                    return Err(StorageError::FileVersionNotFound.into());
+                }
+                return Err(StorageError::FileNotFound.into());
+            }
+            Ok(buf) => buf,
+        };
+
+        if buf.is_empty() {
+            if !file.version_id.is_empty() {
+                return Err(StorageError::FileVersionNotFound.into());
+            }
+            return Err(StorageError::FileNotFound.into());
+        }
+
+        let volume_dir = self.get_volume_dir(volume)?;
+
+        todo!()
     }
 
     pub async fn delete(&self, volume: &str, path: &str, recursive: bool) -> anyhow::Result<()> {
@@ -455,65 +490,66 @@ impl XlStorage {
             _ => Ok(crate::object::path_join(&[&self.disk_path, volume])),
         }
     }
-
-    async fn read_all_data(
-        volume_dir: &str,
-        file_path: &str,
-        require_direct_io: bool,
-    ) -> anyhow::Result<Vec<u8>> {
-        let mut guard = None;
-        let mut r = match if require_direct_io {
-            match fs::OpenOptions::new()
-                .read(true)
-                .open_direct_io(file_path)
-                .await
-            {
-                Ok(r) => {
-                    guard = Some(XL_POOL_SMALL.get().await?);
-                    Ok(Box::pin(fs::BufReader::new(guard.as_mut().unwrap(), r))
-                        as Pin<Box<dyn tokio::io::AsyncRead>>)
-                }
-                Err(err) => Err(err),
+}
+async fn read_all_data(
+    volume_dir: &str,
+    file_path: &str,
+    require_direct_io: bool,
+) -> anyhow::Result<Vec<u8>> {
+    let mut guard = None;
+    let mut r = match if require_direct_io {
+        match fs::OpenOptions::new()
+            .read(true)
+            .no_atime()
+            .open_direct_io(file_path)
+            .await
+        {
+            Ok(r) => {
+                guard = Some(XL_POOL_SMALL.get().await?);
+                Ok(Box::pin(fs::BufReader::new(guard.as_mut().unwrap(), r))
+                    as Pin<Box<dyn tokio::io::AsyncRead>>)
             }
-        } else {
-            fs::OpenOptions::new()
-                .read(true)
-                .open(file_path)
-                .await
-                .map(|r| Box::pin(r) as Pin<Box<dyn tokio::io::AsyncRead>>)
-        } {
-            Err(err) => {
-                if err_not_found(&err) {
-                    if let Err(err) = fs::access(volume_dir).await {
-                        if err_not_found(&err) {
-                            return Err(StorageError::VolumeNotFound.into());
-                        }
+            Err(err) => Err(err),
+        }
+    } else {
+        fs::OpenOptions::new()
+            .read(true)
+            .no_atime()
+            .open(file_path)
+            .await
+            .map(|r| Box::pin(r) as Pin<Box<dyn tokio::io::AsyncRead>>)
+    } {
+        Err(err) => {
+            if err_not_found(&err) {
+                if let Err(err) = fs::access(volume_dir).await {
+                    if err_not_found(&err) {
+                        return Err(StorageError::VolumeNotFound.into());
                     }
-                    return Err(StorageError::FileNotFound.into());
-                } else if err_permission(&err) {
-                    return Err(StorageError::FileAccessDenied.into());
-                } else if err_not_dir(&err) || err_is_dir(&err) {
-                    return Err(StorageError::FileNotFound.into());
-                } else if err_io(&err) {
-                    return Err(StorageError::FaultyDisk.into());
-                } else if err_too_many_files(&err) {
-                    return Err(StorageError::TooManyOpenFiles.into());
-                } else if err_invalid_arg(&err) {
-                    if let Ok(meta) = fs::metadata(file_path).await {
-                        if meta.is_dir() {
-                            return Err(StorageError::FileNotFound.into());
-                        }
-                    }
-                    return Err(StorageError::UnsupportedDisk.into());
                 }
-                return Err(err.into());
+                return Err(StorageError::FileNotFound.into());
+            } else if err_permission(&err) {
+                return Err(StorageError::FileAccessDenied.into());
+            } else if err_not_dir(&err) || err_is_dir(&err) {
+                return Err(StorageError::FileNotFound.into());
+            } else if err_io(&err) {
+                return Err(StorageError::FaultyDisk.into());
+            } else if err_too_many_files(&err) {
+                return Err(StorageError::TooManyOpenFiles.into());
+            } else if err_invalid_arg(&err) {
+                if let Ok(meta) = fs::metadata(file_path).await {
+                    if meta.is_dir() {
+                        return Err(StorageError::FileNotFound.into());
+                    }
+                }
+                return Err(StorageError::UnsupportedDisk.into());
             }
-            Ok(r) => r,
-        };
-        let mut buf = Vec::new();
-        r.read_to_end(&mut buf).await?;
-        Ok(buf)
-    }
+            return Err(err.into());
+        }
+        Ok(r) => r,
+    };
+    let mut buf = Vec::new();
+    r.read_to_end(&mut buf).await?;
+    Ok(buf)
 }
 
 lazy_static! {

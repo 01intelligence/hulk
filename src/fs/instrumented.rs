@@ -7,11 +7,15 @@ use crate::prelude::*;
 use crate::utils::{DateTime, Path, PathBuf};
 
 #[derive(Clone, Debug)]
-pub struct OpenOptions(fs::OpenOptions);
+pub struct OpenOptions(
+    fs::OpenOptions,
+    #[cfg(unix)] pub(super) i32,
+    #[cfg(windows)] pub(super) u32,
+);
 
 impl OpenOptions {
     pub fn new() -> OpenOptions {
-        OpenOptions(fs::OpenOptions::new())
+        OpenOptions(fs::OpenOptions::new(), 0)
     }
 
     pub fn read(&mut self, read: bool) -> &mut OpenOptions {
@@ -62,7 +66,14 @@ feature! {
         }
 
         pub fn custom_flags(&mut self, flags: i32) -> &mut OpenOptions {
+            self.1 = flags; // cache for subsequent appending
             self.0.custom_flags(flags);
+            self
+        }
+
+        pub fn append_custom_flags(&mut self, flags: i32) -> &mut OpenOptions {
+            self.1 |= flags; // cache for subsequent appending
+            self.0.custom_flags(self.1);
             self
         }
     }
@@ -85,7 +96,14 @@ feature! {
         }
 
         pub fn custom_flags(&mut self, flags: u32) -> &mut OpenOptions {
+            self.1 = flags; // cache for subsequent appending
             self.0.custom_flags(flags);
+            self
+        }
+
+        pub fn append_custom_flags(&mut self, flags: u32) -> &mut OpenOptions {
+            self.1 |= flags; // cache for subsequent appending
+            self.0.custom_flags(self.1);
             self
         }
 
@@ -98,12 +116,6 @@ feature! {
             self.0.security_qos_flags(flags);
             self
         }
-    }
-}
-
-impl From<fs::OpenOptions> for OpenOptions {
-    fn from(options: fs::OpenOptions) -> OpenOptions {
-        OpenOptions(options)
     }
 }
 

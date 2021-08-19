@@ -23,7 +23,7 @@ pub struct ErasureInfo {
 }
 
 pub struct ChecksumInfo {
-    pub part_number: usize,
+    pub part_number: isize,
     pub algorithm: bitrot::BitrotAlgorithm,
     pub hash: Vec<u8>,
 }

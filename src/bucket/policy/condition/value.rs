@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use super::*;
 
 #[derive(Serialize, Deserialize, Hash, Eq, PartialEq, Clone, Debug)]
+#[serde(untagged)]
 pub enum Value {
     String(String),
     Int(isize),
@@ -129,5 +130,233 @@ pub(super) fn path_to_bucket_and_object(path: &str) -> (&str, &str) {
         2 => (parts[0], parts[1]),
         1 => (parts[0], ""),
         _ => ("", ""),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::any::type_name;
+
+    use super::*;
+    use crate::utils::assert::*;
+
+    #[test]
+    fn test_value_get_bool() {
+        let cases = [
+            (Value::Bool(true), true, false),
+            (Value::Int(7), false, true),
+            (Value::String("foo".to_string()), false, true),
+        ];
+
+        for (key, expected_result, expect_err) in cases {
+            match key {
+                Value::Bool(v) => {
+                    assert_eq!(
+                        v, expected_result,
+                        "key: '{}', expected: {}, got: {}",
+                        key, expected_result, v
+                    )
+                }
+                Value::String(_) | Value::Int(_) => {
+                    assert!(expect_err, "expect an error")
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_value_get_int() {
+        let cases = [
+            (Value::Int(7), 7, false),
+            (Value::Bool(true), 0, true),
+            (Value::String("foo".to_string()), 0, true),
+        ];
+
+        for (key, expected_result, expect_err) in cases {
+            match key {
+                Value::Int(v) => {
+                    assert_eq!(
+                        v, expected_result,
+                        "key: '{}', expected: {}, got: {}",
+                        key, expected_result, v
+                    )
+                }
+                Value::String(_) | Value::Bool(_) => {
+                    assert!(expect_err, "expect an error")
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_value_get_string() {
+        let cases = [
+            (Value::String("foo".to_string()), "foo", false),
+            (Value::Int(7), "", true),
+            (Value::Bool(true), "", true),
+        ];
+
+        for (key, expected_result, expect_err) in cases {
+            let key_cache = key.clone();
+            match key {
+                Value::String(v) => {
+                    assert_eq!(
+                        v, expected_result,
+                        "key: '{}', expected: {}, got: {}",
+                        key_cache, expected_result, v
+                    );
+                }
+                Value::Bool(_) | Value::Int(_) => {
+                    assert!(expect_err, "expect an error");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_value_get_type() {
+        fn type_of<T>(_: &T) -> &'static str {
+            type_name::<T>()
+        }
+
+        let cases = [
+            (Value::Bool(true), "bool"),
+            (Value::Int(7), "isize"),
+            (Value::String("foo".to_string()), "alloc::string::String"),
+        ];
+
+        for (key, expected_result) in cases {
+            let key_cache = key.clone();
+            match key {
+                Value::String(v) => {
+                    let result = type_of::<String>(&v);
+                    assert_eq!(
+                        result, expected_result,
+                        "key: '{}', expected: {}, got: {}",
+                        key_cache, expected_result, result
+                    );
+                }
+                Value::Int(v) => {
+                    let result = type_of::<isize>(&v);
+                    assert_eq!(
+                        result, expected_result,
+                        "key: '{}', expected: {}, got: {}",
+                        key_cache, expected_result, result
+                    );
+                }
+                Value::Bool(v) => {
+                    let result = type_of::<bool>(&v);
+                    assert_eq!(
+                        result, expected_result,
+                        "key: '{}', expected: {}, got: {}",
+                        key_cache, expected_result, result
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_value_store_bool() {
+        let cases = [(false, Value::Bool(false)), (true, Value::Bool(true))];
+
+        for (key, expected_result) in cases {
+            let result = Value::Bool(key);
+
+            assert_eq!(
+                result, expected_result,
+                "key: '{}', expected: {}, got: {}",
+                key, expected_result, result
+            );
+        }
+    }
+
+    #[test]
+    fn test_value_store_int() {
+        let cases = [(0isize, Value::Int(0)), (7isize, Value::Int(7))];
+
+        for (key, expected_result) in cases {
+            let result = Value::Int(key);
+
+            assert_eq!(
+                result, expected_result,
+                "key: '{}', expected: {}, got: {}",
+                key, expected_result, result
+            );
+        }
+    }
+
+    #[test]
+    fn test_value_store_string() {
+        let cases = [
+            ("", Value::String("".to_string())),
+            ("foo", Value::String("foo".to_string())),
+        ];
+
+        for (key, expected_result) in cases {
+            let result = Value::String(key.to_string());
+
+            assert_eq!(
+                result, expected_result,
+                "key: '{}', expected: {}, got: {}",
+                key, expected_result, result
+            );
+        }
+    }
+
+    #[test]
+    fn test_value_string() {
+        let cases = [
+            (Value::Bool(true), "Bool(true)"),
+            (Value::Int(7), "Int(7)"),
+            (Value::String("foo".to_string()), r#"String("foo")"#),
+        ];
+
+        for (key, expected_result) in cases {
+            let result = key.to_string();
+
+            assert_eq!(
+                result, expected_result,
+                "key: '{}', expected: {}, got: {}",
+                key, expected_result, result
+            );
+        }
+    }
+
+    #[test]
+    fn test_value_serialize_json() {
+        let cases = [
+            (Value::Bool(true), "true"),
+            (Value::Int(7), "7"),
+            (Value::String("foo".to_string()), r#""foo""#),
+        ];
+
+        for (key, expected_result) in cases {
+            let result = assert_ok!(serde_json::to_string(&key));
+
+            assert_eq!(
+                result, expected_result,
+                "key: '{}', expected: {}, got: {}",
+                key, expected_result, result
+            );
+        }
+    }
+
+    #[test]
+    fn test_value_deserialize_json() {
+        let cases = [
+            ("true", Value::Bool(true)),
+            ("7", Value::Int(7)),
+            (r#""foo""#, Value::String(String::from("foo"))),
+        ];
+
+        for (key, expected_result) in cases {
+            let result = assert_ok!(serde_json::from_str::<Value>(key));
+            assert_eq!(
+                result, expected_result,
+                "key: '{}', expected: {}, got: {}",
+                key, expected_result, result
+            );
+        }
     }
 }

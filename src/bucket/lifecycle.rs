@@ -1,11 +1,21 @@
 use serde::{Deserialize, Serialize};
+use strum::Display;
 
 use super::*;
+use crate::prelude::*;
 
 pub const TRANSITION_STATUS: &str = "transition-status";
 pub const TRANSITIONED_OBJECT_NAME: &str = "transitioned-object";
 pub const TRANSITIONED_VERSION_ID: &str = "transitioned-versionID";
 pub const TRANSITION_TIER: &str = "transition-tier";
+
+#[derive(Display)]
+pub enum TransitionStatus {
+    #[strum(serialize = "complete")]
+    Complete,
+    #[strum(serialize = "pending")]
+    Pending,
+}
 
 #[derive(Serialize, Deserialize)]
 pub enum RestoreRequestType {
@@ -112,4 +122,9 @@ pub struct RestoreRequest {
     /// <p>Type of restore request.</p>
     #[serde(rename = "Type")]
     pub type_: Option<RestoreRequestType>,
+}
+
+pub fn is_restored_object_on_disk(meta: &HashMap<String, String>) -> bool {
+    // TODO
+    false
 }

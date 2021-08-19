@@ -10,6 +10,8 @@ pub trait StrExt {
     where
         P: Pattern<'a>,
         <P as Pattern<'a>>::Searcher: ReverseSearcher<'a>;
+
+    fn in_ignore_ascii_case(&self, slice: &[&str]) -> bool;
 }
 
 impl<T: AsRef<str>> StrExt for T {
@@ -27,5 +29,9 @@ impl<T: AsRef<str>> StrExt for T {
         <P as Pattern<'a>>::Searcher: ReverseSearcher<'a>,
     {
         self.as_ref().strip_suffix(suffix).unwrap_or(self.as_ref())
+    }
+
+    fn in_ignore_ascii_case(&self, slice: &[&str]) -> bool {
+        slice.iter().any(|s| s.eq_ignore_ascii_case(self.as_ref()))
     }
 }

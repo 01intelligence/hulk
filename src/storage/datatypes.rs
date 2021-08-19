@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
-use strum::Display;
+use strum::{Display, EnumString};
 
 use crate::{utils, xl_storage};
 
@@ -55,7 +55,7 @@ pub struct FileInfo {
     pub volume: String,
     pub name: String,
     pub version_id: String,
-    pub is_latest: String,
+    pub is_latest: bool,
     pub deleted: bool,
     pub transition_status: String,
     pub transition_object_name: String,
@@ -68,17 +68,19 @@ pub struct FileInfo {
     pub mode: u32,
     pub metadata: HashMap<String, String>,
     pub parts: Vec<xl_storage::ObjectPartInfo>,
-    pub erasure: xl_storage::ErasureInfo,
+    pub erasure: Option<xl_storage::ErasureInfo>,
     pub mark_deleted: bool,
     pub delete_marker_replication_status: String,
-    pub version_purge_status: VersionPurgeStatus,
+    pub version_purge_status: Option<VersionPurgeStatus>,
     pub data: Vec<u8>,
     pub num_versions: usize,
     pub successor_mod_time: utils::DateTime,
 }
 
+pub const VERSION_PURGE_STATUS_KEY: &str = "purgestatus";
+
 // Represents status of a versioned delete or permanent delete w.r.t bucket replication.
-#[derive(Serialize, Deserialize, Display)]
+#[derive(Serialize, Deserialize, Clone, Copy, Display, EnumString, PartialEq)]
 pub enum VersionPurgeStatus {
     #[serde(rename = "PENDING")]
     #[strum(serialize = "PENDING")]

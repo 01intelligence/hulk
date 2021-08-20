@@ -5,10 +5,11 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
 use strum::Display;
 use uuid::{Error, Uuid};
 
-use super::StorageError;
+use super::{is_null_version_id, StorageError};
 use crate::prelude::*;
 use crate::utils;
 use crate::utils::{DateTimeExt, StrExt};
+use crate::xl_storage::openoptions_ext::StdOpenOptionsNoAtime;
 
 const XL_HEADER: &[u8; 4] = b"XL2 ";
 
@@ -555,6 +556,99 @@ impl XlMetaV2 {
         Ok((versions, mod_time))
     }
 
+    pub fn to_file_info(
+        &self,
+        volume: &str,
+        path: &str,
+        version_id: &str,
+    ) -> anyhow::Result<crate::storage::FileInfo> {
+        let uv = if !is_null_version_id(version_id) {
+            Some(
+                uuid::Uuid::parse_str(&version_id)
+                    .map_err(|_| StorageError::FileVersionNotFound)?,
+            )
+        } else {
+            None
+        };
+
+        for version in &self.versions {
+            if !version.valid() {
+                return if is_null_version_id(version_id) {
+                    Err(StorageError::FileNotFound.into())
+                } else {
+                    Err(StorageError::FileVersionNotFound.into())
+                };
+            }
+        }
+
+        let mut versions: Vec<&XlMetaV2Version> = self.versions.iter().collect();
+        versions.sort_unstable_by(|a, b| {
+            let t1 = get_mod_time_from_version(a);
+            let t2 = get_mod_time_from_version(b);
+            t2.partial_cmp(&t1).unwrap()
+        });
+
+        if is_null_version_id(version_id) {
+            if versions.is_empty() {
+                return Err(StorageError::FileNotFound.into());
+            }
+            let version = versions[0];
+            let mut fi = match version.type_ {
+                VersionType::Object => version
+                    .object_v2
+                    .as_ref()
+                    .unwrap()
+                    .to_file_info(volume, path)?,
+                VersionType::Delete => version
+                    .delete_marker
+                    .as_ref()
+                    .unwrap()
+                    .to_file_info(volume, path)?,
+            };
+            fi.is_latest = true;
+            fi.num_versions = versions.len();
+            return Ok(fi);
+        }
+
+        let mut fi = None;
+        let mut index = 0;
+        for (i, version) in versions.iter().enumerate() {
+            match version.type_ {
+                VersionType::Object => {
+                    let object_v2 = version.object_v2.as_ref().unwrap();
+                    if object_v2.version_id == uv {
+                        fi = Some(object_v2.to_file_info(volume, path)?);
+                        index = i;
+                        break;
+                    }
+                }
+                VersionType::Delete => {
+                    let delete_marker = version.delete_marker.as_ref().unwrap();
+                    if delete_marker.version_id == uv {
+                        fi = Some(delete_marker.to_file_info(volume, path)?);
+                        index = i;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if let Some(mut fi) = fi {
+            fi.is_latest = index == 0;
+            fi.num_versions = versions.len();
+            if index > 0 {
+                fi.successor_mod_time = get_mod_time_from_version(versions[index - 1]);
+            }
+            return Ok(fi);
+        }
+
+        return if is_null_version_id(version_id) {
+            Err(StorageError::FileNotFound.into())
+        } else {
+            Err(StorageError::FileVersionNotFound.into())
+        };
+    }
+
     pub fn delete_version(
         &mut self,
         fi: &crate::storage::FileInfo,
@@ -819,7 +913,7 @@ impl XlMetaV2 {
         Ok(buf)
     }
 
-    pub fn load(buf: &[u8]) -> anyhow::Result<XlMetaV2> {
+    pub fn load_with_data(buf: &[u8]) -> anyhow::Result<XlMetaV2> {
         let (buf, major, minor) = check_xl2_v1(buf)?;
         match major {
             XL_VERSION_MAJOR => match minor {
@@ -858,6 +952,56 @@ impl XlMetaV2 {
             _ => {
                 anyhow::bail!("xl.meta: unknown major metadata version");
             }
+        }
+    }
+
+    pub fn load_from_file(path: &str) -> anyhow::Result<XlMetaV2> {
+        let file = crate::fs::StdOpenOptions::new()
+            .read(true)
+            .no_atime()
+            .open(path)?;
+        let mut reader = std::io::BufReader::with_capacity(4 << 10, file);
+        Self::load_from_reader(&mut reader)
+    }
+
+    fn load_from_reader<R: std::io::BufRead>(reader: &mut R) -> anyhow::Result<XlMetaV2> {
+        let mut buf = [0u8; 8];
+        reader.read_exact(&mut buf)?;
+        let (_, major, minor) = check_xl2_v1(&buf)?;
+        match major {
+            XL_VERSION_MAJOR => match minor {
+                XL_VERSION_MINOR => {
+                    let xx_reader = utils::XxHashReader::new(reader);
+
+                    let mut de = rmp_serde::decode::Deserializer::new(xx_reader);
+                    let meta: XlMetaV2 = serde::de::Deserialize::deserialize(&mut de)?;
+
+                    let got = de.into_inner().hash();
+                    let crc = reader.read_u32::<LittleEndian>()?;
+                    if got as u32 != crc {
+                        anyhow::bail!("xl.meta: crc mismatch, want 0x{:x}, got 0x{:x}", crc, got);
+                    }
+
+                    return Ok(meta);
+                }
+                _ => {
+                    anyhow::bail!("xl.meta: unknown minor metadata version");
+                }
+            },
+            _ => {
+                anyhow::bail!("xl.meta: unknown major metadata version");
+            }
+        }
+    }
+}
+
+fn get_mod_time_from_version(v: &XlMetaV2Version) -> utils::DateTime {
+    match v.type_ {
+        VersionType::Object => {
+            utils::DateTime::from_timestamp_nanos(v.object_v2.as_ref().unwrap().mod_time)
+        }
+        VersionType::Delete => {
+            utils::DateTime::from_timestamp_nanos(v.delete_marker.as_ref().unwrap().mod_time)
         }
     }
 }

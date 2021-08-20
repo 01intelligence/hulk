@@ -1,4 +1,4 @@
-use crate::fs::OpenOptions;
+use crate::fs::{OpenOptions, StdOpenOptions};
 
 pub trait OpenOptionsNoAtime {
     /// Read while do not update access time.
@@ -15,6 +15,26 @@ impl OpenOptionsNoAtime for OpenOptions {
 #[cfg(any(target_family = "windows", target_os = "macos"))]
 impl OpenOptionsNoAtime for OpenOptions {
     fn no_atime(&mut self) -> &mut OpenOptions {
+        // Nothing for Windows/macOS
+        self
+    }
+}
+
+pub trait StdOpenOptionsNoAtime {
+    /// Read while do not update access time.
+    fn no_atime(&mut self) -> &mut StdOpenOptions;
+}
+
+#[cfg(all(target_family = "unix", not(target_os = "macos")))]
+impl StdOpenOptionsNoAtime for StdOpenOptions {
+    fn no_atime(&mut self) -> &mut StdOpenOptions {
+        self.append_custom_flags(libc::O_NOATIME)
+    }
+}
+
+#[cfg(any(target_family = "windows", target_os = "macos"))]
+impl StdOpenOptionsNoAtime for StdOpenOptions {
+    fn no_atime(&mut self) -> &mut StdOpenOptions {
         // Nothing for Windows/macOS
         self
     }

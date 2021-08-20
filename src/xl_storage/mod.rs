@@ -1,6 +1,6 @@
 mod format_utils;
 mod format_v2;
-mod noatime;
+mod openoptions_ext;
 mod types;
 
 use std::io::Error;
@@ -22,7 +22,7 @@ use crate::globals::Guard;
 use crate::pool::{TypedPool, TypedPoolGuard};
 use crate::prelude::*;
 use crate::utils::{Path, PathBuf};
-use crate::xl_storage::noatime::OpenOptionsNoAtime;
+use crate::xl_storage::openoptions_ext::OpenOptionsNoAtime;
 use crate::{config, fs, globals, storage, utils};
 
 const NULL_VERSION_ID: &str = "null";

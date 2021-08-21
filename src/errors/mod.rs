@@ -1,5 +1,6 @@
 mod api_errors;
 mod encryption;
+mod reducible_errors;
 mod storage_errors;
 mod typed_errors;
 mod ui_errors;
@@ -8,6 +9,7 @@ use std::error::Error;
 
 pub use api_errors::*;
 pub use encryption::*;
+pub use reducible_errors::*;
 pub use storage_errors::*;
 pub use typed_errors::*;
 pub use ui_errors::*;

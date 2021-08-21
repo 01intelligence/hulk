@@ -29,6 +29,7 @@ impl Erasure {
         }
         Ok(Erasure {
             encoder: Lazy::new(Box::new(move || {
+                // Safety: parameters validated.
                 ReedSolomon::new(data_blocks, parity_blocks).unwrap()
             })),
             data_blocks,

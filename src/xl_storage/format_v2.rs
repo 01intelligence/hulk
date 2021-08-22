@@ -3,7 +3,6 @@ use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use strum::Display;
-use uuid::{Error, Uuid};
 
 use super::{is_null_version_id, StorageError};
 use crate::prelude::*;
@@ -955,13 +954,13 @@ impl XlMetaV2 {
         }
     }
 
-    pub fn load_from_file(path: &str) -> anyhow::Result<XlMetaV2> {
+    pub async fn load_from_file(path: &str) -> anyhow::Result<XlMetaV2> {
         let file = crate::fs::StdOpenOptions::new()
             .read(true)
             .no_atime()
             .open(path)?;
         let mut reader = std::io::BufReader::with_capacity(4 << 10, file);
-        Self::load_from_reader(&mut reader)
+        tokio::task::spawn_blocking(move || Self::load_from_reader(&mut reader)).await?
     }
 
     fn load_from_reader<R: std::io::BufRead>(reader: &mut R) -> anyhow::Result<XlMetaV2> {

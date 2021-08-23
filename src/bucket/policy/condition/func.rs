@@ -178,3 +178,412 @@ lazy_static! {
         DATE_GREATER_THAN_EQUALS => new_date_greater_than_equals_func as NewFunction,
     };
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::assert::*;
+
+    #[test]
+    fn test_functions_evaluate() -> anyhow::Result<()> {
+        let func1 = new_null_func(S3X_AMZ_COPY_SOURCE, ValueSet::new(vec![Value::Bool(true)]))?;
+
+        let func2 = new_ip_address_func(
+            AWS_SOURCE_IP,
+            ValueSet::new(vec![Value::String("192.168.1.0/24".to_string())]),
+        )?;
+
+        let func3 = new_string_equals_func(
+            S3X_AMZ_COPY_SOURCE,
+            ValueSet::new(vec![Value::String("mybucket/myobject".to_string())]),
+        )?;
+
+        let func4 = new_string_like_func(
+            S3X_AMZ_COPY_SOURCE,
+            ValueSet::new(vec![Value::String("mybucket/myobject".to_string())]),
+        )?;
+
+        let funcs = Functions::new(vec![func1, func2, func3, func4]);
+
+        let cases = [
+            (
+                &funcs,
+                HashMap::from([
+                    (
+                        "x-amz-copy-source".to_string(),
+                        vec!["mybucket/myobject".to_string()],
+                    ),
+                    ("SourceIp".to_string(), vec!["192.168.1.10".to_string()]),
+                ]),
+                false,
+            ),
+            (
+                &funcs,
+                HashMap::from([
+                    (
+                        "x-amz-copy-source".to_string(),
+                        vec!["mybucket/myobject".to_string()],
+                    ),
+                    ("SourceIp".to_string(), vec!["192.168.1.10".to_string()]),
+                    ("Refer".to_string(), vec!["http://example.org/".to_string()]),
+                ]),
+                false,
+            ),
+            (
+                &funcs,
+                HashMap::from([(
+                    "x-amz-copy-source".to_string(),
+                    vec!["mybucket/myobject".to_string()],
+                )]),
+                false,
+            ),
+            (
+                &funcs,
+                HashMap::from([("SourceIp".to_string(), vec!["192.168.1.10".to_string()])]),
+                false,
+            ),
+            (
+                &funcs,
+                HashMap::from([
+                    (
+                        "x-amz-copy-source".to_string(),
+                        vec!["mybucket/yourobject".to_string()],
+                    ),
+                    ("SourceIp".to_string(), vec!["192.168.1.10".to_string()]),
+                ]),
+                false,
+            ),
+            (
+                &funcs,
+                HashMap::from([
+                    (
+                        "x-amz-copy-source".to_string(),
+                        vec!["mybucket/myobject".to_string()],
+                    ),
+                    ("SourceIp".to_string(), vec!["192.168.2.10".to_string()]),
+                ]),
+                false,
+            ),
+            (
+                &funcs,
+                HashMap::from([
+                    (
+                        "x-amz-copy-source".to_string(),
+                        vec!["mybucket/myobject".to_string()],
+                    ),
+                    ("Refer".to_string(), vec!["http://example.org/".to_string()]),
+                ]),
+                false,
+            ),
+        ];
+
+        for (key, values, expected_result) in cases {
+            let result = funcs.evaluate(&values);
+
+            assert_eq!(
+                result, expected_result,
+                "key: '{}', expected: {}, got: {}",
+                key, expected_result, result
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_functions_keys() -> anyhow::Result<()> {
+        let func1 = new_null_func(S3X_AMZ_COPY_SOURCE, ValueSet::new(vec![Value::Bool(true)]))?;
+        let func2 = new_ip_address_func(
+            AWS_SOURCE_IP,
+            ValueSet::new(vec![Value::String("192.168.1.0/24".to_string())]),
+        )?;
+        let func3 = new_string_equals_func(
+            S3X_AMZ_COPY_SOURCE,
+            ValueSet::new(vec![Value::String("mybucket/myobject".to_string())]),
+        )?;
+        let func4 = new_string_like_func(
+            S3X_AMZ_COPY_SOURCE,
+            ValueSet::new(vec![Value::String("mybucket/myobject".to_string())]),
+        )?;
+
+        let cases = [(
+            Functions::new(vec![func1, func2, func3, func4]),
+            KeySet::from([S3X_AMZ_COPY_SOURCE, AWS_SOURCE_IP]),
+        )];
+
+        for (key, expected_result) in cases {
+            let result = key.keys();
+
+            assert_eq!(
+                result, expected_result,
+                "key: '{}', expected: {:?}, got: {:?}",
+                key, expected_result, result
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_empty_functions_serialize_json() {
+        let funcs = Functions::new(vec![]);
+        let expected_result = "{}";
+        let result = assert_ok!(serde_json::to_string(&funcs));
+        assert_eq!(result, expected_result);
+    }
+
+    #[test]
+    fn test_functions_serialize_json() -> anyhow::Result<()> {
+        let func1 = new_string_like_func(
+            S3X_AMZ_METADATA_DIRECTIVE,
+            ValueSet::new(vec![Value::String("REPL*".to_string())]),
+        )?;
+
+        let func2 = new_string_equals_func(
+            S3X_AMZ_COPY_SOURCE,
+            ValueSet::new(vec![Value::String("mybucket/myobject".to_string())]),
+        )?;
+
+        let func3 = new_string_not_equals_func(
+            S3X_AMZ_SERVER_SIDE_ENCRYPTION,
+            ValueSet::new(vec![Value::String("AES256".to_string())]),
+        )?;
+
+        let func4 = new_not_ip_address_func(
+            AWS_SOURCE_IP,
+            ValueSet::new(vec![Value::String("10.1.10.0/24".to_string())]),
+        )?;
+
+        let func5 = new_string_not_like_func(
+            S3X_AMZ_STORAGE_CLASS,
+            ValueSet::new(vec![Value::String("STANDARD".to_string())]),
+        )?;
+
+        let func6 = new_null_func(
+            S3X_AMZ_SERVER_SIDE_ENCRYPTION_CUSTOMER_ALGORITHM,
+            ValueSet::new(vec![Value::Bool(true)]),
+        )?;
+
+        let func7 = new_ip_address_func(
+            AWS_SOURCE_IP,
+            ValueSet::new(vec![Value::String("192.168.1.0/24".to_string())]),
+        )?;
+
+        let res1 = r#"{"IpAddress":{"aws:SourceIp":["192.168.1.0/24"]},"NotIpAddress":{"aws:SourceIp":["10.1.10.0/24"]},"Null":{"s3:x-amz-server-side-encryption-customer-algorithm":[true]},"StringEquals":{"s3:x-amz-copy-source":["mybucket/myobject"]},"StringLike":{"s3:x-amz-metadata-directive":["REPL*"]},"StringNotEquals":{"s3:x-amz-server-side-encryption":["AES256"]},"StringNotLike":{"s3:x-amz-storage-class":["STANDARD"]}}"#;
+        let res2 = r#"{"Null":{"s3:x-amz-server-side-encryption-customer-algorithm":[true]}}"#;
+
+        let cases = [
+            (
+                Functions::new(vec![
+                    func1,
+                    func2,
+                    func3,
+                    func4,
+                    func5,
+                    func6.clone(),
+                    func7,
+                ]),
+                res1,
+            ),
+            (Functions::new(vec![func6]), res2),
+        ];
+
+        for (key, expected_result) in cases {
+            let result = assert_ok!(serde_json::to_string(&key));
+
+            let result_de = serde_json::from_str::<Functions>(&result)?;
+            let expected_result_de = serde_json::from_str::<Functions>(expected_result)?;
+            assert_eq!(
+                result_de.to_string(),
+                expected_result_de.to_string(),
+                "key: '{}', expected: {}, result: {}",
+                key,
+                expected_result,
+                result
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_functions_deserialize_json() -> anyhow::Result<()> {
+        let case1 = r#"
+            {
+                "StringLike": {
+                    "s3:x-amz-metadata-directive": "REPL*"
+                },
+                "StringEquals": {
+                    "s3:x-amz-copy-source": "mybucket/myobject"
+                },
+                "StringNotEquals": {
+                    "s3:x-amz-server-side-encryption": "AES256"
+                },
+                "NotIpAddress": {
+                    "aws:SourceIp": [
+                        "10.1.10.0/24",
+                        "10.10.1.0/24"
+                    ]
+                },
+                "StringNotLike": {
+                    "s3:x-amz-storage-class": "STANDARD"
+                },
+                "Null": {
+                    "s3:x-amz-server-side-encryption-customer-algorithm": true
+                },
+                "IpAddress": {
+                    "aws:SourceIp": [
+                        "192.168.1.0/24",
+                        "192.168.2.0/24"
+                    ]
+                }
+            }
+        "#;
+        let case2 = r#"
+            {
+                "Null": {
+                    "s3:x-amz-server-side-encryption-customer-algorithm": true
+                },
+                "Null": {
+                    "s3:x-amz-server-side-encryption-customer-algorithm": "true"
+                }
+            }
+        "#;
+
+        let case3 = r#"{}"#;
+
+        let case4 = r#"
+            {
+                "StringLike": {
+                    "s3:x-amz-metadata-directive": "REPL*"
+                },
+                "StringEquals": {
+                    "s3:x-amz-copy-source": "mybucket/myobject",
+                    "s3:prefix": [
+                        "",
+                        "home/"
+                    ],
+                    "s3:delimiter": [
+                        "/"
+                    ]
+                },
+                "StringNotEquals": {
+                    "s3:x-amz-server-side-encryption": "AES256"
+                },
+                "NotIpAddress": {
+                    "aws:SourceIp": [
+                        "10.1.10.0/24",
+                        "10.10.1.0/24"
+                    ]
+                },
+                "StringNotLike": {
+                    "s3:x-amz-storage-class": "STANDARD"
+                },
+                "Null": {
+                    "s3:x-amz-server-side-encryption-customer-algorithm": true
+                },
+                "IpAddress": {
+                    "aws:SourceIp": [
+                        "192.168.1.0/24",
+                        "192.168.2.0/24"
+                    ]
+                }
+            }
+        "#;
+
+        let func1 = new_string_like_func(
+            S3X_AMZ_METADATA_DIRECTIVE,
+            ValueSet::new(vec![Value::String("REPL*".to_string())]),
+        )?;
+
+        let func2 = new_string_equals_func(
+            S3X_AMZ_COPY_SOURCE,
+            ValueSet::new(vec![Value::String("mybucket/myobject".to_string())]),
+        )?;
+
+        let func3 = new_string_not_equals_func(
+            S3X_AMZ_SERVER_SIDE_ENCRYPTION,
+            ValueSet::new(vec![Value::String("AES256".to_string())]),
+        )?;
+
+        let func4 = new_not_ip_address_func(
+            AWS_SOURCE_IP,
+            ValueSet::new(vec![
+                Value::String("10.1.10.0/24".to_string()),
+                Value::String("10.10.1.0/24".to_string()),
+            ]),
+        )?;
+
+        let func5 = new_string_not_like_func(
+            S3X_AMZ_STORAGE_CLASS,
+            ValueSet::new(vec![Value::String("STANDARD".to_string())]),
+        )?;
+
+        let func6 = new_null_func(
+            S3X_AMZ_SERVER_SIDE_ENCRYPTION_CUSTOMER_ALGORITHM,
+            ValueSet::new(vec![Value::Bool(true)]),
+        )?;
+
+        let func7 = new_ip_address_func(
+            AWS_SOURCE_IP,
+            ValueSet::new(vec![
+                Value::String("192.168.1.0/24".to_string()),
+                Value::String("192.168.2.0/24".to_string()),
+            ]),
+        )?;
+
+        let func2_1 = new_string_equals_func(
+            S3X_AMZ_COPY_SOURCE,
+            ValueSet::new(vec![Value::String("mybucket/myobject".to_string())]),
+        )?;
+        let func2_2 = new_string_equals_func(
+            S3_PREFIX,
+            ValueSet::new(vec![
+                Value::String("".to_string()),
+                Value::String("home/".to_string()),
+            ]),
+        )?;
+        let func2_3 = new_string_equals_func(
+            S3_DELIMITER,
+            ValueSet::new(vec![Value::String("/".to_string())]),
+        )?;
+
+        let cases = [
+            (
+                case1,
+                Functions::new(vec![
+                    func1.clone(),
+                    func2,
+                    func3.clone(),
+                    func4.clone(),
+                    func5.clone(),
+                    func6.clone(),
+                    func7.clone(),
+                ]),
+            ),
+            (case2, Functions::new(vec![func6.clone()])),
+            // (case3, Functions::new(vec![])),
+            (
+                case4,
+                Functions::new(vec![
+                    func1, func2_1, func2_2, func2_3, func3, func4, func5, func6, func7,
+                ]),
+            ),
+        ];
+
+        for (key, expected_result) in cases {
+            let result = assert_ok!(serde_json::from_str::<Functions>(key));
+
+            assert_eq!(
+                result.to_string(),
+                expected_result.to_string(),
+                "key: '{}', expected: {}, got: {}",
+                key,
+                expected_result,
+                result
+            );
+        }
+
+        Ok(())
+    }
+}

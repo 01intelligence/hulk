@@ -38,8 +38,12 @@ impl<'a> ParallelWriter<'a> {
             return Ok(());
         }
         let errors = std::mem::take(&mut self.errors);
-        reduce_write_quorum_errs(errors, &[], self.write_quorum)
-            .map_or_else(|| Ok(()), |e| Err(e.into()))
+        reduce_write_quorum_errs(
+            errors,
+            &super::OBJECT_OP_IGNORED_ERRORS[..],
+            self.write_quorum,
+        )
+        .map_or_else(|| Ok(()), |e| Err(e.into()))
     }
 }
 

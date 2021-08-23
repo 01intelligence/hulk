@@ -2,7 +2,7 @@ use std::convert::TryFrom;
 
 use thiserror::Error;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Eq, PartialEq, Hash, Clone)]
 #[non_exhaustive]
 pub enum StorageError {
     #[error("unexpected error, please report this issue at https://github.com/hulk/hulk/issues")]
@@ -101,8 +101,14 @@ pub enum StorageError {
     #[error("skip this file")]
     SkipFile,
 
-    #[error("io error: {0}")]
-    IoError(std::io::Error),
+    #[error("read failed due to insufficient online disks")]
+    ErasureReadQuorum,
+
+    #[error("write failed due to insufficient online disks")]
+    ErasureWriteQuorum,
+
+    #[error("no healing is required")]
+    NoHealRequired,
 }
 
 pub const BASE_STORAGE_ERRORS: [StorageError; 3] = [

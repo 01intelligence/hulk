@@ -4,6 +4,7 @@ use std::hash::{Hash, Hasher};
 use anyhow::private::kind::AdhocKind;
 use thiserror::Error;
 
+use super::StorageError;
 use crate::prelude::HashMap;
 
 #[derive(Debug, Error)]
@@ -16,6 +17,7 @@ pub struct ReducibleError {
 #[non_exhaustive]
 enum ReducibleErrorInner {
     IoError(std::io::Error),
+    StorageError(StorageError),
 }
 
 impl From<std::io::Error> for ReducibleError {
@@ -23,6 +25,15 @@ impl From<std::io::Error> for ReducibleError {
         Self {
             ident: 0,
             inner: ReducibleErrorInner::IoError(err),
+        }
+    }
+}
+
+impl From<StorageError> for ReducibleError {
+    fn from(err: StorageError) -> Self {
+        Self {
+            ident: 1,
+            inner: ReducibleErrorInner::StorageError(err),
         }
     }
 }
@@ -38,6 +49,7 @@ impl fmt::Display for ReducibleErrorInner {
         use ReducibleErrorInner::*;
         match &self {
             IoError(err) => err.fmt(f),
+            StorageError(err) => err.fmt(f),
         }
     }
 }
@@ -54,6 +66,11 @@ impl PartialEq for ReducibleError {
                     return err.kind() == e.kind();
                 }
             }
+            StorageError(err) => {
+                if let StorageError(e) = &other.inner {
+                    return err == e;
+                }
+            }
         }
         false
     }
@@ -67,18 +84,24 @@ impl Hash for ReducibleError {
         self.ident.hash(state);
         match &self.inner {
             IoError(err) => err.kind().hash(state),
+            StorageError(err) => err.hash(state),
         }
     }
 }
 
 impl ReducibleError {
-    pub fn is(&self, errs: &[&ReducibleError]) -> bool {
+    pub fn is(&self, errs: &[ReducibleError]) -> bool {
         use ReducibleErrorInner::*;
         return errs.iter().any(|e| {
             match &e.inner {
                 IoError(e) => {
                     if let IoError(err) = &self.inner {
                         return err.kind() == e.kind();
+                    }
+                }
+                StorageError(e) => {
+                    if let StorageError(err) = &self.inner {
+                        return err == e;
                     }
                 }
             }
@@ -104,7 +127,7 @@ pub fn count_err(errs: &[Option<ReducibleError>], err: &ReducibleError) -> usize
 
 pub fn reduce_errs<'a>(
     errs: Vec<Option<ReducibleError>>,
-    ignored_errs: &[&ReducibleError],
+    ignored_errs: &[ReducibleError],
 ) -> (usize, Option<ReducibleError>) {
     let mut err_counts = HashMap::new();
     for err in errs {

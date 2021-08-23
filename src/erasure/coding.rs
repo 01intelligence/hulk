@@ -7,9 +7,9 @@ use reed_solomon_erasure::Error::*;
 
 pub struct Erasure {
     encoder: Lazy<ReedSolomon, Box<dyn FnOnce() -> ReedSolomon>>,
-    data_blocks: usize,
+    pub(super) data_blocks: usize,
     parity_blocks: usize,
-    block_size: usize,
+    pub(super) block_size: usize,
 }
 
 impl Erasure {
@@ -42,12 +42,12 @@ impl Erasure {
         crate::utils::ceil_frac(self.block_size as isize, self.data_blocks as isize) as usize
     }
 
-    pub fn shard_file_size(&self, total_length: usize) -> usize {
+    pub fn shard_file_size(&self, total_length: u64) -> usize {
         if total_length == 0 {
             return 0;
         }
-        let num_shards = total_length / self.block_size;
-        let last_block_size = total_length % self.block_size;
+        let num_shards = (total_length / self.block_size as u64) as usize;
+        let last_block_size = (total_length % self.block_size as u64) as usize;
         let last_shard_size =
             crate::utils::ceil_frac(last_block_size as isize, self.data_blocks as isize);
         return num_shards * self.shard_size() + last_shard_size as usize;
@@ -57,7 +57,7 @@ impl Erasure {
         &self,
         start_offset: usize,
         length: usize,
-        total_length: usize,
+        total_length: u64,
     ) -> usize {
         let shard_size = self.shard_size();
         let shard_file_size = self.shard_file_size(total_length);

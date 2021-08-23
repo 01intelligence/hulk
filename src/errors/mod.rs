@@ -39,3 +39,9 @@ impl AsError for dyn std::error::Error + 'static {
         None
     }
 }
+
+impl AsError for dyn std::error::Error + Send + Sync + 'static {
+    fn as_error<E: std::error::Error + 'static>(&self) -> Option<&E> {
+        (self as &(dyn std::error::Error + 'static)).as_error::<E>()
+    }
+}

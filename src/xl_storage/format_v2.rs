@@ -26,10 +26,10 @@ const XL_VERSION_MINOR: u16 = 2;
 lazy_static! {
     static ref XL_VERSION_CURRENT: [u8; 4] = {
         let mut version = [0u8; 4];
-        (&mut version[..])
+        (&mut version[..2])
             .write_u16::<LittleEndian>(XL_VERSION_MAJOR)
             .unwrap();
-        (&mut version[..])
+        (&mut version[2..])
             .write_u16::<LittleEndian>(XL_VERSION_MINOR)
             .unwrap();
         version
@@ -40,7 +40,7 @@ fn check_xl2_v1(buf: &[u8]) -> anyhow::Result<(&[u8], u16, u16)> {
     if buf.len() <= 8 {
         anyhow::bail!("xl.meta: no data");
     }
-    if &buf[..4] == &XL_HEADER[..] {
+    if &buf[..4] != &XL_HEADER[..] {
         anyhow::bail!(
             "xl.meta: unknown XLv2 header, expected {:?}, got {:?}",
             XL_HEADER,
@@ -65,37 +65,37 @@ fn is_xl2_v1_format(buf: &[u8]) -> bool {
     check_xl2_v1(buf).is_err()
 }
 
-#[derive(Serialize_repr, Deserialize_repr, Clone, Copy)]
+#[derive(Serialize_repr, Deserialize_repr, Clone, Copy, Debug, PartialEq)]
 #[repr(u8)]
 pub enum VersionType {
     Object = 1,
     Delete = 2,
 }
 
-#[derive(Serialize_repr, Deserialize_repr, Clone, Copy, Display)]
+#[derive(Serialize_repr, Deserialize_repr, Clone, Copy, Debug, PartialEq, Display)]
 #[repr(u8)]
 pub enum ErasureAlgo {
     #[strum(serialize = "reedsolomn")]
     ReedSolomon = 1,
 }
 
-#[derive(Serialize_repr, Deserialize_repr, Clone, Copy)]
+#[derive(Serialize_repr, Deserialize_repr, Clone, Copy, Debug, PartialEq)]
 #[repr(u8)]
 pub enum ChecksumAlgo {
     HighwayHash = 1,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 struct XlMetaV2DeleteMarker {
     #[serde(rename = "ID")]
     version_id: Option<uuid::Uuid>,
     #[serde(rename = "MTime")]
     mod_time: i64,
-    #[serde(rename = "MetaSys", skip_serializing_if = "HashMap::is_empty")]
+    #[serde(rename = "MetaSys")]
     meta_sys: HashMap<String, String>, // internal metadata
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 struct XlMetaV2Object {
     #[serde(rename = "ID")]
     version_id: Option<uuid::Uuid>,
@@ -121,30 +121,30 @@ struct XlMetaV2Object {
     part_etags: Vec<String>,
     #[serde(rename = "PartSizes")]
     part_sizes: Vec<i64>,
-    #[serde(rename = "PartASizes", skip_serializing_if = "Vec::is_empty")]
+    #[serde(rename = "PartASizes")]
     part_actual_sizes: Vec<i64>,
     #[serde(rename = "Size")]
     size: u64,
     #[serde(rename = "MTime")]
     mod_time: i64,
-    #[serde(rename = "MetaSys", skip_serializing_if = "HashMap::is_empty")]
+    #[serde(rename = "MetaSys")]
     meta_sys: HashMap<String, String>,
     // internal metadata
-    #[serde(rename = "MetaUsr", skip_serializing_if = "HashMap::is_empty")]
+    #[serde(rename = "MetaUsr")]
     meta_user: HashMap<String, String>, // metadata set by user
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 struct XlMetaV2Version {
     #[serde(rename = "Type")]
     type_: VersionType,
-    #[serde(rename = "V2Obj", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "V2Obj")]
     object_v2: Option<XlMetaV2Object>,
-    #[serde(rename = "DelObj", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "DelObj")]
     delete_marker: Option<XlMetaV2DeleteMarker>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
 struct XlMetaV2 {
     #[serde(rename = "Versions")]
     versions: Vec<XlMetaV2Version>,
@@ -438,7 +438,7 @@ impl XlMetaV2 {
         }
 
         for version in &mut self.versions {
-            if version.valid() {
+            if !version.valid() {
                 return Err(StorageError::FileCorrupt.into());
             }
             match version.type_ {
@@ -475,7 +475,7 @@ impl XlMetaV2 {
         }
 
         for version in &mut self.versions {
-            if version.valid() {
+            if !version.valid() {
                 return Err(StorageError::FileCorrupt.into());
             }
             match version.type_ {
@@ -928,7 +928,6 @@ impl XlMetaV2 {
                     if got as u32 != crc {
                         anyhow::bail!("xl.meta: crc mismatch, want 0x{:x}, got 0x{:x}", crc, got);
                     }
-                    let remaining = &remaining[size_of::<u32>()..];
 
                     let inline_data_version = remaining[0];
                     if inline_data_version != XL_META_INLINE_DATA_VERSION {

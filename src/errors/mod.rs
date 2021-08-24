@@ -29,6 +29,17 @@ impl AsError for anyhow::Error {
     }
 }
 
+impl AsError for std::io::Error {
+    fn as_error<E: std::error::Error + 'static>(&self) -> Option<&E> {
+        if let Some(err) = self.get_ref() {
+            if let Some(err) = err.as_error::<E>() {
+                return Some(err);
+            }
+        }
+        None
+    }
+}
+
 impl AsError for dyn std::error::Error + 'static {
     fn as_error<E: std::error::Error + 'static>(&self) -> Option<&E> {
         for cause in self.chain() {

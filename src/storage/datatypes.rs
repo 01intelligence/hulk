@@ -23,7 +23,7 @@ pub struct DiskInfo {
 
 pub struct DiskMetrics {
     pub api_latencies: HashMap<String, String>,
-    pub api_calls: HashMap<String, String>,
+    pub api_calls: HashMap<String, u64>,
 }
 
 pub struct VolsInfo(pub Vec<VolInfo>);

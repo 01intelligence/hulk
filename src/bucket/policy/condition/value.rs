@@ -18,7 +18,11 @@ pub enum Value {
 
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
+        match self {
+            Value::String(v) => v.fmt(f),
+            Value::Int(v) => v.fmt(f),
+            Value::Bool(v) => v.fmt(f),
+        }
     }
 }
 
@@ -307,9 +311,9 @@ mod tests {
     #[test]
     fn test_value_string() {
         let cases = [
-            (Value::Bool(true), "Bool(true)"),
-            (Value::Int(7), "Int(7)"),
-            (Value::String("foo".to_string()), r#"String("foo")"#),
+            (Value::Bool(true), "true"),
+            (Value::Int(7), "7"),
+            (Value::String("foo".to_string()), "foo"),
         ];
 
         for (key, expected_result) in cases {

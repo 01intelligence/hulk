@@ -81,3 +81,170 @@ pub(super) fn new_boolean_func(
         value: value.to_string(),
     }))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_boolean_func_evaluate() -> anyhow::Result<()> {
+        let func1 = new_boolean_func(AWS_SECURE_TRANSPORT, ValueSet::new(vec![Value::Bool(true)]))?;
+
+        let func2 = new_boolean_func(
+            AWS_SECURE_TRANSPORT,
+            ValueSet::new(vec![Value::Bool(false)]),
+        )?;
+
+        let cases = [
+            (
+                func1,
+                HashMap::from([("SecureTransport".to_string(), vec!["true".to_string()])]),
+                true,
+            ),
+            (
+                func2,
+                HashMap::from([("SecureTransport".to_string(), vec!["false".to_string()])]),
+                true,
+            ),
+        ];
+
+        for (key, values, expected_result) in cases {
+            let result = key.evaluate(&values);
+
+            assert_eq!(
+                result, expected_result,
+                "key: '{}', expected: {}, got: {}",
+                key, expected_result, result
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_boolean_func_key() -> anyhow::Result<()> {
+        let func = new_boolean_func(AWS_SECURE_TRANSPORT, ValueSet::new(vec![Value::Bool(true)]))?;
+
+        let cases = [(func, AWS_SECURE_TRANSPORT)];
+
+        for (key, expected_result) in cases {
+            let result = key.key();
+
+            assert_eq!(
+                result, expected_result,
+                "key: '{}', expected: {}, got: {}",
+                key, expected_result, result
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_boolean_func_to_map() -> anyhow::Result<()> {
+        let func1 = new_boolean_func(AWS_SECURE_TRANSPORT, ValueSet::new(vec![Value::Bool(true)]))?;
+
+        let res1 = HashMap::from([(
+            AWS_SECURE_TRANSPORT,
+            ValueSet::new(vec![Value::String("true".to_string())]),
+        )]);
+
+        let func2 = new_boolean_func(
+            AWS_SECURE_TRANSPORT,
+            ValueSet::new(vec![Value::Bool(false)]),
+        )?;
+
+        let res2 = HashMap::from([(
+            AWS_SECURE_TRANSPORT,
+            ValueSet::new(vec![Value::String("false".to_string())]),
+        )]);
+
+        let cases = [(func1, res1), (func2, res2)];
+
+        for (key, expected_result) in cases {
+            let result = key.to_map();
+
+            assert_eq!(
+                result, expected_result,
+                "key: '{}', expected: {:?}, got: {:?}",
+                key, expected_result, result
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_new_boolean_func() -> anyhow::Result<()> {
+        let func1 = new_boolean_func(AWS_SECURE_TRANSPORT, ValueSet::new(vec![Value::Bool(true)]))?;
+
+        let func2 = new_boolean_func(
+            AWS_SECURE_TRANSPORT,
+            ValueSet::new(vec![Value::Bool(false)]),
+        )?;
+
+        let cases = [
+            (
+                AWS_SECURE_TRANSPORT,
+                ValueSet::new(vec![Value::Bool(true)]),
+                Some(func1),
+                false,
+            ),
+            (
+                AWS_SECURE_TRANSPORT,
+                ValueSet::new(vec![Value::String("false".to_string())]),
+                Some(func2),
+                false,
+            ),
+            // Multiple values error.
+            (
+                AWS_SECURE_TRANSPORT,
+                ValueSet::new(vec![
+                    Value::String("true".to_string()),
+                    Value::String("false".to_string()),
+                ]),
+                None,
+                true,
+            ),
+            // Invalid boolean string error.
+            (
+                AWS_SECURE_TRANSPORT,
+                ValueSet::new(vec![Value::String("foo".to_string())]),
+                None,
+                true,
+            ),
+            // Invalid value error.
+            (
+                AWS_SECURE_TRANSPORT,
+                ValueSet::new(vec![Value::Int(7)]),
+                None,
+                true,
+            ),
+        ];
+
+        for (key, values, expected_result, expect_err) in cases {
+            let key_cache = key.clone();
+            let result = new_boolean_func(key, values);
+
+            match result {
+                Ok(result) => {
+                    if let Some(expected_result) = expected_result {
+                        assert_eq!(
+                            result.to_string(),
+                            expected_result.to_string(),
+                            "key: '{}', expected: {}, got: {}",
+                            key_cache,
+                            expected_result,
+                            result
+                        );
+                    } else {
+                        assert!(expect_err, "expect an error");
+                    }
+                }
+                Err(_) => assert!(expect_err, "expect an error"),
+            }
+        }
+
+        Ok(())
+    }
+}

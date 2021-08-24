@@ -103,9 +103,30 @@ impl<'de> de::Deserialize<'de> for ValueSet {
                 }
                 Ok(set)
             }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(ValueSet::new(vec![Value::String(v.to_string())]))
+            }
+
+            fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(ValueSet::new(vec![Value::Bool(v)]))
+            }
+
+            fn visit_i32<E>(self, v: i32) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(ValueSet::new(vec![Value::Int(v as isize)]))
+            }
         }
 
-        deserializer.deserialize_seq(ValueSetVisitor)
+        deserializer.deserialize_any(ValueSetVisitor)
     }
 }
 

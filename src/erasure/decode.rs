@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncSeek, AsyncSeekExt, AsyncWrite};
 
 use super::*;
-use crate::errors::{AsError, ReducibleError, StorageError};
+use crate::errors::{AsError, StorageError};
 use crate::utils::AsyncReadExt;
 
 struct ParallelReader<'a> {

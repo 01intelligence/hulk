@@ -2,6 +2,7 @@ mod format_utils;
 mod format_v2;
 mod openoptions_ext;
 mod types;
+mod with_check;
 
 use std::io::Error;
 
@@ -10,6 +11,7 @@ use lazy_static::lazy_static;
 use path_absolutize::Absolutize;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 pub use types::*;
+pub use with_check::*;
 
 use crate::admin::TraceType::Storage;
 use crate::endpoint::Endpoint;

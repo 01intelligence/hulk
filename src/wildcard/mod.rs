@@ -421,4 +421,168 @@ mod tests {
             )
         }
     }
+
+    #[test]
+    fn test_match_wildcard_simple() {
+        let cases = [
+            // Test case - 1.
+            // Test case with pattern "*". Expected to match any text.
+            Match {
+                pattern: "*",
+                text: "s3:GetObject",
+                matched: true,
+            },
+            // Test case - 2.
+            // Test case with empty pattern. This only matches empty string.
+            Match {
+                pattern: "",
+                text: "s3:GetObject",
+                matched: false,
+            },
+            // Test case - 3.
+            // Test case with empty pattern. This only matches empty string.
+            Match {
+                pattern: "",
+                text: "",
+                matched: true,
+            },
+            // Test case - 4.
+            // Test case with single "*" at the end.
+            Match {
+                pattern: "s3:*",
+                text: "s3:ListMultipartUploadParts",
+                matched: true,
+            },
+            // Test case - 5.
+            // Test case with a no "*". In this case the pattern and text should be the same.
+            Match {
+                pattern: "s3:ListBucketMultipartUploads",
+                text: "s3:ListBucket",
+                matched: false,
+            },
+            // Test case - 6.
+            // Test case with a no "*". In this case the pattern and text should be the same.
+            Match {
+                pattern: "s3:ListBucket",
+                text: "s3:ListBucket",
+                matched: true,
+            },
+            // Test case - 7.
+            // Test case with a no "*". In this case the pattern and text should be the same.
+            Match {
+                pattern: "s3:ListBucketMultipartUploads",
+                text: "s3:ListBucketMultipartUploads",
+                matched: true,
+            },
+            // Test case - 8.
+            // Test case with pattern containing key name with a prefix. Should accept the same text without a "*".
+            Match {
+                pattern: "my-bucket/oo*",
+                text: "my-bucket/oo",
+                matched: true,
+            },
+            // Test case - 9.
+            // Test case with "*" at the end of the pattern.
+            Match {
+                pattern: "my-bucket/In*",
+                text: "my-bucket/India/Karnataka/",
+                matched: true,
+            },
+            // Test case - 10.
+            // Test case with prefixes shuffled.
+            // This should fail.
+            Match {
+                pattern: "my-bucket/In*",
+                text: "my-bucket/Karnataka/India/",
+                matched: false,
+            },
+            // Test case - 11.
+            // Test case with text expanded to the wildcards in the pattern.
+            Match {
+                pattern: "my-bucket/In*/Ka*/Ban",
+                text: "my-bucket/India/Karnataka/Ban",
+                matched: true,
+            },
+            // Test case - 12.
+            // Test case with the  keyname part is repeated as prefix several times.
+            // This is valid.
+            Match {
+                pattern: "my-bucket/In*/Ka*/Ban",
+                text: "my-bucket/India/Karnataka/Ban/Ban/Ban/Ban/Ban",
+                matched: true,
+            },
+            // Test case - 13.
+            // Test case to validate that `*` can be expanded into multiple prefixes.
+            Match {
+                pattern: "my-bucket/In*/Ka*/Ban",
+                text: "my-bucket/India/Karnataka/Area1/Area2/Area3/Ban",
+                matched: true,
+            },
+            // Test case - 14.
+            // Test case to validate that `*` can be expanded into multiple prefixes.
+            Match {
+                pattern: "my-bucket/In*/Ka*/Ban",
+                text: "my-bucket/India/State1/State2/Karnataka/Area1/Area2/Area3/Ban",
+                matched: true,
+            },
+            // Test case - 15.
+            // Test case where the keyname part of the pattern is expanded in the text.
+            Match {
+                pattern: "my-bucket/In*/Ka*/Ban",
+                text: "my-bucket/India/Karnataka/Bangalore",
+                matched: false,
+            },
+            // Test case - 16.
+            // Test case with prefixes and wildcard expanded for all "*".
+            Match {
+                pattern: "my-bucket/In*/Ka*/Ban*",
+                text: "my-bucket/India/Karnataka/Bangalore",
+                matched: true,
+            },
+            // Test case - 17.
+            // Test case with keyname part being a wildcard in the pattern.
+            Match {
+                pattern: "my-bucket/*",
+                text: "my-bucket/India",
+                matched: true,
+            },
+            // Test case - 18.
+            Match {
+                pattern: "my-bucket/oo*",
+                text: "my-bucket/odo",
+                matched: false,
+            },
+            // Test case - 11.
+            Match {
+                pattern: "my-bucket/oo?*",
+                text: "my-bucket/oo???",
+                matched: true,
+            },
+            // Test case - 12:
+            Match {
+                pattern: "my-bucket/oo??*",
+                text: "my-bucket/odo",
+                matched: false,
+            },
+            // Test case - 13:
+            Match {
+                pattern: "?h?*",
+                text: "?h?hello",
+                matched: true,
+            },
+        ];
+
+        // Iterating over the test cases, call the function under test and asert the output.
+        for (i, case) in cases.iter().enumerate() {
+            let actual_result = match_wildcard_simple(case.pattern, case.text);
+            assert_eq!(
+                case.matched,
+                actual_result,
+                "Test {}: Expected the result to be `{}`, but instead found it to be `{}`",
+                i + 1,
+                case.matched,
+                actual_result
+            )
+        }
+    }
 }

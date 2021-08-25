@@ -1,8 +1,12 @@
+use std::fmt;
+
+use anyhow::bail;
 use serde::{Deserialize, Serialize};
 use strum::Display;
 
 use super::*;
 use crate::prelude::*;
+use crate::utils::{now, DateTime, DateTimeFormatExt, MIN_DATETIME};
 
 pub const TRANSITION_STATUS: &str = "transition-status";
 pub const TRANSITIONED_OBJECT_NAME: &str = "transitioned-object";
@@ -124,7 +128,104 @@ pub struct RestoreRequest {
     pub type_: Option<RestoreRequestType>,
 }
 
+const ERR_RESTORE_HDR_MALFORMED: &str = "x-amz-restore header malformed";
+const RESTORE_STATUS_DATETIME_FORMAT: &str = "%a, %d %b %Y %H:%M:%S %Z";
+
+// RestoreStatus represents a restore-object's status. It can be either
+// ongoing or completed.
+pub struct RestoreStatus {
+    pub ongoing: bool,
+    pub expiry: DateTime,
+}
+
+impl fmt::Display for RestoreStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.ongoing {
+            return write!(f, "ongoing-request=true");
+        }
+        write!(
+            f,
+            "ongoing-request=false, expiry-date={}",
+            self.expiry.fmt_to(RESTORE_STATUS_DATETIME_FORMAT)
+        )
+    }
+}
+
+impl RestoreStatus {
+    // ongoing_restore_status constructs RestoreStatus for an ongoing restore-object.
+    pub fn ongoing() -> RestoreStatus {
+        return RestoreStatus {
+            ongoing: true,
+            expiry: MIN_DATETIME,
+        };
+    }
+
+    // completed_restore_status constructs RestoreStatus for an completed restore-object with given expiry.
+    pub fn completed(expiry: DateTime) -> RestoreStatus {
+        return RestoreStatus {
+            ongoing: false,
+            expiry,
+        };
+    }
+
+    // on_disk returns true if restored object contents exist in Hulk. Otherwise returns false.
+    // The restore operation could be in one of the following states,
+    // - in progress (no content on Hulk's disks yet)
+    // - completed
+    // - completed but expired (again, no content on Hulk's disks)
+    pub fn on_disk(&self) -> bool {
+        if !self.ongoing && now() < self.expiry {
+            // completed
+            return true;
+        }
+        false // in progress or completed but expired
+    }
+
+    pub fn parse(restore_hdr: &str) -> anyhow::Result<RestoreStatus> {
+        let tokens: Vec<&str> = restore_hdr.splitn(2, ",").collect();
+        let progress_tokens: Vec<&str> = tokens[0].splitn(2, "=").collect();
+        if progress_tokens.len() != 2 {
+            bail!(ERR_RESTORE_HDR_MALFORMED);
+        }
+        if progress_tokens[0].trim() != "ongoing-request" {
+            bail!(ERR_RESTORE_HDR_MALFORMED);
+        }
+
+        if progress_tokens[1] == "true" {
+            if tokens.len() == 1 {
+                return Ok(RestoreStatus::ongoing());
+            }
+        } else if progress_tokens[1] == "false" {
+            if tokens.len() != 2 {
+                bail!(ERR_RESTORE_HDR_MALFORMED);
+            }
+            let expiry_tokens: Vec<&str> = tokens[1].splitn(2, "=").collect();
+            if expiry_tokens.len() != 2 {
+                bail!(ERR_RESTORE_HDR_MALFORMED);
+            }
+            if expiry_tokens[0].trim() != "expiry-date" {
+                bail!(ERR_RESTORE_HDR_MALFORMED);
+            }
+            let expiry = DateTime::parse(expiry_tokens[1], RESTORE_STATUS_DATETIME_FORMAT);
+            match expiry {
+                Ok(expiry) => return Ok(RestoreStatus::completed(expiry)),
+                Err(_) => bail!(ERR_RESTORE_HDR_MALFORMED),
+            }
+        }
+        bail!(ERR_RESTORE_HDR_MALFORMED)
+    }
+}
+
 pub fn is_restored_object_on_disk(meta: &HashMap<String, String>) -> bool {
-    // TODO
-    false
+    let restore_hdr = meta.get(&crate::http::AMZ_RESTORE.to_string());
+    match restore_hdr {
+        Some(restore_hdr) => {
+            let restore_status = RestoreStatus::parse(restore_hdr.as_str());
+            match restore_status {
+                Ok(restore_status) => restore_status.on_disk(),
+                Err(_) => false,
+            }
+        }
+        None => false,
+    }
 }

@@ -94,11 +94,8 @@ mod tests {
 
     #[test]
     // Ensure that we can insert new keys into the tree, then check the size.
-    fn test_insert() {
-        let mut trie = Trie {
-            root: Node::default(),
-            size: 0,
-        };
+    fn test_trie_insert() {
+        let mut trie = Trie::default();
 
         trie.insert("key".to_string());
         trie.insert("keyy".to_string());
@@ -109,11 +106,8 @@ mod tests {
 
     #[test]
     // Ensure that prefix_match gives us the correct two keys in the tree.
-    fn test_prefix_match() {
-        let mut trie = Trie {
-            root: Node::default(),
-            size: 0,
-        };
+    fn test_trie_prefix_match() {
+        let mut trie = Trie::default();
 
         // Feed it some fodder: only "minio" and "miny-o's" should trip the matcher.
         trie.insert("minio".to_string());

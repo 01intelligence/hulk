@@ -93,6 +93,7 @@ mod tests {
     use super::*;
 
     #[test]
+    // Ensure that we can insert new keys into the tree, then check the size.
     fn test_insert() {
         let mut trie = Trie {
             root: Node::default(),
@@ -104,5 +105,35 @@ mod tests {
 
         // After inserting, we should have a size of two.
         assert_eq!(trie.size, 2, "expected size 2, got: {}", trie.size)
+    }
+
+    #[test]
+    // Ensure that prefix_match gives us the correct two keys in the tree.
+    fn test_prefix_match() {
+        let mut trie = Trie {
+            root: Node::default(),
+            size: 0,
+        };
+
+        // Feed it some fodder: only "minio" and "miny-o's" should trip the matcher.
+        trie.insert("minio".to_string());
+        trie.insert("amazon".to_string());
+        trie.insert("cheerio".to_string());
+        trie.insert("miny-o's".to_string());
+
+        let matches = trie.prefix_match("min");
+        assert_eq!(
+            matches.len(),
+            2,
+            "expected two matches, got: {}",
+            matches.len()
+        );
+
+        if matches[0] != "minio" && matches[1] != "minio" {
+            panic!(
+                "expected one match to be 'minio', got: '{}' and '{}'",
+                matches[0], matches[1]
+            )
+        }
     }
 }

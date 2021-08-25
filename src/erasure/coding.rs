@@ -38,7 +38,7 @@ impl Erasure {
     }
 
     pub fn shard_size(&self) -> usize {
-        crate::utils::ceil_frac(self.block_size as isize, self.data_blocks as isize) as usize
+        crate::utils::ceil_frac(self.block_size as i64, self.data_blocks as i64) as usize
     }
 
     pub fn shard_file_size(&self, total_length: u64) -> usize {
@@ -48,7 +48,7 @@ impl Erasure {
         let num_shards = (total_length / self.block_size as u64) as usize;
         let last_block_size = (total_length % self.block_size as u64) as usize;
         let last_shard_size =
-            crate::utils::ceil_frac(last_block_size as isize, self.data_blocks as isize);
+            crate::utils::ceil_frac(last_block_size as i64, self.data_blocks as i64);
         return num_shards * self.shard_size() + last_shard_size as usize;
     }
 

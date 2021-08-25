@@ -54,25 +54,48 @@ pub struct FileInfoVersions {
 pub struct FileInfo {
     pub volume: String,
     pub name: String,
+    /// Version.
     pub version_id: String,
+    /// Indicates if the version is the latest.
     pub is_latest: bool,
+    /// True when this `FileInfo` represents a deleted marker for a versioned bucket.
     pub deleted: bool,
+
+    /// Transition status for transitioned entries.
     pub transition_status: String,
+    /// Object name on the remote tier.
     pub transition_object_name: String,
+    /// Storage class label assigned to the remote tier.
     pub transition_tier: String,
+    /// Version ID of the object associated with the remote tier.
     pub transition_version_id: String,
+    /// Indicates the restored object is to be expired.
     pub expire_restored: bool,
+
+    /// Data dir of the file.
     pub data_dir: String,
+    /// Datetime when the file was last modified, or when the file was deleted if `deleted` is true.
     pub mod_time: utils::DateTime,
+    /// Total file size.
     pub size: u64,
+    /// File mode bits.
     pub mode: u32,
+    /// File Metadata.
     pub metadata: HashMap<String, String>,
+
+    /// All the parts per object.
     pub parts: Vec<xl_storage::ObjectPartInfo>,
+    /// Erasure info for all objects.
     pub erasure: Option<xl_storage::ErasureInfo>,
+
+    /// Mark this version as deleted.
     pub mark_deleted: bool,
     pub delete_marker_replication_status: String,
     pub version_purge_status: Option<VersionPurgeStatus>,
+
+    /// Optionally carries object data.
     pub data: Vec<u8>,
+
     pub num_versions: usize,
     pub successor_mod_time: utils::DateTime,
 }

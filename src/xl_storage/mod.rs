@@ -4,12 +4,10 @@ mod openoptions_ext;
 mod types;
 mod with_check;
 
-use std::io::Error;
-
 pub use format_utils::*;
 use lazy_static::lazy_static;
 use path_absolutize::Absolutize;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWrite, AsyncWriteExt};
 pub use types::*;
 pub use with_check::*;
 
@@ -23,8 +21,9 @@ use crate::fs::{
 use crate::globals::Guard;
 use crate::pool::{TypedPool, TypedPoolGuard};
 use crate::prelude::*;
+use crate::storage::FileInfo;
 use crate::utils::{Path, PathBuf};
-use crate::xl_storage::openoptions_ext::OpenOptionsNoAtime;
+use crate::xl_storage::openoptions_ext::{OpenOptionsNoAtime, OpenOptionsSync};
 use crate::{config, fs, globals, storage, utils};
 
 const NULL_VERSION_ID: &str = "null";
@@ -484,6 +483,95 @@ impl XlStorage {
         }
 
         Ok(())
+    }
+
+    pub async fn verify_file(&self, volume: &str, path: &str, fi: &FileInfo) -> anyhow::Result<()> {
+        let volume_dir = self.get_volume_dir(volume)?;
+
+        if let Err(err) = fs::access(&volume_dir).await {
+            return if err_not_found(&err) {
+                Err(StorageError::VolumeNotFound.into())
+            } else if err_permission(&err) {
+                Err(StorageError::VolumeAccessDenied.into())
+            } else if err_io(&err) {
+                Err(StorageError::FaultyDisk.into())
+            } else {
+                Err(err.into())
+            };
+        }
+
+        assert!(fi.erasure.is_some());
+        let erasure = fi.erasure.as_ref().unwrap();
+
+        for part in &fi.parts {
+            let checksum = &erasure.checksums;
+            let part_path = crate::object::path_join(&[
+                &volume_dir,
+                path,
+                &fi.data_dir,
+                &format!("part.{}", part.number),
+            ]);
+        }
+        todo!();
+
+        Ok(())
+    }
+
+    pub async fn create_file<R, F>(
+        &self,
+        volume: &str,
+        path: &str,
+        size: Option<u64>,
+        write: F,
+    ) -> anyhow::Result<()>
+    where
+        R: std::future::Future<Output = anyhow::Result<()>>,
+        F: FnOnce(Box<dyn AsyncWrite>) -> R,
+    {
+        let volume_dir = self.get_volume_dir(volume)?;
+        let file_path = crate::object::path_join(&[&volume_dir, path]);
+        check_path_length(&file_path)?;
+
+        let dir_path = Path::new(&file_path).parent();
+        if let Some(dir_path) = dir_path {
+            fs::reliable_remove_all(dir_path);
+        }
+
+        if let Some(dir_path) = dir_path {
+            fs::reliable_mkdir_all(dir_path, 0o777).await?;
+        }
+
+        if size.is_some() && size.unwrap() <= SMALL_FILE_THRESHOLD as u64 {
+            let file = match fs::OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .sync()
+                .open(&file_path)
+                .await
+            {
+                Err(err) => {
+                    let err = if err_is_dir(&err) {
+                        StorageError::IsNotRegular.into()
+                    } else if err_permission(&err) {
+                        StorageError::FileAccessDenied.into()
+                    } else if err_io(&err) {
+                        StorageError::FaultyDisk.into()
+                    } else if err_too_many_files(&err) {
+                        StorageError::TooManyOpenFiles.into()
+                    } else {
+                        err.into()
+                    };
+                    return Err(err);
+                }
+                Ok(file) => file,
+            };
+
+            write(Box::new(file)).await?;
+
+            return Ok(());
+        }
+
+        todo!()
     }
 
     fn get_volume_dir(&self, volume: &str) -> anyhow::Result<String> {

@@ -37,6 +37,7 @@ pub mod globals;
 pub mod hash;
 pub mod http;
 pub mod iam;
+pub mod io;
 pub mod jwt;
 pub mod lock;
 pub mod logger;

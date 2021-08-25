@@ -45,7 +45,7 @@ pub async fn sleep_until(deadline: Instant, timeout: Duration, rng: Option<&mut 
     }
 }
 
-pub fn ceil_frac(mut numerator: isize, mut denominator: isize) -> isize {
+pub fn ceil_frac(mut numerator: i64, mut denominator: i64) -> i64 {
     if denominator == 0 {
         // do nothing on invalid input
         return 0;

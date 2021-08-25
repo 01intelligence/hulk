@@ -25,7 +25,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       - name: Generate code coverage
         run: |
-            cargo +nightly tarpaulin --verbose --all-features --workspace --timeout 120 --out Xml -- --skip bench
+            cargo +nightly tarpaulin --verbose --all-features --workspace --tests --timeout 120 --out Xml -- --skip bench
       - name: Upload to Codecov
         uses: codecov/codecov-action@v1.0.2
         with:

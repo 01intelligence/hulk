@@ -116,7 +116,7 @@ struct XlMetaV2Object {
     #[serde(rename = "CSumAlgo")]
     bitrot_checksum_algo: ChecksumAlgo,
     #[serde(rename = "PartNums")]
-    part_numbers: Vec<isize>,
+    part_numbers: Vec<usize>,
     #[serde(rename = "PartETags")]
     part_etags: Vec<String>,
     #[serde(rename = "PartSizes")]

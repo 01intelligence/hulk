@@ -1,5 +1,8 @@
 mod datatypes;
+mod heal;
+
 pub use datatypes::*;
+pub use heal::*;
 
 use crate::{bitrot, utils};
 
@@ -140,7 +143,12 @@ impl StorageApi {
     pub async fn append_file(&self, volume: &str, path: &str, buf: &[u8]) -> anyhow::Result<()> {
         todo!()
     }
-    pub async fn create_file(&self, volume: &str, path: &str, size: u64) -> anyhow::Result<()> {
+    pub async fn create_file(
+        &self,
+        volume: &str,
+        path: &str,
+        size: Option<u64>,
+    ) -> anyhow::Result<()> {
         todo!()
     }
     pub async fn read_file_stream(
@@ -196,5 +204,3 @@ impl StorageApi {
         todo!()
     }
 }
-
-pub struct HealingTracker {}

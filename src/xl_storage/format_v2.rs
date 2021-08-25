@@ -182,7 +182,7 @@ impl XlMetaV2Object {
         let key = String::from(crate::globals::RESERVED_METADATA_PREFIX_LOWER)
             + crate::bucket::TRANSITION_STATUS;
         if &crate::bucket::TransitionStatus::Complete.to_string()
-            == self
+            != self
                 .meta_sys
                 .get(&key)
                 .map(|v| v as &str)
@@ -805,8 +805,11 @@ impl XlMetaV2 {
                         if fi.deleted {
                             self.versions.push(ventry.unwrap());
                         }
-
-                        if self.shared_data_dir_index_count(i) > 0 {
+                        if self.shared_data_dir_count(
+                            &version_id,
+                            &Some(uuid::Uuid::parse_str(&data_dir).unwrap()),
+                        ) > 0
+                        {
                             return Ok(("".to_owned(), false));
                         } else {
                             return Ok((data_dir, false));
@@ -1000,6 +1003,465 @@ fn get_mod_time_from_version(v: &XlMetaV2Version) -> utils::DateTime {
         }
         VersionType::Delete => {
             utils::DateTime::from_timestamp_nanos(v.delete_marker.as_ref().unwrap().mod_time)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::hash::Hash;
+    use std::ptr::hash;
+
+    use chrono::{DateTime, Duration, FixedOffset, Utc};
+    use maplit::hashmap;
+
+    use super::*;
+    use crate::bitrot::BitrotAlgorithm;
+    // use crate::bucket::{completed_restore_status, ongoing_restore_status};
+    use crate::storage::{FileInfo, VersionPurgeStatus};
+    use crate::utils;
+    use crate::utils::assert::{assert_err, assert_ok};
+    use crate::xl_storage::{ChecksumInfo, ErasureInfo};
+
+    #[test]
+    fn test_xl_v2_format_data() {
+        let data = b"some object data";
+        let data2 = b"some other object data";
+        let mut xl = XlMetaV2 {
+            versions: Vec::new(),
+            data: HashMap::new(),
+        };
+        let mut fi = FileInfo {
+            volume: String::from("volume"),
+            name: String::from("object-name"),
+            version_id: String::from("756100c6-b393-4981-928a-d49bbc164741"),
+            is_latest: true,
+            deleted: false,
+            transition_status: String::new(),
+            transition_object_name: String::new(),
+            transition_tier: String::new(),
+            transition_version_id: String::new(),
+            expire_restored: false,
+            data_dir: String::from("bffea160-ca7f-465f-98bc-9b4f1c3ba1ef"),
+            mod_time: utils::now(),
+            size: 0,
+            mode: 0,
+            metadata: HashMap::new(),
+            parts: Vec::new(),
+            erasure: Some(ErasureInfo {
+                algorithm: ErasureAlgo::ReedSolomon.to_string(),
+                data_blocks: 4,
+                parity_blocks: 2,
+                block_size: 10000,
+                index: 1,
+                distribution: vec![1, 2, 3, 4, 5, 6, 7, 8],
+                checksums: vec![ChecksumInfo {
+                    part_number: 1,
+                    algorithm: BitrotAlgorithm::HighwayHash256,
+                    hash: Vec::new(),
+                }],
+            }),
+            mark_deleted: false,
+            delete_marker_replication_status: String::new(),
+            version_purge_status: None,
+            data: data.to_vec(),
+            num_versions: 1,
+            successor_mod_time: utils::MIN_DATETIME,
+        };
+
+        assert_ok!(xl.add_version(&fi));
+        fi.version_id = uuid::Uuid::new_v4().to_string();
+        fi.data_dir = uuid::Uuid::new_v4().to_string();
+        fi.data = data2.to_vec();
+        assert_ok!(xl.add_version(&fi));
+
+        let serialized = assert_ok!(xl.dump());
+
+        // Roundtrip data
+        let mut xl2 = assert_ok!(XlMetaV2::load_with_data(&serialized));
+
+        // We should have one data entry
+        assert_eq!(xl2.data.len(), 2, "want 2 entry, got {}", xl2.data.len());
+        assert_eq!(
+            xl2.data.get("756100c6-b393-4981-928a-d49bbc164741"),
+            Some(&data.to_vec()),
+            "Find data returned {:?}",
+            xl2.data
+                .get("756100c6-b393-4981-928a-d49bbc164741")
+                .unwrap()
+        );
+        assert_eq!(
+            xl2.data.get(&fi.version_id),
+            Some(&data2.to_vec()),
+            "Find data returned {:?}",
+            xl2.data.get(&fi.version_id).unwrap()
+        );
+        // Remove entry
+        xl2.data.remove(&fi.version_id);
+        assert_eq!(
+            xl2.data.get(&fi.version_id),
+            None,
+            "Data was not removed: {:?}",
+            xl2.data.get(&fi.version_id)
+        );
+        assert_eq!(xl2.data.len(), 1, "want 1 entry, got {}", xl2.data.len());
+
+        // Re-add
+        xl2.data.insert(fi.version_id.clone(), fi.data.clone());
+        assert_eq!(xl2.data.len(), 2, "want 2 entry, got {}", xl2.data.len());
+
+        // Replace entry
+        xl2.data.insert(
+            "756100c6-b393-4981-928a-d49bbc164741".to_string(),
+            data2.to_vec(),
+        );
+        assert_eq!(xl2.data.len(), 2, "want 2 entry, got {}", xl2.data.len());
+        assert_eq!(
+            xl2.data.get("756100c6-b393-4981-928a-d49bbc164741"),
+            Some(&data2.to_vec()),
+            "Find data returned {:?}",
+            xl2.data
+                .get("756100c6-b393-4981-928a-d49bbc164741")
+                .unwrap()
+        );
+        let remove_data = xl2
+            .data
+            .remove("756100c6-b393-4981-928a-d49bbc164741")
+            .unwrap();
+        xl2.data.insert("new-key".to_string(), remove_data);
+        assert_eq!(
+            xl2.data.get("new-key"),
+            Some(&data2.to_vec()),
+            "Find data returned {:?}",
+            xl2.data
+                .get("756100c6-b393-4981-928a-d49bbc164741")
+                .unwrap()
+        );
+        assert_eq!(xl2.data.len(), 2, "want 2 entry, got {}", xl2.data.len());
+        assert_eq!(
+            xl2.data.get(&fi.version_id),
+            Some(&data2.to_vec()),
+            "Find data returned {:?}",
+            xl2.data.get(&fi.version_id).unwrap()
+        );
+
+        // Test trimmed
+        let mut trimmed = xl_meta_v2_trim_data(&serialized);
+        let xl2 = assert_ok!(XlMetaV2::load_with_data(&trimmed));
+        assert_eq!(
+            xl2.data.len(),
+            0,
+            "data, was not trimmed, bytes left: {}",
+            xl2.data.len()
+        );
+        // Corrupt metadata, last 5 bytes is the checksum, so go a bit further back.
+        let trimmed_len = trimmed.len();
+        trimmed[trimmed_len - 5] += 10;
+        assert_err!(
+            XlMetaV2::load_with_data(&trimmed),
+            "metadata corruption not detected"
+        );
+    }
+
+    #[test]
+    fn test_uses_data_dir() {
+        let version_id = Some(uuid::Uuid::new_v4());
+        let data_dir = Some(uuid::Uuid::new_v4());
+        let transitioned = hashmap! {
+            String::from(crate::globals::RESERVED_METADATA_PREFIX_LOWER)
+                + crate::bucket::TRANSITION_STATUS =>
+            crate::bucket::TransitionStatus::Complete.to_string()
+        };
+        let to_be_restored = hashmap! {
+            String::from(crate::http::AMZ_RESTORE) =>
+            ongoing_restore_status().to_string()
+        };
+
+        let restored = hashmap! {
+            String::from(crate::http::AMZ_RESTORE) =>
+            completed_restore_status(DateTime::from(Utc::now().checked_add_signed(Duration::hours(1)).unwrap())).to_string()
+        };
+
+        let restored_expired = hashmap! {
+            String::from(crate::http::AMZ_RESTORE) =>
+            completed_restore_status(DateTime::from(Utc::now().checked_sub_signed(Duration::hours(1)).unwrap())).to_string()
+        };
+        let case_default = XlMetaV2Object {
+            version_id: Some(uuid::Uuid::new_v4()),
+            data_dir: Some(uuid::Uuid::new_v4()),
+            meta_sys: HashMap::new(),
+            meta_user: HashMap::new(),
+            erasure_algorithm: ErasureAlgo::ReedSolomon,
+            erasure_m: 0,
+            erasure_n: 0,
+            erasure_block_size: 0,
+            erasure_index: 0,
+            erasure_distribution: Vec::new(),
+            bitrot_checksum_algo: ChecksumAlgo::HighwayHash,
+            part_numbers: Vec::new(),
+            part_etags: Vec::new(),
+            part_sizes: Vec::new(),
+            part_actual_sizes: Vec::new(),
+            size: 0,
+            mod_time: 0,
+        };
+
+        let cases: [(XlMetaV2Object, bool); 5] = [
+            (
+                // transitioned object version
+                XlMetaV2Object {
+                    version_id,
+                    data_dir,
+                    meta_sys: transitioned.clone(),
+                    ..case_default.clone()
+                },
+                false,
+            ),
+            (
+                // to be restored (requires object version to be transitioned)
+                XlMetaV2Object {
+                    version_id,
+                    data_dir,
+                    meta_sys: transitioned.clone(),
+                    meta_user: to_be_restored.clone(),
+                    ..case_default.clone()
+                },
+                false,
+            ),
+            (
+                // restored object version (requires object version to be transitioned)
+                XlMetaV2Object {
+                    version_id,
+                    data_dir,
+                    meta_sys: transitioned.clone(),
+                    meta_user: restored.clone(),
+                    ..case_default.clone()
+                },
+                true,
+            ),
+            (
+                // restored object version expired an hour back (requires object version to be transitioned)
+                XlMetaV2Object {
+                    version_id,
+                    data_dir,
+                    meta_sys: transitioned.clone(),
+                    meta_user: restored_expired.clone(),
+                    ..case_default.clone()
+                },
+                false,
+            ),
+            (
+                // object version with no ILM applied
+                XlMetaV2Object {
+                    version_id,
+                    data_dir,
+                    ..case_default.clone()
+                },
+                true,
+            ),
+        ];
+        for (i, (xmlmeta, uses)) in cases.iter().enumerate() {
+            assert_eq!(xmlmeta.uses_data_dir(), *uses, "case {}", &i);
+        }
+    }
+
+    #[test]
+    fn test_delete_version_with_shared_data_dir() {
+        let data = b"some object data";
+        let data2 = b"some other object data";
+        let mut xl = XlMetaV2 {
+            versions: Vec::new(),
+            data: HashMap::new(),
+        };
+        let d0 = uuid::Uuid::new_v4().to_string();
+        let d1 = uuid::Uuid::new_v4().to_string();
+        let d2 = uuid::Uuid::new_v4().to_string();
+        let cases: [(String, String, &[u8], usize, String, String, bool, String); 7] = [
+            (
+                // object versions with inlined data don't count towards shared data directory
+                uuid::Uuid::new_v4().to_string(),
+                d0.clone(),
+                data,
+                0,
+                String::new(),
+                String::new(),
+                false,
+                String::new(),
+            ),
+            (
+                // object versions with inlined data don't count towards shared data directory
+                uuid::Uuid::new_v4().to_string(),
+                d1.clone(),
+                data2,
+                0,
+                String::new(),
+                String::new(),
+                false,
+                String::new(),
+            ),
+            (
+                // transitioned object version don't count towards shared data directory
+                uuid::Uuid::new_v4().to_string(),
+                d2.clone(),
+                b"",
+                3,
+                crate::bucket::TransitionStatus::Complete.to_string(),
+                String::new(),
+                false,
+                String::new(),
+            ),
+            (
+                // transitioned object version with an ongoing restore-object request.
+                uuid::Uuid::new_v4().to_string(),
+                d2.clone(),
+                b"",
+                3,
+                crate::bucket::TransitionStatus::Complete.to_string(),
+                ongoing_restore_status().to_string(),
+                false,
+                String::new(),
+            ),
+            // The following versions are on-disk.
+            (
+                // restored object version expiring 10 hours from now.
+                uuid::Uuid::new_v4().to_string(),
+                d2.clone(),
+                b"",
+                2,
+                crate::bucket::TransitionStatus::Complete.to_string(),
+                completed_restore_status(DateTime::from(
+                    Utc::now().checked_add_signed(Duration::hours(10)).unwrap(),
+                ))
+                .to_string(),
+                true,
+                String::new(),
+            ),
+            (
+                uuid::Uuid::new_v4().to_string(),
+                d2.clone(),
+                b"",
+                2,
+                String::new(),
+                String::new(),
+                false,
+                String::new(),
+            ),
+            (
+                uuid::Uuid::new_v4().to_string(),
+                d2.clone(),
+                b"",
+                2,
+                String::new(),
+                String::new(),
+                false,
+                d2.clone(),
+            ),
+        ];
+        let mut file_infos = Vec::new();
+        for (
+            version_id,
+            data_dir,
+            data,
+            shares,
+            transition_status,
+            restore_obj_status,
+            expire_restored,
+            expected_data_dir,
+        ) in cases.iter()
+        {
+            let mut fi = FileInfo {
+                volume: String::from("volume"),
+                name: String::from("object-name"),
+                version_id: version_id.to_string(),
+                is_latest: true,
+                deleted: false,
+                transition_status: String::new(),
+                transition_object_name: String::new(),
+                transition_tier: String::new(),
+                transition_version_id: String::new(),
+                expire_restored: false,
+                data_dir: data_dir.to_string(),
+                mod_time: utils::now(),
+                size: 0,
+                mode: 0,
+                metadata: HashMap::new(),
+                parts: Vec::new(),
+                erasure: Some(ErasureInfo {
+                    algorithm: ErasureAlgo::ReedSolomon.to_string(),
+                    data_blocks: 4,
+                    parity_blocks: 2,
+                    block_size: 10000,
+                    index: 1,
+                    distribution: vec![1, 2, 3, 4, 5, 6, 7, 8],
+                    checksums: vec![ChecksumInfo {
+                        part_number: 1,
+                        algorithm: BitrotAlgorithm::HighwayHash256,
+                        hash: Vec::new(),
+                    }],
+                }),
+                mark_deleted: false,
+                delete_marker_replication_status: String::new(),
+                version_purge_status: None,
+                data: data.to_vec(),
+                num_versions: 1,
+                successor_mod_time: utils::MIN_DATETIME,
+            };
+            if fi.data.len() == 0 {
+                fi.size = 42;
+            }
+            if restore_obj_status.len() > 0 {
+                fi.metadata = hashmap! {
+                    String::from(crate::http::AMZ_RESTORE) => restore_obj_status.to_string()
+                }
+            }
+            fi.transition_status = transition_status.to_string();
+            assert_ok!(xl.add_version(&fi));
+            fi.expire_restored = *expire_restored;
+            file_infos.insert(file_infos.len(), fi);
+        }
+        for (
+            i,
+            (
+                version_id,
+                data_dir,
+                data,
+                shares,
+                transition_status,
+                restore_obj_status,
+                expire_restored,
+                expected_data_dir,
+            ),
+        ) in cases.iter().enumerate()
+        {
+            let version = &xl.versions[i];
+            assert_eq!(
+                xl.shared_data_dir_count(
+                    &version.object_v2.as_ref().unwrap().version_id,
+                    &version.object_v2.as_ref().unwrap().data_dir
+                ),
+                *shares,
+                "case {}",
+                &i,
+            );
+        }
+        // Deleting fileInfos[4].VersionID, fileInfos[5].VersionID should return empty data dir; there are other object version sharing the data dir.
+        // Subsequently deleting fileInfos[6].versionID should return fileInfos[6].dataDir since there are no other object versions sharing this data dir.
+        for (
+            i,
+            (
+                version_id,
+                data_dir,
+                data,
+                shares,
+                transition_status,
+                restore_obj_status,
+                expire_restored,
+                expected_data_dir,
+            ),
+        ) in cases[4..].iter().enumerate()
+        {
+            let del_data_dir = assert_ok!(xl.delete_version(file_infos.get(i + 4).unwrap()));
+            assert_eq!(del_data_dir.0, *expected_data_dir, "case {}", &i);
         }
     }
 }

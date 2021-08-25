@@ -25,7 +25,7 @@ impl Trie {
     pub fn insert(&mut self, key: String) {
         let mut cur_node = &mut self.root;
         for v in key.chars() {
-            if cur_node.child.contains_key(&v) {
+            if !cur_node.child.contains_key(&v) {
                 cur_node.child.insert(v, Node::default());
             }
             cur_node = cur_node.child.get_mut(&v).unwrap();
@@ -85,5 +85,24 @@ impl Trie {
             index = key.chars().count();
         }
         Some((cur_node, index))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_insert() {
+        let mut trie = Trie {
+            root: Node::default(),
+            size: 0,
+        };
+
+        trie.insert("key".to_string());
+        trie.insert("keyy".to_string());
+
+        // After inserting, we should have a size of two.
+        assert_eq!(trie.size, 2, "expected size 2, got: {}", trie.size)
     }
 }

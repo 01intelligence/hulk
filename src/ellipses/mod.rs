@@ -197,3 +197,108 @@ pub fn find_ellipses_patterns(arg: &str) -> anyhow::Result<ArgPattern> {
 
     Ok(ArgPattern(patterns))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_has_ellipses() {
+        let cases = [
+            // Tests for all args without ellipses.
+            (vec!["64"], false),
+            // Found flower braces, still attempt to parse and throw an error.
+            (vec!["{1..64}"], true),
+            (vec!["{1..2..}"], true),
+            // Test for valid input.
+            (vec!["1...64"], true),
+            (vec!["{1...2O}"], true),
+            (vec!["..."], true),
+            (vec!["{-1...1}"], true),
+            (vec!["{0...-1}"], true),
+            (vec!["{1....4}"], true),
+            (vec!["{1...64}"], true),
+            (vec!["{...}"], true),
+            (vec!["{1...64}", "{65...128}"], true),
+            (vec!["http://minio{2...3}/export/set{1...64}"], true),
+            (
+                vec![
+                    "http://minio{2...3}/export/set{1...64}",
+                    "http://minio{2...3}/export/set{65...128}",
+                ],
+                true,
+            ),
+            (vec!["mydisk-{a...z}{1...20}"], true),
+            (vec!["mydisk-{1...4}{1..2.}"], true),
+        ];
+
+        for (i, (args, expected_ok)) in cases.iter().enumerate() {
+            let got_ok = has_ellipses(args);
+            assert_eq!(
+                got_ok,
+                *expected_ok,
+                "Test {}: expected {}, got {}",
+                i + 1,
+                *expected_ok,
+                got_ok
+            );
+        }
+    }
+
+    #[test]
+    fn test_find_ellipses_patterns() {
+        let cases = [
+            // Tests for all invalid inputs
+            ("{1..64}", false, 0),
+            ("1...64", false, 0),
+            ("...", false, 0),
+            ("{1...", false, 0),
+            ("...64}", false, 0),
+            ("{...}", false, 0),
+            ("{-1...1}", false, 0),
+            ("{0...-1}", false, 0),
+            ("{1...2O}", false, 0),
+            ("{64...1}", false, 0),
+            ("{1....4}", false, 0),
+            ("mydisk-{a...z}{1...20}", false, 0),
+            ("mydisk-{1...4}{1..2.}", false, 0),
+            ("{1..2.}-mydisk-{1...4}", false, 0),
+            ("{{1...4}}", false, 0),
+            ("{4...02}", false, 0),
+            ("{f...z}", false, 0),
+            // Test for valid input.
+            ("{1...64}", true, 64),
+            ("{1...64} {65...128}", true, 4096),
+            ("{01...036}", true, 36),
+            ("{001...036}", true, 36),
+            ("{1...a}", true, 10),
+        ];
+
+        for (i, (pattern, expected_success, expected_count)) in cases.iter().enumerate() {
+            match find_ellipses_patterns(pattern) {
+                Ok(arg_pat) => {
+                    assert!(
+                        *expected_success,
+                        "Test {}: expected failure but passed instead",
+                        i + 1,
+                    );
+                    let got_count = arg_pat.expand().len();
+                    assert_eq!(
+                        got_count,
+                        *expected_count,
+                        "Test {}: expected {}, got {}",
+                        i + 1,
+                        *expected_count,
+                        got_count
+                    );
+                }
+                Err(err) => assert!(
+                    !*expected_success,
+                    "Test {}: expected success but failed instead {:?}",
+                    i + 1,
+                    err
+                ),
+            }
+        }
+    }
+}

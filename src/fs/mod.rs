@@ -1,4 +1,4 @@
-mod aligned_write;
+mod aligned_writer;
 mod buf_reader;
 mod directio;
 mod errors;
@@ -11,7 +11,7 @@ mod readdir;
 mod reliable;
 mod root_disk;
 
-pub use aligned_write::*;
+pub use aligned_writer::*;
 pub use buf_reader::*;
 pub use directio::*;
 pub use errors::*;

@@ -993,6 +993,30 @@ impl XlMetaV2 {
     }
 }
 
+// xl_meta_v2_trim_data will trim any data from the metadata.
+// If any error occurs the unmodified data is returned.
+fn xl_meta_v2_trim_data(buf: &[u8]) -> Vec<u8> {
+    let checked_buf = check_xl2_v1(buf);
+    match checked_buf {
+        Ok((meta_buf, major, minor)) => match major {
+            XL_VERSION_MAJOR => match minor {
+                XL_VERSION_MINOR => {
+                    let cbuf = std::io::Cursor::new(meta_buf);
+                    let mut de = rmp_serde::decode::Deserializer::new(cbuf);
+                    let _: XlMetaV2 = serde::de::Deserialize::deserialize(&mut de).unwrap();
+                    let ends = buf.len()
+                        - (meta_buf.len()
+                            - (de.position() as usize + size_of::<u32>() + size_of::<u8>()));
+                    buf[..ends].to_vec()
+                }
+                _ => buf.to_vec(),
+            },
+            _ => buf.to_vec(),
+        },
+        Err(_) => buf.to_vec(),
+    }
+}
+
 fn get_mod_time_from_version(v: &XlMetaV2Version) -> utils::DateTime {
     match v.type_ {
         VersionType::Object => {

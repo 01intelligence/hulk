@@ -197,3 +197,51 @@ pub fn find_ellipses_patterns(arg: &str) -> anyhow::Result<ArgPattern> {
 
     Ok(ArgPattern(patterns))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_has_ellipses() {
+        let cases = [
+            // Tests for all args without ellipses.
+            (vec!["64"], false),
+            // Found flower braces, still attempt to parse and throw an error.
+            (vec!["{1..64}"], true),
+            (vec!["{1..2..}"], true),
+            // Test for valid input.
+            (vec!["1...64"], true),
+            (vec!["{1...2O}"], true),
+            (vec!["..."], true),
+            (vec!["{-1...1}"], true),
+            (vec!["{0...-1}"], true),
+            (vec!["{1....4}"], true),
+            (vec!["{1...64}"], true),
+            (vec!["{...}"], true),
+            (vec!["{1...64}", "{65...128}"], true),
+            (vec!["http://minio{2...3}/export/set{1...64}"], true),
+            (
+                vec![
+                    "http://minio{2...3}/export/set{1...64}",
+                    "http://minio{2...3}/export/set{65...128}",
+                ],
+                true,
+            ),
+            (vec!["mydisk-{a...z}{1...20}"], true),
+            (vec!["mydisk-{1...4}{1..2.}"], true),
+        ];
+
+        for (i, (args, expected_ok)) in cases.iter().enumerate() {
+            let got_ok = has_ellipses(args);
+            assert_eq!(
+                got_ok,
+                *expected_ok,
+                "Test {}: expected {}, got {}",
+                i + 1,
+                *expected_ok,
+                got_ok
+            );
+        }
+    }
+}

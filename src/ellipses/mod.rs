@@ -244,4 +244,61 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_find_ellipses_patterns() {
+        let cases = [
+            // Tests for all invalid inputs
+            ("{1..64}", false, 0),
+            ("1...64", false, 0),
+            ("...", false, 0),
+            ("{1...", false, 0),
+            ("...64}", false, 0),
+            ("{...}", false, 0),
+            ("{-1...1}", false, 0),
+            ("{0...-1}", false, 0),
+            ("{1...2O}", false, 0),
+            ("{64...1}", false, 0),
+            ("{1....4}", false, 0),
+            ("mydisk-{a...z}{1...20}", false, 0),
+            ("mydisk-{1...4}{1..2.}", false, 0),
+            ("{1..2.}-mydisk-{1...4}", false, 0),
+            ("{{1...4}}", false, 0),
+            ("{4...02}", false, 0),
+            ("{f...z}", false, 0),
+            // Test for valid input.
+            ("{1...64}", true, 64),
+            ("{1...64} {65...128}", true, 4096),
+            ("{01...036}", true, 36),
+            ("{001...036}", true, 36),
+            ("{1...a}", true, 10),
+        ];
+
+        for (i, (pattern, expected_success, expected_count)) in cases.iter().enumerate() {
+            match find_ellipses_patterns(pattern) {
+                Ok(arg_pat) => {
+                    assert!(
+                        *expected_success,
+                        "Test {}: expected failure but passed instead",
+                        i + 1,
+                    );
+                    let got_count = arg_pat.expand().len();
+                    assert_eq!(
+                        got_count,
+                        *expected_count,
+                        "Test {}: expected {}, got {}",
+                        i + 1,
+                        *expected_count,
+                        got_count
+                    );
+                }
+                Err(err) => assert!(
+                    !*expected_success,
+                    "Test {}: expected success but failed instead {:?}",
+                    i + 1,
+                    err
+                ),
+            }
+        }
+    }
 }

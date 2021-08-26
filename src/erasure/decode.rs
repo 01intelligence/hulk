@@ -7,7 +7,7 @@ use tokio::io::{AsyncRead, AsyncSeek, AsyncSeekExt, AsyncWrite};
 
 use super::*;
 use crate::errors::{AsError, StorageError};
-use crate::utils::AsyncReadExt;
+use crate::utils::{AsyncReadExt, SendRawPtr};
 
 struct ParallelReader<'a> {
     readers: Vec<(usize, &'a mut Option<Box<dyn AsyncReadAt + Send + Unpin>>)>,
@@ -115,16 +115,16 @@ impl<'a> ParallelReader<'a> {
             }
 
             // Safety: this buf will only be accessed by this task.
-            let buf_ptr = RawPtr(unsafe { buf as *mut Vec<u8> });
+            let buf_ptr = SendRawPtr::new(unsafe { buf as *mut Vec<u8> });
             // Safety: this reader will only be accessed by this task.
-            let reader = RawPtr(unsafe {
+            let reader = SendRawPtr::new(unsafe {
                 reader.as_mut().unwrap() as *mut Box<dyn AsyncReadAt + Send + Unpin>
             });
             let success_count = Arc::clone(&success_count);
 
             handles.push(tokio::spawn(async move {
-                let buf = unsafe { buf_ptr.0.as_mut().unwrap() };
-                let reader = unsafe { reader.0.as_mut().unwrap() };
+                let buf = unsafe { buf_ptr.to().as_mut().unwrap() };
+                let reader = unsafe { reader.to().as_mut().unwrap() };
                 match reader.read_at(&mut buf[..], offset).await {
                     Err(e) => {
                         let mut err = None;
@@ -178,10 +178,6 @@ impl<'a> ParallelReader<'a> {
         Err(StorageError::ErasureReadQuorum.into())
     }
 }
-
-struct RawPtr<T>(*mut T);
-
-unsafe impl<T> Send for RawPtr<T> {}
 
 #[async_trait]
 pub trait AsyncReadAt {

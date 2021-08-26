@@ -1,10 +1,12 @@
+use std::io::ErrorKind;
+
 use async_trait::async_trait;
 use tokio::fs::File;
 
 use crate::prelude::{Deref, DerefMut};
 use crate::utils::Path;
 
-const ALIGN_SIZE: usize = 4096;
+pub const DIRECTIO_ALIGN_SIZE: usize = 4096;
 
 #[async_trait]
 pub trait OpenOptionsDirectIo {
@@ -59,37 +61,40 @@ impl OpenOptionsDirectIo for super::OpenOptions {
 }
 
 pub trait FileDirectIo {
-    fn direct_io(&self, enable: bool) -> anyhow::Result<()>;
-    fn enable_direct_io(&self) -> anyhow::Result<()> {
+    fn direct_io(&self, enable: bool) -> std::io::Result<()>;
+    fn enable_direct_io(&self) -> std::io::Result<()> {
         self.direct_io(true)
     }
-    fn disable_direct_io(&self) -> anyhow::Result<()> {
+    fn disable_direct_io(&self) -> std::io::Result<()> {
         self.direct_io(false)
     }
 }
 
 #[cfg(all(target_family = "unix", not(target_os = "macos")))]
-impl FileDirectIo for File {
-    fn direct_io(&self, enable: bool) -> anyhow::Result<()> {
+impl FileDirectIo for std::fs::File {
+    fn direct_io(&self, enable: bool) -> std::io::Result<()> {
         use std::os::unix::io::AsRawFd;
 
         use nix::fcntl::*;
         let fd = self.as_raw_fd();
-        let flag = fcntl(fd, FcntlArg::F_GETFL)?;
-        let mut flag = OFlag::from_bits(flag).ok_or_else(|| anyhow::anyhow!("invalid OFlag"))?;
+        let flag = fcntl(fd, FcntlArg::F_GETFL)
+            .map_err(|err| std::io::Error::new(ErrorKind::Other, err))?;
+        let mut flag = OFlag::from_bits(flag)
+            .ok_or_else(|| std::io::Error::new(ErrorKind::Other, "invalid OFlag"))?;
         if enable {
             flag.insert(OFlag::O_DIRECT);
         } else {
             flag.remove(OFlag::O_DIRECT);
         }
-        let _ = fcntl(fd, FcntlArg::F_SETFL(flag))?;
+        let _ = fcntl(fd, FcntlArg::F_SETFL(flag))
+            .map_err(|err| std::io::Error::new(ErrorKind::Other, err));
         Ok(())
     }
 }
 
 #[cfg(target_os = "macos")]
-impl FileDirectIo for File {
-    fn direct_io(&self, enable: bool) -> anyhow::Result<()> {
+impl FileDirectIo for std::fs::File {
+    fn direct_io(&self, enable: bool) -> std::io::Result<()> {
         use std::os::unix::io::AsRawFd;
         let res = unsafe {
             libc::fcntl(
@@ -98,14 +103,16 @@ impl FileDirectIo for File {
                 if enable { 1 } else { 0 },
             )
         };
-        let _ = nix::errno::Errno::result(res)?;
+        if let Err(err) = nix::errno::Errno::result(res) {
+            return Err(std::io::Error::new(ErrorKind::Other, err));
+        }
         Ok(())
     }
 }
 
 #[cfg(target_family = "windows")]
-impl FileDirectIo for File {
-    fn direct_io(&self, _enable: bool) -> anyhow::Result<()> {
+impl FileDirectIo for std::fs::File {
+    fn direct_io(&self, _enable: bool) -> std::io::Result<()> {
         Ok(())
     }
 }
@@ -117,7 +124,7 @@ pub struct AlignedBlock {
 
 impl AlignedBlock {
     pub fn new(block_size: usize) -> Self {
-        let layout = std::alloc::Layout::from_size_align(block_size, ALIGN_SIZE).unwrap();
+        let layout = std::alloc::Layout::from_size_align(block_size, DIRECTIO_ALIGN_SIZE).unwrap();
         Self {
             ptr: std::ptr::NonNull::new(unsafe { std::alloc::alloc(layout) }).unwrap(),
             layout,

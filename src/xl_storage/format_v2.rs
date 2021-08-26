@@ -1012,16 +1012,40 @@ mod tests {
     use std::hash::Hash;
     use std::ptr::hash;
 
-    use chrono::{DateTime, Duration, FixedOffset, Utc};
     use maplit::hashmap;
 
     use super::*;
     use crate::bitrot::BitrotAlgorithm;
-    // use crate::bucket::{completed_restore_status, ongoing_restore_status};
+    use crate::bucket::{RestoreStatus, TransitionStatus};
     use crate::storage::{FileInfo, VersionPurgeStatus};
     use crate::utils;
     use crate::utils::assert::{assert_err, assert_ok};
+    use crate::utils::{now, ChronoDuration, DateTime};
     use crate::xl_storage::{ChecksumInfo, ErasureInfo};
+
+    // xl_meta_v2_trim_data will trim any data from the metadata.
+    // If any error occurs the unmodified data is returned.
+    fn xl_meta_v2_trim_data(buf: &[u8]) -> Vec<u8> {
+        let checked_buf = check_xl2_v1(buf);
+        match checked_buf {
+            Ok((meta_buf, major, minor)) => match major {
+                XL_VERSION_MAJOR => match minor {
+                    XL_VERSION_MINOR => {
+                        let cbuf = std::io::Cursor::new(meta_buf);
+                        let mut de = rmp_serde::decode::Deserializer::new(cbuf);
+                        let _: XlMetaV2 = serde::de::Deserialize::deserialize(&mut de).unwrap();
+                        let ends = buf.len()
+                            - (meta_buf.len()
+                                - (de.position() as usize + size_of::<u32>() + size_of::<u8>()));
+                        buf[..ends].to_vec()
+                    }
+                    _ => buf.to_vec(),
+                },
+                _ => buf.to_vec(),
+            },
+            Err(_) => buf.to_vec(),
+        }
+    }
 
     #[test]
     fn test_xl_v2_format_data() {
@@ -1174,17 +1198,17 @@ mod tests {
         };
         let to_be_restored = hashmap! {
             String::from(crate::http::AMZ_RESTORE) =>
-            ongoing_restore_status().to_string()
+            RestoreStatus::ongoing().to_string()
         };
 
         let restored = hashmap! {
             String::from(crate::http::AMZ_RESTORE) =>
-            completed_restore_status(DateTime::from(Utc::now().checked_add_signed(Duration::hours(1)).unwrap())).to_string()
+            RestoreStatus::completed(DateTime::from(now().checked_add_signed(ChronoDuration::hours(1)).unwrap())).to_string()
         };
 
         let restored_expired = hashmap! {
             String::from(crate::http::AMZ_RESTORE) =>
-            completed_restore_status(DateTime::from(Utc::now().checked_sub_signed(Duration::hours(1)).unwrap())).to_string()
+            RestoreStatus::completed(DateTime::from(now().checked_sub_signed(ChronoDuration::hours(1)).unwrap())).to_string()
         };
         let case_default = XlMetaV2Object {
             version_id: Some(uuid::Uuid::new_v4()),
@@ -1305,7 +1329,7 @@ mod tests {
                 d2.clone(),
                 b"",
                 3,
-                crate::bucket::TransitionStatus::Complete.to_string(),
+                TransitionStatus::Complete.to_string(),
                 String::new(),
                 false,
                 String::new(),
@@ -1316,8 +1340,8 @@ mod tests {
                 d2.clone(),
                 b"",
                 3,
-                crate::bucket::TransitionStatus::Complete.to_string(),
-                ongoing_restore_status().to_string(),
+                TransitionStatus::Complete.to_string(),
+                RestoreStatus::ongoing().to_string(),
                 false,
                 String::new(),
             ),
@@ -1328,9 +1352,9 @@ mod tests {
                 d2.clone(),
                 b"",
                 2,
-                crate::bucket::TransitionStatus::Complete.to_string(),
-                completed_restore_status(DateTime::from(
-                    Utc::now().checked_add_signed(Duration::hours(10)).unwrap(),
+                TransitionStatus::Complete.to_string(),
+                RestoreStatus::completed(DateTime::from(
+                    now().checked_add_signed(ChronoDuration::hours(10)).unwrap(),
                 ))
                 .to_string(),
                 true,

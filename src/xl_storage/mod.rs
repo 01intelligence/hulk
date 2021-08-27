@@ -4,6 +4,8 @@ mod openoptions_ext;
 mod types;
 mod with_check;
 
+use std::io::Error;
+
 pub use format_utils::*;
 use lazy_static::lazy_static;
 use path_absolutize::Absolutize;
@@ -16,7 +18,8 @@ use crate::endpoint::Endpoint;
 use crate::errors::{AsError, StorageError, TypedError};
 use crate::fs::{
     check_path_length, err_dir_not_empty, err_invalid_arg, err_io, err_is_dir, err_not_dir,
-    err_not_found, err_permission, err_too_many_files, err_too_many_symlinks, OpenOptionsDirectIo,
+    err_not_found, err_permission, err_too_many_files, err_too_many_symlinks, File,
+    OpenOptionsDirectIo,
 };
 use crate::globals::Guard;
 use crate::pool::{TypedPool, TypedPoolGuard};
@@ -525,30 +528,58 @@ impl XlStorage {
         write: F,
     ) -> anyhow::Result<()>
     where
-        R: std::future::Future<Output = anyhow::Result<()>>,
-        F: FnOnce(Box<dyn AsyncWrite>) -> R,
+        R: std::future::Future<Output = anyhow::Result<usize>>,
+        F: FnOnce(&mut dyn AsyncWrite) -> R,
     {
         let volume_dir = self.get_volume_dir(volume)?;
         let file_path = crate::object::path_join(&[&volume_dir, path]);
         check_path_length(&file_path)?;
 
-        let dir_path = Path::new(&file_path).parent();
-        if let Some(dir_path) = dir_path {
-            fs::reliable_remove_all(dir_path);
-        }
+        // Wrap concrete logic into closure, for intervention in returning error.
+        let closure = || async {
+            fs::reliable_mkdir_all(&volume_dir, 0o777).await?;
 
-        if let Some(dir_path) = dir_path {
-            fs::reliable_mkdir_all(dir_path, 0o777).await?;
-        }
+            let mut pool_guard = (None, None);
+            let writer = if size.is_some() && size.unwrap() <= SMALL_FILE_THRESHOLD as u64 {
+                // For small files, we simply write them as DSYNC and not DIRECT
+                // to avoid the complexities of aligned I/O.
+                match fs::OpenOptions::new()
+                    .create_new(true)
+                    .write(true)
+                    .sync()
+                    .open(&file_path)
+                    .await
+                {
+                    Err(err) => Err(err),
+                    Ok(file) => Ok((Some(file), None)),
+                }
+            } else {
+                match fs::OpenOptions::new()
+                    .create_new(true)
+                    .write(true)
+                    .open_direct_io(&file_path)
+                    .await
+                {
+                    Err(err) => Err(err),
+                    Ok(file) => {
+                        let mut buf;
+                        if size.is_some() && size.unwrap() >= REALLY_LARGE_FILE_THRESHOLD as u64 {
+                            // Really large files.
+                            pool_guard.0 = Some(XL_POOL_REALLY_LARGE.get().await?);
+                            buf = &mut ***pool_guard.0.as_mut().unwrap();
+                        } else {
+                            // Large files.
+                            pool_guard.1 = Some(XL_POOL_LARGE.get().await?);
+                            buf = &mut ***pool_guard.1.as_mut().unwrap();
+                        }
+                        let file = file.into_std().await;
+                        // Aligned write.
+                        Ok((None, Some(fs::AlignedWriter::new(file, buf, size))))
+                    }
+                }
+            };
 
-        if size.is_some() && size.unwrap() <= SMALL_FILE_THRESHOLD as u64 {
-            let file = match fs::OpenOptions::new()
-                .create_new(true)
-                .write(true)
-                .sync()
-                .open(&file_path)
-                .await
-            {
+            let mut writer = match writer {
                 Err(err) => {
                     let err = if err_is_dir(&err) {
                         StorageError::IsNotRegular.into()
@@ -563,15 +594,45 @@ impl XlStorage {
                     };
                     return Err(err);
                 }
-                Ok(file) => file,
+                Ok(w) => w,
             };
 
-            write(Box::new(file)).await?;
+            debug_assert!(writer.0.is_some() || writer.1.is_some());
+            let written = if let Some(ref mut writer) = writer.0 {
+                write(writer).await? as u64
+            } else if let Some(ref mut writer) = writer.1 {
+                write(writer).await? as u64
+            } else {
+                0 // never here
+            };
+            if let Some(size) = size {
+                if written < size {
+                    return Err(StorageError::LessData.into());
+                } else if written > size {
+                    return Err(StorageError::MoreData.into());
+                }
+            }
+
+            // Sync only data not metadata.
+            if let Some(writer) = writer.0 {
+                let _ = writer.sync_data().await;
+            } else if let Some(writer) = writer.1 {
+                let _ = writer.sync_data().await;
+            }
 
             return Ok(());
-        }
+        };
 
-        todo!()
+        match closure().await {
+            Ok(_) => Ok(()),
+            Err(err) => {
+                // If error, cleanup system meta tmp volume dir.
+                if volume == crate::object::SYSTEM_META_TMP_BUCKET {
+                    let _ = fs::reliable_remove_all(&volume_dir).await;
+                }
+                Err(err)
+            }
+        }
     }
 
     fn get_volume_dir(&self, volume: &str) -> anyhow::Result<String> {

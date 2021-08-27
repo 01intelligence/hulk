@@ -44,6 +44,20 @@ impl<'a> AlignedWriter<'a> {
         }
     }
 
+    pub fn into_std(self) -> std::fs::File {
+        Arc::try_unwrap(self.std).expect("Arc::try_unwrap failed")
+    }
+
+    pub async fn sync_data(&self) -> std::io::Result<()> {
+        let std = self.std.clone();
+        asyncify(move || std.sync_data()).await
+    }
+
+    pub async fn sync_all(&self) -> std::io::Result<()> {
+        let std = self.std.clone();
+        asyncify(move || std.sync_all()).await
+    }
+
     fn write(
         &mut self,
         size: usize,
@@ -52,6 +66,7 @@ impl<'a> AlignedWriter<'a> {
             self.std.disable_direct_io()?; // TODO: async
         }
 
+        // TODO: should we use std file blocking read or tokio-uring?
         let mut std = self.std.clone();
         let buf_ptr = utils::SendRawPtr::new(self.buffer.as_ptr());
         let rx = tokio::task::spawn_blocking(move || {

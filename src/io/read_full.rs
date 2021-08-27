@@ -8,7 +8,7 @@ use futures_util::ready;
 use pin_project::pin_project;
 use tokio::io::{AsyncRead, ReadBuf};
 
-pub trait AsyncReadExt: AsyncRead {
+pub trait AsyncReadFull: AsyncRead {
     fn read_full<'a>(&'a mut self, buf: &'a mut [u8]) -> ReadFull<'a, Self>
     where
         Self: Unpin,
@@ -17,7 +17,7 @@ pub trait AsyncReadExt: AsyncRead {
     }
 }
 
-impl<R: AsyncRead + ?Sized> AsyncReadExt for R {}
+impl<R: AsyncRead + ?Sized> AsyncReadFull for R {}
 
 fn read_full<'a, A>(reader: &'a mut A, buf: &'a mut [u8]) -> ReadFull<'a, A>
 where

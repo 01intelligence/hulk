@@ -3,7 +3,7 @@ mod heal;
 
 pub use datatypes::*;
 pub use heal::*;
-use tokio::io::AsyncWrite;
+use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::{bitrot, utils};
 
@@ -144,7 +144,7 @@ impl StorageApi {
     pub async fn append_file(&self, volume: &str, path: &str, buf: &[u8]) -> anyhow::Result<()> {
         todo!()
     }
-    pub async fn create_file(
+    pub async fn create_file_writer(
         &self,
         volume: &str,
         path: &str,
@@ -152,13 +152,13 @@ impl StorageApi {
     ) -> anyhow::Result<Box<dyn AsyncWrite + Unpin>> {
         todo!()
     }
-    pub async fn read_file_stream(
+    pub async fn read_file_reader(
         &self,
         volume: &str,
         path: &str,
         offset: u64,
         size: u64,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<Box<dyn AsyncRead + Unpin>> {
         todo!()
     }
     pub async fn rename_file(

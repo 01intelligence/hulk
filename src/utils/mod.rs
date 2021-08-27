@@ -11,7 +11,6 @@ mod datetime;
 mod hash;
 mod path;
 mod ptr;
-mod read_full;
 mod str;
 mod units;
 
@@ -20,7 +19,6 @@ pub use datetime::*;
 pub use hash::*;
 pub use path::*;
 pub use ptr::*;
-pub use read_full::*;
 pub use units::*;
 
 pub use self::str::*;

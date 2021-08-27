@@ -10,7 +10,7 @@ pub use format_utils::*;
 use futures_util::{ready, FutureExt};
 use lazy_static::lazy_static;
 use path_absolutize::Absolutize;
-use tokio::io::{AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 pub use types::*;
 pub use with_check::*;
 
@@ -525,7 +525,7 @@ impl XlStorage {
         Ok(())
     }
 
-    pub async fn create_file(
+    pub async fn create_file_writer(
         &self,
         volume: &str,
         path: &str,
@@ -619,6 +619,20 @@ impl XlStorage {
             .boxed_local(),
         };
         Ok(Box::new(w))
+    }
+
+    pub async fn read_file_reader(
+        &self,
+        volume: &str,
+        path: &str,
+        offset: u64,
+        size: u64,
+    ) -> anyhow::Result<Box<dyn AsyncRead + Unpin>> {
+        let volume_dir = self.get_volume_dir(volume)?;
+        let file_path = crate::object::path_join(&[&volume_dir, path]);
+        check_path_length(&file_path)?;
+
+        todo!()
     }
 
     fn get_volume_dir(&self, volume: &str) -> anyhow::Result<String> {

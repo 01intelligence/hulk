@@ -15,6 +15,7 @@
 #![feature(decl_macro)]
 #![feature(io_error_uncategorized)]
 #![feature(async_closure)]
+#![feature(box_into_pin)]
 
 pub mod admin;
 pub mod auth;

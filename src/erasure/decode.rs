@@ -2,12 +2,12 @@ use std::io::ErrorKind;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use async_trait::async_trait;
-use tokio::io::{AsyncRead, AsyncSeek, AsyncSeekExt, AsyncWrite};
+use tokio::io::AsyncWrite;
 
 use super::*;
 use crate::errors::{AsError, StorageError};
-use crate::utils::{AsyncReadExt, SendRawPtr};
+use crate::io::AsyncReadAt;
+use crate::utils::SendRawPtr;
 
 struct ParallelReader<'a> {
     readers: Vec<(usize, &'a mut Option<Box<dyn AsyncReadAt + Send + Unpin>>)>,
@@ -176,19 +176,6 @@ impl<'a> ParallelReader<'a> {
 
         // Cannot decode, just return error.
         Err(StorageError::ErasureReadQuorum.into())
-    }
-}
-
-#[async_trait]
-pub trait AsyncReadAt {
-    async fn read_at(&mut self, buf: &mut [u8], offset: u64) -> std::io::Result<usize>;
-}
-
-#[async_trait]
-impl<T: AsyncRead + AsyncSeek + Send + Unpin> AsyncReadAt for T {
-    async fn read_at(&mut self, buf: &mut [u8], offset: u64) -> std::io::Result<usize> {
-        let _ = self.seek(std::io::SeekFrom::Start(offset)).await?;
-        self.read_full(buf).await
     }
 }
 

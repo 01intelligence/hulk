@@ -1,10 +1,9 @@
-use std::io::Error;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use futures_util::ready;
 use highway::{HighwayHash, HighwayHasher, Key};
-use tokio::io::{AsyncBufRead, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
 use crate::storage::StorageApi;
 
@@ -28,7 +27,7 @@ pub struct HighwayBitrotWriter {
 enum State {
     Start,
     PollHash([u8; 32], usize),
-    PollContent,
+    PollContent(usize),
 }
 
 impl HighwayBitrotWriter {
@@ -55,7 +54,7 @@ impl HighwayBitrotWriter {
                 * (std::mem::size_of::<[u64; 4]>() as u64);
             total_size = Some(bitrot_sums_size + length);
         }
-        let writer = storage.create_file(volume, path, total_size).await?;
+        let writer = storage.create_file_writer(volume, path, total_size).await?;
         let hasher = high_way_hasher();
         Ok(Self {
             writer,
@@ -71,6 +70,10 @@ impl AsyncWrite for HighwayBitrotWriter {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<std::io::Result<usize>> {
+        if buf.is_empty() {
+            return Poll::Ready(Ok(0));
+        }
+
         loop {
             let this = self.as_mut().project();
             match this.state {
@@ -81,28 +84,41 @@ impl AsyncWrite for HighwayBitrotWriter {
                     *this.state = State::PollHash(hash, 0);
                 }
                 State::PollHash(ref hash, ref mut written) => {
-                    let buf = &hash[*written..];
-                    let n = ready!(this.writer.poll_write(cx, buf))?;
+                    let n = ready!(this.writer.poll_write(cx, &hash[*written..]))?;
                     *written += n;
                     if n == 0 {
-                        // no longer able to write
+                        // No longer able to write
                         return Poll::Ready(Ok(0));
                     } else if *written == hash.len() {
-                        *this.state = State::PollContent;
+                        *this.state = State::PollContent(buf.len());
                     }
                 }
-                State::PollContent => {
-                    return this.writer.poll_write(cx, buf);
+                State::PollContent(ref mut remaining) => {
+                    let n = ready!(this.writer.poll_write(cx, buf))?;
+                    *remaining -= n;
+                    if *remaining == 0 {
+                        // Has written whole buf content.
+                        *this.state = State::Start;
+                    }
+                    return Poll::Ready(Ok(n));
                 }
             }
         }
     }
 
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
-        todo!()
+        self.project().writer.poll_flush(cx)
     }
 
     fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
-        todo!()
+        self.project().writer.poll_shutdown(cx)
     }
+}
+
+#[pin_project::pin_project]
+pub struct HighwayBitrotReader {
+    #[pin]
+    reader: Box<dyn AsyncRead + Unpin>,
+    hasher: HighwayHasher,
+    state: State,
 }

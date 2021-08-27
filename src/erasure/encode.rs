@@ -2,7 +2,7 @@ use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
 use super::*;
 use crate::errors;
-use crate::utils::AsyncReadExt;
+use crate::io::AsyncReadFull;
 
 struct ParallelWriter<'a> {
     writers: &'a [&'a mut Box<dyn AsyncWrite + Unpin>],

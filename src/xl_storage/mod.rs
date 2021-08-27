@@ -4,9 +4,10 @@ mod openoptions_ext;
 mod types;
 mod with_check;
 
-use std::io::Error;
+use std::io::ErrorKind;
 
 pub use format_utils::*;
+use futures_util::{ready, FutureExt};
 use lazy_static::lazy_static;
 use path_absolutize::Absolutize;
 use tokio::io::{AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -18,7 +19,7 @@ use crate::endpoint::Endpoint;
 use crate::errors::{AsError, StorageError, TypedError};
 use crate::fs::{
     check_path_length, err_dir_not_empty, err_invalid_arg, err_io, err_is_dir, err_not_dir,
-    err_not_found, err_permission, err_too_many_files, err_too_many_symlinks, File,
+    err_not_found, err_permission, err_too_many_files, err_too_many_symlinks, AlignedWriter, File,
     OpenOptionsDirectIo,
 };
 use crate::globals::Guard;
@@ -56,12 +57,16 @@ const XL_POOL_SMALL_MAX_SIZE: usize = 1024 * 32;
 const XL_POOL_LARGE_MAX_SIZE: usize = 1024 * 2;
 const XL_POOL_REALLY_LARGE_MAX_SIZE: usize = 1024;
 
+type SmallAlignedBlock = fs::SizedAlignedBlock<BLOCK_SIZE_SMALL>;
+type LargeAlignedBlock = fs::SizedAlignedBlock<BLOCK_SIZE_LARGE>;
+type ReallyLargeAlignedBlock = fs::SizedAlignedBlock<BLOCK_SIZE_REALLY_LARGE>;
+
 lazy_static! {
-    static ref XL_POOL_SMALL: Arc<TypedPool<fs::SizedAlignedBlock<BLOCK_SIZE_SMALL>>> =
+    static ref XL_POOL_SMALL: Arc<TypedPool<SmallAlignedBlock>> =
         Arc::new(TypedPool::new(XL_POOL_SMALL_MAX_SIZE));
-    static ref XL_POOL_LARGE: Arc<TypedPool<fs::SizedAlignedBlock<BLOCK_SIZE_LARGE>>> =
+    static ref XL_POOL_LARGE: Arc<TypedPool<LargeAlignedBlock>> =
         Arc::new(TypedPool::new(XL_POOL_LARGE_MAX_SIZE));
-    static ref XL_POOL_REALLY_LARGE: Arc<TypedPool<fs::SizedAlignedBlock<BLOCK_SIZE_REALLY_LARGE>>> =
+    static ref XL_POOL_REALLY_LARGE: Arc<TypedPool<ReallyLargeAlignedBlock>> =
         Arc::new(TypedPool::new(XL_POOL_REALLY_LARGE_MAX_SIZE));
 }
 
@@ -520,119 +525,100 @@ impl XlStorage {
         Ok(())
     }
 
-    pub async fn create_file<R, F>(
+    pub async fn create_file(
         &self,
         volume: &str,
         path: &str,
-        size: Option<u64>,
-        write: F,
-    ) -> anyhow::Result<()>
-    where
-        R: std::future::Future<Output = anyhow::Result<usize>>,
-        F: FnOnce(&mut dyn AsyncWrite) -> R,
-    {
+        file_size: Option<u64>,
+    ) -> anyhow::Result<Box<dyn AsyncWrite + Unpin>> {
         let volume_dir = self.get_volume_dir(volume)?;
         let file_path = crate::object::path_join(&[&volume_dir, path]);
         check_path_length(&file_path)?;
 
-        // Wrap concrete logic into closure, for intervention in returning error.
-        let closure = || async {
-            fs::reliable_mkdir_all(&volume_dir, 0o777).await?;
+        fs::reliable_mkdir_all(&volume_dir, 0o777).await?;
 
-            let mut pool_guard = (None, None);
-            let writer = if size.is_some() && size.unwrap() <= SMALL_FILE_THRESHOLD as u64 {
-                // For small files, we simply write them as DSYNC and not DIRECT
-                // to avoid the complexities of aligned I/O.
-                match fs::OpenOptions::new()
-                    .create_new(true)
-                    .write(true)
-                    .sync()
-                    .open(&file_path)
-                    .await
-                {
-                    Err(err) => Err(err),
-                    Ok(file) => Ok((Some(file), None)),
-                }
-            } else {
-                match fs::OpenOptions::new()
-                    .create_new(true)
-                    .write(true)
-                    .open_direct_io(&file_path)
-                    .await
-                {
-                    Err(err) => Err(err),
-                    Ok(file) => {
-                        let mut buf;
-                        if size.is_some() && size.unwrap() >= REALLY_LARGE_FILE_THRESHOLD as u64 {
-                            // Really large files.
-                            pool_guard.0 = Some(XL_POOL_REALLY_LARGE.get().await?);
-                            buf = &mut ***pool_guard.0.as_mut().unwrap();
-                        } else {
-                            // Large files.
-                            pool_guard.1 = Some(XL_POOL_LARGE.get().await?);
-                            buf = &mut ***pool_guard.1.as_mut().unwrap();
-                        }
-                        let file = file.into_std().await;
-                        // Aligned write.
-                        Ok((None, Some(fs::AlignedWriter::new(file, buf, size))))
-                    }
-                }
-            };
-
-            let mut writer = match writer {
-                Err(err) => {
-                    let err = if err_is_dir(&err) {
-                        StorageError::IsNotRegular.into()
-                    } else if err_permission(&err) {
-                        StorageError::FileAccessDenied.into()
-                    } else if err_io(&err) {
-                        StorageError::FaultyDisk.into()
-                    } else if err_too_many_files(&err) {
-                        StorageError::TooManyOpenFiles.into()
+        let mut pool_guard = (None, None);
+        let writer = if file_size.is_some() && file_size.unwrap() <= SMALL_FILE_THRESHOLD as u64 {
+            // For small files, we simply write them as DSYNC and not DIRECT
+            // to avoid the complexities of aligned I/O.
+            match fs::OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .sync()
+                .open(&file_path)
+                .await
+            {
+                Err(err) => Err(err),
+                Ok(file) => Ok((Some(file), None)),
+            }
+        } else {
+            match fs::OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open_direct_io(&file_path)
+                .await
+            {
+                Err(err) => Err(err),
+                Ok(file) => {
+                    let mut buf;
+                    if file_size.is_some()
+                        && file_size.unwrap() >= REALLY_LARGE_FILE_THRESHOLD as u64
+                    {
+                        // Really large files.
+                        pool_guard.0 = Some(XL_POOL_REALLY_LARGE.get().await?);
+                        buf = &mut ***pool_guard.0.as_mut().unwrap();
                     } else {
-                        err.into()
-                    };
-                    return Err(err);
-                }
-                Ok(w) => w,
-            };
-
-            debug_assert!(writer.0.is_some() || writer.1.is_some());
-            let written = if let Some(ref mut writer) = writer.0 {
-                write(writer).await? as u64
-            } else if let Some(ref mut writer) = writer.1 {
-                write(writer).await? as u64
-            } else {
-                0 // never here
-            };
-            if let Some(size) = size {
-                if written < size {
-                    return Err(StorageError::LessData.into());
-                } else if written > size {
-                    return Err(StorageError::MoreData.into());
+                        // Large files.
+                        pool_guard.1 = Some(XL_POOL_LARGE.get().await?);
+                        buf = &mut ***pool_guard.1.as_mut().unwrap();
+                    }
+                    // Safety: lifetime of `buf` is controlled by `pool_guard`.
+                    let buf: &'static mut [u8] =
+                        unsafe { std::slice::from_raw_parts_mut(buf.as_mut_ptr(), buf.len()) };
+                    let file = file.into_std().await;
+                    // Aligned write.
+                    Ok((None, Some(fs::AlignedWriter::new(file, buf, file_size))))
                 }
             }
-
-            // Sync only data not metadata.
-            if let Some(writer) = writer.0 {
-                let _ = writer.sync_data().await;
-            } else if let Some(writer) = writer.1 {
-                let _ = writer.sync_data().await;
-            }
-
-            return Ok(());
         };
 
-        match closure().await {
-            Ok(_) => Ok(()),
+        let mut writer = match writer {
             Err(err) => {
+                let err = if err_is_dir(&err) {
+                    StorageError::IsNotRegular.into()
+                } else if err_permission(&err) {
+                    StorageError::FileAccessDenied.into()
+                } else if err_io(&err) {
+                    StorageError::FaultyDisk.into()
+                } else if err_too_many_files(&err) {
+                    StorageError::TooManyOpenFiles.into()
+                } else {
+                    err.into()
+                };
+                return Err(err);
+            }
+            Ok(w) => w,
+        };
+
+        debug_assert!(writer.0.is_some() || writer.1.is_some());
+
+        let volume = volume.to_owned();
+        let w = FileWriter {
+            writer,
+            pool_guard,
+            file_size,
+            written: 0,
+            sync: None,
+            has_err: false,
+            cleanup: async move {
                 // If error, cleanup system meta tmp volume dir.
-                if volume == crate::object::SYSTEM_META_TMP_BUCKET {
+                if &volume == crate::object::SYSTEM_META_TMP_BUCKET {
                     let _ = fs::reliable_remove_all(&volume_dir).await;
                 }
-                Err(err)
             }
-        }
+            .boxed_local(),
+        };
+        Ok(Box::new(w))
     }
 
     fn get_volume_dir(&self, volume: &str) -> anyhow::Result<String> {
@@ -745,4 +731,81 @@ pub async fn get_valid_path(path: &str) -> anyhow::Result<Cow<'_, Path>> {
     }
 
     Ok(path)
+}
+
+struct FileWriter {
+    writer: (Option<File>, Option<AlignedWriter<'static>>),
+    pool_guard: (
+        Option<TypedPoolGuard<'static, ReallyLargeAlignedBlock>>,
+        Option<TypedPoolGuard<'static, LargeAlignedBlock>>,
+    ),
+    file_size: Option<u64>,
+    written: u64,
+    sync: Option<futures_util::future::LocalBoxFuture<'static, std::io::Result<()>>>,
+    has_err: bool,
+    cleanup: futures_util::future::LocalBoxFuture<'static, ()>,
+}
+
+impl AsyncWrite for FileWriter {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<std::io::Result<usize>> {
+        let this = self.get_mut();
+        match ready!(if let Some(writer) = &mut this.writer.0 {
+            Pin::new(writer).poll_write(cx, buf)
+        } else {
+            Pin::new(&mut this.writer.1.as_mut().unwrap()).poll_write(cx, buf)
+        }) {
+            Ok(n) => {
+                this.written += n as u64;
+                Poll::Ready(Ok(n))
+            }
+            Err(err) => {
+                this.has_err = true;
+                Poll::Ready(Err(err))
+            }
+        }
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        let this = self.get_mut();
+
+        if let Some(file_size) = this.file_size {
+            if this.written < file_size {
+                return Poll::Ready(Err(std::io::Error::new(
+                    ErrorKind::Other,
+                    StorageError::LessData,
+                )));
+            } else if this.written > file_size {
+                return Poll::Ready(Err(std::io::Error::new(
+                    ErrorKind::Other,
+                    StorageError::MoreData,
+                )));
+            };
+        }
+
+        // Sync only data not metadata.
+        if this.sync.is_none() {
+            if let Some(writer) = this.writer.0.take() {
+                this.sync = Some(async move { writer.sync_data().await }.boxed_local());
+            } else if let Some(writer) = this.writer.1.take() {
+                this.sync = Some(async move { writer.sync_data().await }.boxed_local());
+            }
+        }
+        if let Some(sync) = &mut this.sync {
+            ready!(sync.poll_unpin(cx))?;
+        }
+
+        if this.has_err {
+            ready!(this.cleanup.poll_unpin(cx));
+        }
+
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        self.poll_flush(cx)
+    }
 }

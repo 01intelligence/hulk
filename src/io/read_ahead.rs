@@ -1,5 +1,3 @@
-use std::cell::RefCell;
-use std::future::Future;
 use std::io::ErrorKind;
 
 use futures_util::ready;
@@ -8,9 +6,10 @@ use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::task::JoinHandle;
 
 use crate::prelude::*;
+use crate::utils::SendRawPtr;
 
 pub struct ReadAhead {
-    inner: Arc<RefCell<Inner>>,
+    inner: Inner,
     task_handle: Option<JoinHandle<()>>,
     state: State,
 }
@@ -23,7 +22,7 @@ struct Inner {
 
 enum State {
     Idle,
-    Fill(Option<Pin<Box<dyn Future<Output = std::io::Result<()>>>>>),
+    Fill(Option<Pin<Box<dyn Future<Output = std::io::Result<()>> + Send>>>),
 }
 
 #[derive(Debug)]
@@ -65,9 +64,8 @@ impl Buf {
 impl Drop for ReadAhead {
     fn drop(&mut self) {
         if let Some(task_handle) = self.task_handle.take() {
-            let mut inner = (*self.inner).borrow_mut();
-            drop(inner.reuse.take());
-            inner.ready.close();
+            drop(self.inner.reuse.take());
+            self.inner.ready.close();
             tokio::task::block_in_place(move || {
                 tokio::runtime::Handle::current().block_on(async move {
                     task_handle.await;
@@ -116,18 +114,18 @@ impl ReadAhead {
         });
 
         ReadAhead {
-            inner: Arc::new(RefCell::new(Inner {
+            inner: Inner {
                 ready: ready_rx,
                 reuse: Some(reuse_tx),
                 cur: None,
-            })),
+            },
             task_handle: Some(task_handle),
             state: State::Idle,
         }
     }
 
-    async fn fill(inner: Arc<RefCell<Inner>>) -> std::io::Result<()> {
-        let mut inner = (*inner).borrow_mut();
+    async fn fill(inner: SendRawPtr<*mut Inner>) -> std::io::Result<()> {
+        let inner = unsafe { inner.to().as_mut().unwrap() };
         if inner.cur.is_none() || inner.cur.as_ref().unwrap().is_empty() {
             if let Some(buf) = inner.cur.take() {
                 if let Err(_) = inner.reuse.as_ref().unwrap().send(buf).await {
@@ -161,15 +159,15 @@ impl AsyncRead for ReadAhead {
             match &mut this.state {
                 State::Idle => {
                     // Swap buffer
-                    this.state = State::Fill(Some(Box::pin(Self::fill(Arc::clone(&this.inner)))));
+                    // Safety: lifetime of `inner` is bounded by `self`.
+                    let inner = SendRawPtr::new((&mut this.inner) as *mut Inner);
+                    this.state = State::Fill(Some(Box::pin(Self::fill(inner))));
                 }
                 State::Fill(fill) => {
                     ready!(fill.as_mut().unwrap().as_mut().poll(cx))?;
 
-                    let mut inner = (*this.inner).borrow_mut();
-
                     // Give read
-                    let cur = inner.cur.as_mut().unwrap();
+                    let cur = this.inner.cur.as_mut().unwrap();
                     let bytes = cur.buf();
                     let n = buf.remaining().min(bytes.len());
                     buf.put_slice(&bytes[..n]);

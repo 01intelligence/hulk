@@ -158,7 +158,7 @@ impl StorageApi {
         path: &str,
         offset: u64,
         size: u64,
-    ) -> anyhow::Result<Box<dyn AsyncRead + Unpin>> {
+    ) -> anyhow::Result<Box<dyn AsyncRead + Unpin + Send>> {
         todo!()
     }
     pub async fn rename_file(

@@ -1,10 +1,15 @@
+use std::future::Future;
+use std::io::ErrorKind;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+use async_trait::async_trait;
 use futures_util::ready;
 use highway::{HighwayHash, HighwayHasher, Key};
-use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeekExt, AsyncWrite, SeekFrom};
 
+use crate::errors::StorageError;
+use crate::io::AsyncReadFull;
 use crate::storage::StorageApi;
 
 const MAGIC_HIGHWAY_HASH_256_KEY: &[u8; 32] =
@@ -41,7 +46,7 @@ impl HighwayBitrotWriter {
     }
 
     pub async fn new_with_storage_api(
-        storage: StorageApi,
+        storage: &StorageApi,
         volume: &str,
         path: &str,
         length: Option<u64>,
@@ -49,8 +54,7 @@ impl HighwayBitrotWriter {
     ) -> anyhow::Result<Self> {
         let mut total_size = None;
         if let Some(length) = length {
-            let bitrot_sums_size = (crate::utils::ceil_frac(length as i64, shard_size as i64)
-                as u64)
+            let bitrot_sums_size = crate::utils::ceil_frac(length, shard_size)
                 * (std::mem::size_of::<[u64; 4]>() as u64);
             total_size = Some(bitrot_sums_size + length);
         }
@@ -115,10 +119,108 @@ impl AsyncWrite for HighwayBitrotWriter {
     }
 }
 
-#[pin_project::pin_project]
-pub struct HighwayBitrotReader {
-    #[pin]
-    reader: Box<dyn AsyncRead + Unpin>,
+type BuildReaderInner<'a> = Pin<
+    Box<dyn 'a + Future<Output = anyhow::Result<Box<dyn AsyncRead + Unpin + Send>>> + Send + Sync>,
+>;
+struct BuildReader<'a>(BuildReaderInner<'a>);
+unsafe impl<'a> Send for BuildReader<'a> {}
+
+pub struct HighwayBitrotReader<'a> {
+    build_reader: Option<Box<dyn 'a + Send + Sync + FnOnce(u64) -> BuildReader<'a>>>,
+    reader: Option<Box<dyn AsyncRead + Unpin + Send>>,
     hasher: HighwayHasher,
-    state: State,
+    shard_size: u64,
+    offset_cur: u64,
+    hash: [u8; 32],
+}
+
+impl<'a> HighwayBitrotReader<'a> {
+    pub async fn new<'b: 'a>(
+        storage: &'b StorageApi,
+        data: Vec<u8>,
+        volume: String,
+        path: String,
+        till_offset: u64,
+        shard_size: u64,
+    ) -> HighwayBitrotReader<'a> {
+        let till_offset = crate::utils::ceil_frac(till_offset, shard_size)
+            * (std::mem::size_of::<[u64; 4]>() as u64)
+            + till_offset;
+
+        let build_reader = move |offset: u64| {
+            let fut = async move {
+                let stream_offset =
+                    (offset / shard_size) * (std::mem::size_of::<[u64; 4]>() as u64) + offset;
+                if data.is_empty() {
+                    storage
+                        .read_file_reader(
+                            &volume,
+                            &path,
+                            stream_offset,
+                            till_offset - stream_offset,
+                        )
+                        .await
+                } else {
+                    let mut reader = std::io::Cursor::new(data);
+                    reader.seek(SeekFrom::Start(stream_offset)).await?;
+                    let reader = reader.take(till_offset - stream_offset);
+                    Ok(Box::new(reader) as Box<dyn AsyncRead + Unpin + Send>)
+                }
+            };
+            BuildReader(Box::pin(fut) as BuildReaderInner)
+        };
+        Self {
+            build_reader: Some(Box::new(build_reader)),
+            reader: None,
+            hasher: high_way_hasher(),
+            shard_size,
+            offset_cur: 0,
+            hash: [0u8; 32],
+        }
+    }
+}
+
+unsafe impl<'a> Send for HighwayBitrotReader<'a> {}
+
+#[async_trait]
+impl<'a> crate::io::AsyncReadAt for HighwayBitrotReader<'a> {
+    async fn read_at(&mut self, buf: &mut [u8], offset: u64) -> std::io::Result<usize> {
+        assert_eq!(offset % self.shard_size, 0);
+        let reader = match &mut self.reader {
+            None => {
+                let build_reader = self.build_reader.take().unwrap();
+                let build_reader = build_reader(offset).0;
+                self.reader = Some(
+                    build_reader
+                        .await
+                        .map_err(|err| std::io::Error::new(ErrorKind::Other, err))?,
+                );
+                self.offset_cur = offset;
+                self.reader.as_mut().unwrap()
+            }
+            Some(reader) => reader,
+        };
+
+        assert_eq!(offset, self.offset_cur);
+
+        let n = reader.read_full(&mut self.hash[..]).await?;
+        if n < self.hash.len() {
+            return Err(ErrorKind::UnexpectedEof.into());
+        }
+        let n = reader.read_full(buf).await?;
+        if n < self.hash.len() {
+            return Err(ErrorKind::UnexpectedEof.into());
+        }
+        let hasher = self.hasher.clone(); // TODO: avoid clone?
+        let hash = hasher.hash256(buf);
+        let hash = unsafe { std::mem::transmute::<[u64; 4], [u8; 32]>(hash) };
+        if hash != self.hash {
+            return Err(std::io::Error::new(
+                ErrorKind::Other,
+                StorageError::FileCorrupt,
+            ));
+        }
+        self.offset_cur += buf.len() as u64;
+        Ok(n)
+    }
 }

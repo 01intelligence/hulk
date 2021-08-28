@@ -626,7 +626,7 @@ impl XlStorage {
         path: &str,
         offset: u64,
         size: u64,
-    ) -> anyhow::Result<Box<dyn AsyncRead + Unpin>> {
+    ) -> anyhow::Result<Box<dyn AsyncRead + Unpin + Send>> {
         let volume_dir = self.get_volume_dir(volume)?;
         let file_path = crate::object::path_join(&[&volume_dir, path]);
         check_path_length(&file_path)?;

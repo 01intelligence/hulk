@@ -61,12 +61,11 @@ impl ErasureInfo {
         assert!(total_length > 0);
         let shards_num = total_length / self.block_size;
         let last_block_size = total_length % self.block_size;
-        let last_shard_size =
-            utils::ceil_frac(last_block_size as i64, self.data_blocks as i64) as u64;
-        shards_num * self.shard_size() + last_block_size
+        let last_shard_size = utils::ceil_frac(last_block_size as u64, self.data_blocks as u64);
+        shards_num * self.shard_size() + last_shard_size
     }
 
     pub fn shard_size(&self) -> u64 {
-        utils::ceil_frac(self.block_size as i64, self.data_blocks as i64) as u64
+        utils::ceil_frac(self.block_size as u64, self.data_blocks as u64)
     }
 }

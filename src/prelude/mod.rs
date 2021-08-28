@@ -1,6 +1,7 @@
 pub use std::borrow::{Borrow, BorrowMut, Cow};
 pub use std::collections::{HashMap, HashSet};
 pub use std::convert::{TryFrom, TryInto};
+pub use std::future::Future;
 pub use std::io::prelude::*;
 pub use std::mem::{size_of, size_of_val};
 pub use std::ops::{Deref, DerefMut};

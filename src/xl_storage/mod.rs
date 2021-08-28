@@ -3,14 +3,13 @@ mod format_v2;
 mod openoptions_ext;
 mod types;
 mod with_check;
-
-use std::io::ErrorKind;
+use std::io::{Error, ErrorKind, SeekFrom};
 
 pub use format_utils::*;
 use futures_util::{ready, FutureExt};
 use lazy_static::lazy_static;
 use path_absolutize::Absolutize;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeekExt, AsyncWrite, AsyncWriteExt};
 pub use types::*;
 pub use with_check::*;
 
@@ -539,7 +538,7 @@ impl XlStorage {
 
         let mut pool_guard = (None, None);
         let writer = if file_size.is_some() && file_size.unwrap() <= SMALL_FILE_THRESHOLD as u64 {
-            // For small files, we simply write them as DSYNC and not DIRECT
+            // For small files, we simply write them as O_DSYNC and not O_DIRECT
             // to avoid the complexities of aligned I/O.
             match fs::OpenOptions::new()
                 .create_new(true)
@@ -632,7 +631,102 @@ impl XlStorage {
         let file_path = crate::object::path_join(&[&volume_dir, path]);
         check_path_length(&file_path)?;
 
-        todo!()
+        let mut open_options = fs::OpenOptions::new();
+        open_options.read(true).no_atime();
+        let mut file = match if offset == 0
+            && &globals::GLOBALS.storage_class.guard().dma
+                == crate::config::storageclass::DMA_READ_WRITE
+        {
+            // O_DIRECT only supported if `offset` is 0.
+            open_options.open_direct_io(&file_path).await
+        } else {
+            open_options.open(&file_path).await
+        } {
+            Ok(file) => file,
+            Err(err) => {
+                let err = if err_not_found(&err) {
+                    if let Err(err) = fs::access(volume_dir).await {
+                        if err_not_found(&err) {
+                            return Err(StorageError::VolumeNotFound.into());
+                        }
+                    }
+                    StorageError::FileNotFound.into()
+                } else if err_permission(&err) {
+                    StorageError::FileAccessDenied.into()
+                } else if err_is_dir(&err) {
+                    StorageError::IsNotRegular.into()
+                } else if err_io(&err) {
+                    StorageError::FaultyDisk.into()
+                } else if err_too_many_files(&err) {
+                    StorageError::TooManyOpenFiles.into()
+                } else if err_invalid_arg(&err) {
+                    StorageError::UnsupportedDisk.into()
+                } else {
+                    err.into()
+                };
+                return Err(err);
+            }
+        };
+
+        let meta = file.metadata().await?;
+        if !meta.is_file() {
+            return Err(StorageError::IsNotRegular.into());
+        }
+
+        if offset == 0
+            && &globals::GLOBALS.storage_class.guard().dma
+                == crate::config::storageclass::DMA_READ_WRITE
+        {
+            struct PoolGuard(
+                Option<TypedPoolGuard<'static, SmallAlignedBlock>>,
+                Option<TypedPoolGuard<'static, LargeAlignedBlock>>,
+            );
+            impl utils::BufGuard for PoolGuard {
+                fn buf(&self) -> &[u8] {
+                    if let Some(guard) = &self.0 {
+                        &**guard
+                    } else {
+                        &***self.1.as_ref().unwrap()
+                    }
+                }
+            }
+            impl utils::BufGuardMut for PoolGuard {
+                fn buf_mut(&mut self) -> &mut [u8] {
+                    if let Some(guard) = &mut self.0 {
+                        &mut **guard
+                    } else {
+                        &mut ***self.1.as_mut().unwrap()
+                    }
+                }
+            }
+
+            let pool_guard = if size <= SMALL_FILE_THRESHOLD as u64 {
+                PoolGuard(Some(XL_POOL_SMALL.get().await?), None)
+            } else {
+                PoolGuard(None, Some(XL_POOL_LARGE.get().await?))
+            };
+
+            let reader = fs::AlignedReader::new(file.into_std().await, pool_guard);
+            let reader = reader.take(size);
+            return Ok(Box::new(reader));
+        }
+
+        if offset > 0 {
+            file.seek(SeekFrom::Start(offset)).await?;
+        }
+
+        let mut reader = file.take(size);
+
+        // Add read-ahead to big reads.
+        if size >= READ_AHEAD_SIZE as u64 {
+            let reader =
+                crate::io::ReadAhead::new(reader, READ_AHEAD_BUFFERS, READ_AHEAD_BUF_SIZE).await;
+            return Ok(Box::new(reader));
+        }
+
+        // Just add a small 64k buffer.
+        let reader = tokio::io::BufReader::with_capacity(64 << 10, reader);
+        Ok(Box::new(reader))
     }
 
     fn get_volume_dir(&self, volume: &str) -> anyhow::Result<String> {

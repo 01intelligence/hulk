@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::future::Future;
 use std::io::ErrorKind;
 
@@ -6,15 +7,18 @@ use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::task::JoinHandle;
 
-use crate::prelude::{Context, Pin, Poll};
-use crate::utils::SendRawPtr;
+use crate::prelude::*;
 
 pub struct ReadAhead {
+    inner: Arc<RefCell<Inner>>,
+    task_handle: Option<JoinHandle<()>>,
+    state: State,
+}
+
+struct Inner {
     ready: Receiver<Buf>,
     reuse: Option<Sender<Buf>>,
     cur: Option<Buf>,
-    task_handle: Option<JoinHandle<()>>,
-    state: State,
 }
 
 enum State {
@@ -32,7 +36,7 @@ struct Buf {
 
 impl Buf {
     fn is_empty(&self) -> bool {
-        self.size <= self.offset
+        self.offset >= self.size
     }
 
     async fn read<R: AsyncRead + Unpin>(&mut self, r: &mut R) -> bool {
@@ -61,8 +65,9 @@ impl Buf {
 impl Drop for ReadAhead {
     fn drop(&mut self) {
         if let Some(task_handle) = self.task_handle.take() {
-            drop(self.reuse.take());
-            self.ready.close();
+            let mut inner = (*self.inner).borrow_mut();
+            drop(inner.reuse.take());
+            inner.ready.close();
             tokio::task::block_in_place(move || {
                 tokio::runtime::Handle::current().block_on(async move {
                     task_handle.await;
@@ -111,27 +116,29 @@ impl ReadAhead {
         });
 
         ReadAhead {
-            ready: ready_rx,
-            reuse: Some(reuse_tx),
-            cur: None,
+            inner: Arc::new(RefCell::new(Inner {
+                ready: ready_rx,
+                reuse: Some(reuse_tx),
+                cur: None,
+            })),
             task_handle: Some(task_handle),
             state: State::Idle,
         }
     }
 
-    async fn fill(ptr: SendRawPtr<*mut Self>) -> std::io::Result<()> {
-        let this = unsafe { ptr.to().as_mut().unwrap() };
-        if this.cur.is_none() || this.cur.as_ref().unwrap().is_empty() {
-            if let Some(buf) = this.cur.take() {
-                if let Err(_) = this.reuse.as_ref().unwrap().send(buf).await {
+    async fn fill(inner: Arc<RefCell<Inner>>) -> std::io::Result<()> {
+        let mut inner = (*inner).borrow_mut();
+        if inner.cur.is_none() || inner.cur.as_ref().unwrap().is_empty() {
+            if let Some(buf) = inner.cur.take() {
+                if let Err(_) = inner.reuse.as_ref().unwrap().send(buf).await {
                     return Err(std::io::Error::new(
                         ErrorKind::Other,
                         "read-ahead task gone",
                     ));
                 }
             }
-            if let Some(buf) = this.ready.recv().await {
-                this.cur = Some(buf);
+            if let Some(buf) = inner.ready.recv().await {
+                inner.cur = Some(buf);
             } else {
                 return Err(std::io::Error::new(
                     ErrorKind::Other,
@@ -153,23 +160,23 @@ impl AsyncRead for ReadAhead {
         loop {
             match &mut this.state {
                 State::Idle => {
-                    // Safety: this future will always be valid in the lifetime of `self`.
-                    this.state = State::Fill(Some(Box::into_pin(Box::new(Self::fill(
-                        SendRawPtr::new(unsafe { this as *mut Self }),
-                    )))));
+                    // Swap buffer
+                    this.state = State::Fill(Some(Box::pin(Self::fill(Arc::clone(&this.inner)))));
                 }
                 State::Fill(fill) => {
-                    let mut f = fill.take().unwrap();
-                    ready!(f.as_mut().poll(cx))?;
-                    fill.replace(f);
+                    ready!(fill.as_mut().unwrap().as_mut().poll(cx))?;
 
-                    let cur = this.cur.as_mut().unwrap();
+                    let mut inner = (*this.inner).borrow_mut();
+
+                    // Give read
+                    let cur = inner.cur.as_mut().unwrap();
                     let bytes = cur.buf();
                     let n = buf.remaining().min(bytes.len());
                     buf.put_slice(&bytes[..n]);
                     cur.advance(n);
 
                     if cur.is_empty() {
+                        // Return any error.
                         if let Some(err) = cur.err.take() {
                             return Poll::Ready(Err(err));
                         }
@@ -180,5 +187,31 @@ impl AsyncRead for ReadAhead {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn test_read_ahead() {
+        let src = b"testbuffer";
+        let mut reader = ReadAhead::new(&src[..], 4, 10000).await;
+
+        let mut buf = [0u8; 100];
+        let n = reader.read(&mut buf[..]).await.unwrap();
+        assert_eq!(n, src.len());
+        assert_eq!(&buf[..n], &src[..]);
+
+        // Test EOF.
+        let n = reader.read(&mut buf[..]).await.unwrap();
+        assert_eq!(n, 0);
+
+        // Test again after EOF.
+        let n = reader.read(&mut buf[..]).await.unwrap();
+        assert_eq!(n, 0);
+
+        drop(reader);
     }
 }

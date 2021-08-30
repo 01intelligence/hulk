@@ -3,7 +3,7 @@ use std::time::SystemTime;
 use rand::rngs::StdRng;
 pub use rand::Rng;
 use rand::SeedableRng;
-use tokio::time::{timeout, Duration, Instant};
+use tokio::time::{timeout, Instant};
 
 pub mod assert;
 mod atomic;

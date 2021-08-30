@@ -1,9 +1,7 @@
-use std::hash::Hasher;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::RwLock;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use chrono::{SecondsFormat, Utc};
 use highway::HighwayHash;
 use lazy_static::lazy_static;
 use log::{error, info, warn};
@@ -13,6 +11,8 @@ use crate::logger::backtrace::Backtrace;
 use crate::logger::backtrace::Inner::*;
 use crate::logger::entry::{Api, Args, Entry, ErrKind, Trace};
 use crate::logger::reqinfo::ReqInfoContextExt;
+use crate::utils;
+use crate::utils::DateTimeFormatExt;
 
 // HighwayHash key for logging in anonymous mode
 const MAGIC_HIGHWAY_HASH_256_KEY: [u8; 32] =
@@ -79,7 +79,7 @@ fn log_if<Err: std::error::Error>(ctx: Context, err: Err, err_kind: Option<ErrKi
         deployment_id,
         level: Level::Error.to_string(),
         log_kind: err_kind.to_string(),
-        time: Utc::now().to_rfc3339_opts(SecondsFormat::Nanos, true),
+        time: utils::now().rfc3339_nano(),
         api: Some(Api {
             name: api,
             args: Some(Args {

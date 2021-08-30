@@ -1,10 +1,8 @@
-use std::collections::HashMap;
-use std::ops::Index;
-
-use chrono::{DateTime, Utc};
 use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+
+use crate::utils;
 
 #[derive(Error, Debug)]
 pub enum JwtError {
@@ -63,7 +61,7 @@ impl StandardClaims {
         self.audience.insert(audience.into());
     }
 
-    pub fn set_expiry(&mut self, expiry: &DateTime<Utc>) {
+    pub fn set_expiry(&mut self, expiry: &utils::DateTime) {
         self.expires_at.insert(expiry.timestamp() as usize);
     }
 
@@ -74,7 +72,7 @@ impl StandardClaims {
 
     pub fn valid(&self) -> Result<(), JwtError> {
         let mut verr = Vec::new();
-        let now = Utc::now().timestamp() as usize;
+        let now = utils::now().timestamp() as usize;
         if !verify_exp(&self.expires_at, now, false) {
             verr.push(JwtError::Expired);
         }

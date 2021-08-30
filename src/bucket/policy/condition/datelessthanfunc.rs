@@ -1,13 +1,10 @@
 use std::collections::HashMap;
 use std::fmt;
-use std::str::FromStr;
-
-use anyhow::bail;
-use chrono::{DateTime, SecondsFormat, Utc};
-use validator::HasLen;
 
 use super::super::Valid;
 use super::*;
+use crate::utils;
+use crate::utils::DateTimeFormatExt;
 
 // String equals function. It checks whether value by Key in given
 // values map is in condition values.
@@ -17,7 +14,7 @@ use super::*;
 #[derive(Clone)]
 pub(super) struct DateLessThanFunc<'a> {
     key: Key<'a>,
-    value: DateTime<Utc>,
+    value: utils::DateTime,
 }
 
 impl<'a> fmt::Display for DateLessThanFunc<'a> {
@@ -27,7 +24,7 @@ impl<'a> fmt::Display for DateLessThanFunc<'a> {
             "{}:{}:{}",
             DATE_LESS_THAN,
             self.key,
-            self.value.to_rfc3339_opts(SecondsFormat::Secs, true)
+            self.value.rfc3339()
         )
     }
 }
@@ -43,7 +40,7 @@ impl<'a> Function for DateLessThanFunc<'a> {
                 if v.is_empty() {
                     return false;
                 }
-                match DateTime::<Utc>::from_str(&v[0]) {
+                match utils::DateTime::from_rfc3339(&v[0]) {
                     Ok(v) => v < self.value,
                     Err(_) => false,
                 }
@@ -67,9 +64,7 @@ impl<'a> Function for DateLessThanFunc<'a> {
         }
         map.insert(
             self.key.clone(),
-            ValueSet::new(vec![Value::String(
-                self.value.to_rfc3339_opts(SecondsFormat::Secs, true),
-            )]),
+            ValueSet::new(vec![Value::String(self.value.rfc3339())]),
         );
         map
     }
@@ -90,7 +85,7 @@ impl<'a> fmt::Display for DateLessThanEqualsFunc<'a> {
             "{}:{}:{}",
             DATE_LESS_THAN_EQUALS,
             self.0.key,
-            self.0.value.to_rfc3339_opts(SecondsFormat::Secs, true)
+            self.0.value.rfc3339()
         )
     }
 }
@@ -106,7 +101,7 @@ impl<'a> Function for DateLessThanEqualsFunc<'a> {
                 if v.is_empty() {
                     return false;
                 }
-                match DateTime::<Utc>::from_str(&v[0]) {
+                match utils::DateTime::from_rfc3339(&v[0]) {
                     Ok(v) => v <= self.0.value,
                     Err(_) => false,
                 }

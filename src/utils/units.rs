@@ -1,4 +1,4 @@
-use std::time::Duration;
+use super::Duration;
 
 pub const KIB: usize = 1 << (1 * 10);
 pub const MIB: usize = 1 << (2 * 10);

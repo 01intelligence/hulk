@@ -1,8 +1,6 @@
-use std::time::Duration;
-
 use const_format::concatcp;
 
-use crate::utils::{HOUR, MIB, MINUTE};
+use crate::utils::{Duration, HOUR, MIB, MINUTE};
 
 // Configuration related constants.
 pub const GLOBAL_DEFAULT_PORT: &str = "9000";

@@ -1,8 +1,5 @@
 use std::collections::HashMap;
-use std::ops::Add;
 
-use chrono::prelude::*;
-use chrono::serde::ts_seconds;
 use constant_time_eq::constant_time_eq;
 use jsonwebtoken::{encode, Algorithm, DecodingKey, EncodingKey, Header};
 use lazy_static::lazy_static;
@@ -10,8 +7,8 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::jwt;
 use crate::jwt::MapClaims;
+use crate::{jwt, utils};
 
 // Minimum length for Hulk access key.
 const ACCESS_KEY_MIN_LEN: usize = 3;
@@ -46,8 +43,7 @@ pub fn is_secret_key_valid(secret_key: &str) -> bool {
 }
 
 lazy_static! {
-    static ref TIME_SENTINEL: DateTime<Utc> =
-        DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(0, 0), Utc);
+    static ref TIME_SENTINEL: utils::DateTime = *utils::UNIX_EPOCH;
 }
 const TIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S%.9f %z %Z";
 
@@ -82,7 +78,7 @@ pub struct Credentials {
     #[serde(rename = "SecretAccessKey")]
     pub secret_key: String,
     #[serde(rename = "Expiration")]
-    pub expiration: Option<DateTime<Utc>>,
+    pub expiration: Option<utils::DateTime>,
     #[serde(rename = "SessionToken")]
     pub session_token: String,
     #[serde(skip)]
@@ -98,7 +94,7 @@ impl Credentials {
         if datetime_is_zero(&self.expiration) {
             return false;
         }
-        self.expiration.unwrap().lt(&Utc::now())
+        self.expiration.unwrap().lt(&utils::now())
     }
 
     pub fn is_temp(&self) -> bool {
@@ -119,7 +115,7 @@ impl Credentials {
     }
 }
 
-fn datetime_is_zero(dt: &Option<DateTime<Utc>>) -> bool {
+fn datetime_is_zero(dt: &Option<utils::DateTime>) -> bool {
     dt.filter(|e| *e != *TIME_SENTINEL).is_none()
 }
 

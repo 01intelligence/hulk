@@ -1,11 +1,10 @@
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::Duration;
 
 use const_format::concatcp;
 use lazy_static::lazy_static;
 use strum::Display;
 
-use crate::utils::minutes;
+use crate::utils::{minutes, Duration};
 use crate::{globals, object};
 
 mod stats;

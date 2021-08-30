@@ -4,7 +4,6 @@ use std::future::{ready, Future, Ready};
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use std::time::Duration;
 
 use actix_http::body::{BodySize, MessageBody};
 use actix_http::error::PayloadError;
@@ -19,9 +18,11 @@ use bstr::ByteSlice;
 use futures_core::Stream;
 use futures_util::future::Either;
 use futures_util::{ready, FutureExt};
+use utils::Duration;
 
 use crate::globals::{Get, Guard, GLOBALS};
 use crate::http::{self, RequestExtensionsContext};
+use crate::utils::DateTimeExt;
 use crate::{admin, utils};
 
 #[derive(Clone)]
@@ -376,10 +377,7 @@ where
             Some(Ok(chunk)) => {
                 inner.bytes_written += chunk.len();
                 if inner.time_to_first_byte == Duration::ZERO {
-                    inner.time_to_first_byte = utils::now()
-                        .signed_duration_since(inner.start_time)
-                        .to_std()
-                        .unwrap_or_default();
+                    inner.time_to_first_byte = utils::now().duration_since(inner.start_time);
                 }
                 if let Some(record) = &mut inner.record_body {
                     if !inner.record_error_only || inner.status_code >= StatusCode::BAD_REQUEST {
@@ -404,11 +402,7 @@ where
                 );
 
                 let call_stats = trace_info.call_stats.as_mut().unwrap();
-                call_stats.latency = resp_info
-                    .time
-                    .signed_duration_since(inner.start_time)
-                    .to_std()
-                    .unwrap_or_default();
+                call_stats.latency = resp_info.time.duration_since(inner.start_time);
                 call_stats.output_bytes = inner.bytes_written;
                 call_stats.time_to_first_byte = inner.time_to_first_byte;
 

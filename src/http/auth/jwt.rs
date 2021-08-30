@@ -1,6 +1,5 @@
-use std::time::Duration;
-
 use crate::utils;
+use crate::utils::Duration;
 
 pub(super) const JWT_ALGORITHM: &str = "Bearer";
 

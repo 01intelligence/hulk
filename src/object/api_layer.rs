@@ -1,11 +1,10 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use chrono::{DateTime, Utc};
 use lazy_static::lazy_static;
-use tokio::io::AsyncRead;
 
 use super::*;
+use crate::utils;
 
 type CheckPreconditionFn = Box<dyn Fn(ObjectInfo) -> bool>;
 
@@ -17,8 +16,8 @@ pub struct ObjectOptions {
     pub versioned: bool,         // indicates if the bucket is versioned
     pub walk_versions: bool,     // indicates if the we are interested in walking versions
     pub version_id: String,      // Specifies the versionID which needs to be overwritten or read
-    pub mtime: Option<DateTime<Utc>>, // Is only set in POST/PUT operations
-    pub expires: Option<DateTime<Utc>>, // Is only used in POST/PUT operations
+    pub mtime: Option<utils::DateTime>, // Is only set in POST/PUT operations
+    pub expires: Option<utils::DateTime>, // Is only used in POST/PUT operations
 
     pub delete_marker: bool, // Is only set in DELETE operations for delete marker replication
     pub user_defined: HashMap<String, String>, // only set in case of POST/PUT operations
@@ -45,7 +44,7 @@ pub struct TransitionOptions {
     pub tier: String,
     pub etag: String,
     pub restore_request: crate::bucket::RestoreRequest,
-    pub restore_expiry: Option<DateTime<Utc>>,
+    pub restore_expiry: Option<utils::DateTime>,
     pub expire_restored: bool,
 }
 

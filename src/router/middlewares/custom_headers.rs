@@ -1,5 +1,4 @@
 use actix_web::middleware::DefaultHeaders;
-use chrono::Timelike;
 
 use crate::{http, utils};
 

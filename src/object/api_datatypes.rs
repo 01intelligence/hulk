@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use chrono::{DateTime, Utc};
+use crate::utils;
 
 pub enum BackendType {
     Unknown,
@@ -15,7 +15,7 @@ pub struct ObjectInfo {
     // Name of the object.
     pub name: String,
     // Date and time when the object was last modified.
-    pub mod_time: DateTime<Utc>,
+    pub mod_time: utils::DateTime,
     // Total object size.
     pub size: i64,
     // IsDir indicates if the object is prefix.
@@ -43,7 +43,7 @@ pub struct ObjectInfo {
     pub transition_tier: String,
 
     // Indicates date a restored object expires
-    pub restore_expires: DateTime<Utc>,
+    pub restore_expires: utils::DateTime,
 
     // Indicates if a restore is in progress
     pub restore_ongoing: bool,
@@ -57,7 +57,7 @@ pub struct ObjectInfo {
     pub content_encoding: String,
 
     // Date and time at which the object is no longer able to be cached
-    pub expires: DateTime<Utc>,
+    pub expires: utils::DateTime,
 
     // Sets status of whether this is a cache hit/miss
     pub cache_status: crate::objectcache::CacheStatus,
@@ -86,7 +86,7 @@ pub struct ObjectInfo {
     key_rotation: bool,
 
     // Date and time when the object was last accessed.
-    pub acc_time: DateTime<Utc>,
+    pub acc_time: utils::DateTime,
 
     // Indicates object on disk is in legacy data format
     pub legacy: bool,
@@ -99,7 +99,7 @@ pub struct ObjectInfo {
     // The total count of all versions of this object
     pub num_versions: isize,
     //  The modtime of the successor object version if any
-    pub successor_mod_time: DateTime<Utc>,
+    pub successor_mod_time: utils::DateTime,
 }
 
 pub struct ListObjectsInfo {

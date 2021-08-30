@@ -1,4 +1,4 @@
-use std::time::Duration;
+use crate::utils::Duration;
 
 pub(super) enum ScanStatus {
     None,

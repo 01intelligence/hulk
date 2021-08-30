@@ -1,7 +1,6 @@
 use std::convert::TryInto;
 use std::future::{ready, Future, Ready};
 use std::sync::Arc;
-use std::time::Duration;
 
 use actix_web::dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform};
 use actix_web::error::Error;
@@ -11,7 +10,6 @@ use futures_util::future::{Either, LocalBoxFuture};
 use futures_util::FutureExt;
 use tokio::sync::Semaphore;
 use tokio::time::timeout;
-use validator::HasLen;
 
 use crate::crypto::{self, SseType};
 use crate::errors::ApiError;
@@ -21,7 +19,7 @@ use crate::http::{
     guess_is_metrics_req, guess_is_rpc_req, ApiResponse, RequestExtensionsContext,
 };
 use crate::router::request_to_bucket_object;
-use crate::utils::{AtomicExt, DateTimeExt};
+use crate::utils::{AtomicExt, DateTimeExt, DateTimeFormatExt};
 use crate::{errors, http, utils};
 
 pub struct GenericHandlers {}
@@ -207,9 +205,8 @@ fn parse_amz_date_header(req: &HttpRequest) -> Result<utils::DateTime, ApiError>
 
 fn parse_amz_date(amz_data: &str) -> Result<utils::DateTime, ApiError> {
     for fmt in AMZ_DATE_FORMATS {
-        match chrono::DateTime::parse_from_str(amz_data, fmt) {
-            Ok(d) => return Ok(d.with_timezone(&chrono::Utc)),
-            Err(_) => {}
+        if let Ok(d) = utils::DateTime::parse(amz_data, fmt) {
+            return Ok(d);
         }
     }
     Err(ApiError::MalformedDate)

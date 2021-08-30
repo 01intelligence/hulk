@@ -1,9 +1,8 @@
-use std::time::Duration;
-
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 
 use super::*;
+use crate::utils::Duration;
 
 pub const DELAY: &str = "delay";
 pub const MAX_WAIT: &str = "max_wait";

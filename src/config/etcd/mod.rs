@@ -1,10 +1,9 @@
-use std::time::Duration;
-
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 
 use super::*;
 use crate::utils;
+use crate::utils::Duration;
 
 mod help;
 

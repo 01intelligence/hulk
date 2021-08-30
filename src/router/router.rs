@@ -1,5 +1,4 @@
 use std::sync::MutexGuard;
-use std::time::Duration;
 
 use actix_http::body::MessageBody;
 use actix_web::dev::ServiceRequest;
@@ -8,6 +7,7 @@ use actix_web::{guard, web, App};
 
 use super::*;
 use crate::globals::{self, Guard, GLOBALS};
+use crate::utils::Duration;
 use crate::{object, objectcache};
 
 struct Api {}

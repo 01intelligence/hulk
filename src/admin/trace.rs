@@ -1,10 +1,8 @@
-use std::time::Duration;
-
 use actix_web::http::{HeaderMap, StatusCode};
-use chrono::{DateTime, Utc};
 use derivative::Derivative;
 
 use crate::utils;
+use crate::utils::Duration;
 
 #[derive(Clone, Derivative)]
 #[derivative(Default)]
@@ -23,7 +21,7 @@ pub struct TraceInfo {
     pub node_name: String,
     pub fn_name: String,
     #[derivative(Default(value = "utils::now()"))]
-    pub time: DateTime<Utc>,
+    pub time: utils::DateTime,
 
     pub req_info: Option<TraceRequestInfo>,
     pub resp_info: Option<TraceResponseInfo>,
@@ -35,7 +33,7 @@ pub struct TraceInfo {
 
 #[derive(Clone)]
 pub struct TraceRequestInfo {
-    pub time: DateTime<Utc>,
+    pub time: utils::DateTime,
     pub proto: String,
     pub method: String,
     pub path: String,
@@ -47,7 +45,7 @@ pub struct TraceRequestInfo {
 
 #[derive(Clone)]
 pub struct TraceResponseInfo {
-    pub time: DateTime<Utc>,
+    pub time: utils::DateTime,
     pub headers: Option<HeaderMap>,
     pub body: Option<bytes::Bytes>,
     pub status_code: StatusCode,

@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use crate::config::api;
+use crate::utils::Duration;
 
 #[derive(Default)]
 pub struct ApiConfig {

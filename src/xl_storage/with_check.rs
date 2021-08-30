@@ -7,7 +7,7 @@ use strum::{Display, EnumCount};
 
 use super::*;
 use crate::globals::{self, GLOBALS};
-use crate::utils::AtomicExt;
+use crate::utils::{AtomicExt, DateTimeExt};
 
 #[derive(FromPrimitive, EnumCount, Display, Copy, Clone)]
 #[repr(u8)]
@@ -71,7 +71,7 @@ impl XlStorageWithCheck {
                     let v = l.read().unwrap().1;
                     (
                         StorageMetric::from_usize(i).unwrap().to_string(),
-                        chrono::Duration::nanoseconds(v as i64).to_string(),
+                        format!("{:?}", utils::Duration::from_nanos(v as u64)),
                     )
                 })
                 .collect(),
@@ -92,11 +92,11 @@ impl XlStorageWithCheck {
         let start_time = utils::now();
         return move || {
             use ta::Next;
-            let duration = utils::now().signed_duration_since(start_time);
+            let duration = start_time.elapsed();
             self.api_calls[m as usize].inc();
             let mut latency = self.api_latencies[m as usize].write().unwrap();
             // Safety: here duration will not overflow.
-            latency.1 = latency.0.next(duration.num_nanoseconds().unwrap() as f64);
+            latency.1 = latency.0.next(duration.as_nanos() as f64);
 
             if GLOBALS.trace.subscribers_num() > 0 {
                 GLOBALS.trace.publish(crate::admin::TraceInfo {
@@ -106,7 +106,7 @@ impl XlStorageWithCheck {
                     time: start_time,
                     storage_stats: Some(crate::admin::TraceStorageStats {
                         path: crate::object::path_join(paths),
-                        duration: duration.to_std().unwrap(),
+                        duration,
                     }),
                     ..Default::default()
                 });

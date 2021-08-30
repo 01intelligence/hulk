@@ -1,9 +1,8 @@
-use std::time::Duration;
-
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 
 use super::*;
+use crate::utils::Duration;
 
 pub const BITROT: &str = "bitrotscan";
 pub const SLEEP: &str = "max_sleep";

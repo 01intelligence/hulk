@@ -1,13 +1,12 @@
 use std::collections::HashMap;
 use std::fmt;
-use std::str::FromStr;
 
 use anyhow::bail;
-use chrono::{DateTime, SecondsFormat, Utc};
-use validator::HasLen;
 
 use super::super::Valid;
 use super::*;
+use crate::utils;
+use crate::utils::DateTimeFormatExt;
 
 // String equals function. It checks whether value by Key in given
 // values map is in condition values.
@@ -17,18 +16,12 @@ use super::*;
 #[derive(Clone)]
 pub(super) struct DateEqualsFunc<'a> {
     key: Key<'a>,
-    value: DateTime<Utc>,
+    value: utils::DateTime,
 }
 
 impl<'a> fmt::Display for DateEqualsFunc<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}:{}:{}",
-            DATE_EQUALS,
-            self.key,
-            self.value.to_rfc3339_opts(SecondsFormat::Secs, true)
-        )
+        write!(f, "{}:{}:{}", DATE_EQUALS, self.key, self.value.rfc3339())
     }
 }
 
@@ -43,7 +36,7 @@ impl<'a> Function for DateEqualsFunc<'a> {
                 if v.is_empty() {
                     return false;
                 }
-                match DateTime::<Utc>::from_str(&v[0]) {
+                match utils::DateTime::from_rfc3339(&v[0]) {
                     Ok(v) => v == self.value,
                     Err(_) => false,
                 }
@@ -67,9 +60,7 @@ impl<'a> Function for DateEqualsFunc<'a> {
         }
         map.insert(
             self.key.clone(),
-            ValueSet::new(vec![Value::String(
-                self.value.to_rfc3339_opts(SecondsFormat::Secs, true),
-            )]),
+            ValueSet::new(vec![Value::String(self.value.rfc3339())]),
         );
         map
     }
@@ -90,7 +81,7 @@ impl<'a> fmt::Display for DateNotEqualsFunc<'a> {
             "{}:{}:{}",
             DATE_NOT_EQUALS,
             self.0.key,
-            self.0.value.to_rfc3339_opts(SecondsFormat::Secs, true)
+            self.0.value.rfc3339()
         )
     }
 }
@@ -133,12 +124,12 @@ pub(super) fn new_date_not_equals_func(
     })))
 }
 
-pub(super) fn value_to_date_time(name: Name, values: ValueSet) -> anyhow::Result<DateTime<Utc>> {
+pub(super) fn value_to_date_time(name: Name, values: ValueSet) -> anyhow::Result<utils::DateTime> {
     if values.len() != 1 {
         bail!("only one value is allowed for {} condition", name);
     }
     match values.0.into_iter().next().unwrap() {
-        Value::String(s) => Ok(DateTime::<Utc>::from_str(&s).map_err(|_| {
+        Value::String(s) => Ok(utils::DateTime::from_rfc3339(&s).map_err(|_| {
             anyhow::anyhow!("value must be a datetime string for {} condition", name)
         })?),
         _ => {

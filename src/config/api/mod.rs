@@ -1,10 +1,9 @@
-use std::time::Duration;
-
 use anyhow::{bail, ensure};
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 
 use super::config::{KV, KVS};
+use crate::utils::Duration;
 
 mod help;
 

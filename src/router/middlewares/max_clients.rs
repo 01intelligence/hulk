@@ -1,6 +1,5 @@
 use std::future::{ready, Ready};
 use std::sync::Arc;
-use std::time::Duration;
 
 use actix_web::dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform};
 use actix_web::error::Error;
@@ -10,6 +9,7 @@ use tokio::sync::Semaphore;
 use tokio::time::timeout;
 
 use crate::globals::GLOBALS;
+use crate::utils::Duration;
 use crate::{errors, http};
 
 pub struct MaxClients {

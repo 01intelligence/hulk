@@ -7,6 +7,8 @@ use futures_util::ready;
 use pin_project::pin_project;
 use tokio::io::{AsyncBufRead, AsyncRead, AsyncSeek, AsyncWrite, ReadBuf};
 
+use crate::utils::BufGuardMut;
+
 /// The `BufReader` struct adds buffering to any reader.
 ///
 /// It can be excessively inefficient to work directly with a [`AsyncRead`]
@@ -23,24 +25,30 @@ use tokio::io::{AsyncBufRead, AsyncRead, AsyncSeek, AsyncWrite, ReadBuf};
 /// discarded. Creating multiple instances of a `BufReader` on the same
 /// stream can cause data loss.
 #[pin_project]
-pub struct BufReader<'a, R> {
+pub struct BufReader<R, G: BufGuardMut> {
     #[pin]
     pub(super) inner: R,
-    pub(super) buf: &'a mut [u8],
+    buf: &'static mut [u8],
     pub(super) pos: usize,
     pub(super) cap: usize,
     pub(super) seek_state: SeekState,
+    #[pin]
+    buf_guard: G,
 }
 
-impl<'a, R: AsyncRead> BufReader<'a, R> {
-    /// Creates a new `BufReader` with a specified buffer.
-    pub fn new(buf: &'a mut [u8], inner: R) -> Self {
+impl<R: AsyncRead, G: BufGuardMut> BufReader<R, G> {
+    /// Creates a new `BufReader` with the specified buffer guard.
+    pub fn new(inner: R, mut buf_guard: G) -> Self {
+        let buf = buf_guard.buf_mut();
+        // Safety: lifetime of `buf` depends on `buf_guard`.
+        let buf = unsafe { std::slice::from_raw_parts_mut(buf.as_mut_ptr(), buf.len()) };
         Self {
             inner,
             buf,
             pos: 0,
             cap: 0,
             seek_state: SeekState::Init,
+            buf_guard,
         }
     }
 
@@ -68,8 +76,8 @@ impl<'a, R: AsyncRead> BufReader<'a, R> {
     /// Consumes this `BufReader`, returning the underlying reader.
     ///
     /// Note that any leftover data in the internal buffer is lost.
-    pub fn into_inner(self) -> R {
-        self.inner
+    pub fn into_inner(self) -> (R, G) {
+        (self.inner, self.buf_guard)
     }
 
     /// Returns a reference to the internally buffered data.
@@ -88,7 +96,7 @@ impl<'a, R: AsyncRead> BufReader<'a, R> {
     }
 }
 
-impl<'a, R: AsyncRead> AsyncRead for BufReader<'a, R> {
+impl<R: AsyncRead, G: BufGuardMut> AsyncRead for BufReader<R, G> {
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -110,7 +118,7 @@ impl<'a, R: AsyncRead> AsyncRead for BufReader<'a, R> {
     }
 }
 
-impl<'a, R: AsyncRead> AsyncBufRead for BufReader<'a, R> {
+impl<R: AsyncRead, G: BufGuardMut> AsyncBufRead for BufReader<R, G> {
     fn poll_fill_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<&[u8]>> {
         let me = self.project();
 
@@ -164,7 +172,7 @@ pub(super) enum SeekState {
 /// seeks will be performed instead of one. If the second seek returns
 /// `Err`, the underlying reader will be left at the same position it would
 /// have if you called `seek` with `SeekFrom::Current(0)`.
-impl<'a, R: AsyncRead + AsyncSeek> AsyncSeek for BufReader<'a, R> {
+impl<R: AsyncRead + AsyncSeek, G: BufGuardMut> AsyncSeek for BufReader<R, G> {
     fn start_seek(self: Pin<&mut Self>, pos: SeekFrom) -> io::Result<()> {
         // We needs to call seek operation multiple times.
         // And we should always call both start_seek and poll_complete,
@@ -250,7 +258,7 @@ impl<'a, R: AsyncRead + AsyncSeek> AsyncSeek for BufReader<'a, R> {
     }
 }
 
-impl<'a, R: AsyncRead + AsyncWrite> AsyncWrite for BufReader<'a, R> {
+impl<R: AsyncRead + AsyncWrite, G: BufGuardMut> AsyncWrite for BufReader<R, G> {
     fn poll_write(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -280,7 +288,7 @@ impl<'a, R: AsyncRead + AsyncWrite> AsyncWrite for BufReader<'a, R> {
     }
 }
 
-impl<'a, R: fmt::Debug> fmt::Debug for BufReader<'a, R> {
+impl<R: fmt::Debug, G: BufGuardMut> fmt::Debug for BufReader<R, G> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("BufReader")
             .field("reader", &self.inner)
@@ -290,16 +298,4 @@ impl<'a, R: fmt::Debug> fmt::Debug for BufReader<'a, R> {
             )
             .finish()
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn assert_unpin() {
-        is_unpin::<BufReader<()>>();
-    }
-
-    fn is_unpin<T: Unpin>() {}
 }

@@ -5,7 +5,7 @@ use std::task::{Context, Poll};
 
 use async_trait::async_trait;
 use futures_util::ready;
-use highway::{HighwayHash, HighwayHasher, Key};
+use highway::{HighwayHash, Key};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeekExt, AsyncWrite, SeekFrom};
 
 use crate::errors::StorageError;
@@ -15,17 +15,48 @@ use crate::storage::StorageApi;
 const MAGIC_HIGHWAY_HASH_256_KEY: &[u8; 32] =
      b"\x4b\xe7\x34\xfa\x8e\x23\x8a\xcd\x26\x3e\x83\xe6\xbb\x96\x85\x52\x04\x0f\x93\x5d\xa3\x9f\x44\x14\x97\xe0\x9d\x13\x22\xde\x36\xa0";
 
-fn high_way_hasher() -> HighwayHasher {
+fn high_way_hasher() -> highway::HighwayHasher {
     let key =
         unsafe { std::mem::transmute::<[u8; 32], [u64; 4]>(MAGIC_HIGHWAY_HASH_256_KEY.clone()) };
-    HighwayHasher::new(Key(key))
+    highway::HighwayHasher::new(Key(key))
+}
+
+#[derive(Clone)]
+pub struct HighwayHasher(highway::HighwayHasher, [u8; 32]);
+
+impl super::BitrotHasher for HighwayHasher {
+    fn write(&mut self, bytes: &[u8]) {
+        self.0.append(bytes)
+    }
+
+    fn finish(&mut self) -> &[u8] {
+        let hash = self.0.clone().finalize256();
+        self.1 = unsafe { std::mem::transmute::<[u64; 4], [u8; 32]>(hash) };
+        &self.1[..]
+    }
+
+    fn reset(&mut self) {
+        self.0 = high_way_hasher();
+    }
+}
+
+impl HighwayHasher {
+    pub const fn output_size() -> usize {
+        32
+    }
+}
+
+impl Default for HighwayHasher {
+    fn default() -> Self {
+        Self(high_way_hasher(), [0u8; 32])
+    }
 }
 
 #[pin_project::pin_project]
 pub struct HighwayBitrotWriter {
     #[pin]
     writer: Box<dyn AsyncWrite + Unpin>,
-    hasher: HighwayHasher,
+    hasher: highway::HighwayHasher,
     state: State,
 }
 
@@ -128,7 +159,7 @@ unsafe impl<'a> Send for BuildReader<'a> {}
 pub struct HighwayBitrotReader<'a> {
     build_reader: Option<Box<dyn 'a + Send + Sync + FnOnce(u64) -> BuildReader<'a>>>,
     reader: Option<Box<dyn AsyncRead + Unpin + Send>>,
-    hasher: HighwayHasher,
+    hasher: highway::HighwayHasher,
     shard_size: u64,
     offset_cur: u64,
     hash: [u8; 32],

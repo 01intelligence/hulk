@@ -11,7 +11,7 @@ lazy_static = "1.4.0"
 log = { version = "0.4.14", features = ["max_level_trace", "release_max_level_info"] }
 slog = { version = "2.7.0", features = ["max_level_trace", "release_max_level_info"] }
 async-std = { version = "1.9.0", features = ["attributes", "unstable"] }
-tokio = { version = "1.9.0", features = ["full"] }
+tokio = { version = "1.10.0", features = ["full"] }
 serde = { version = "1.0.126", features = ["derive"] }
 serde_json = "1.0.64"
 anyhow = "1.0.40"
@@ -114,6 +114,7 @@ num-derive = "0.3.3"
 num-traits = "0.2.14"
 scopeguard = "1.1.0"
 itertools = "0.10.1"
+digest = "0.9.0"
 
 [dependencies.actix-cors]
 git = 'https://github.com/actix/actix-extras'

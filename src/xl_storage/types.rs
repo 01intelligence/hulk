@@ -7,7 +7,7 @@ pub struct ObjectPartInfo {
     #[serde(skip_serializing_if = "String::is_empty")]
     pub etag: String,
     pub number: usize,
-    pub size: i64,
+    pub size: u64,
     #[serde(rename = "actualSize")]
     pub actual_size: i64,
 }

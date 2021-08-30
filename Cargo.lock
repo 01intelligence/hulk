@@ -30,7 +30,7 @@ dependencies = [
  "futures-sink",
  "log",
  "pin-project-lite 0.2.6",
- "tokio 1.9.0",
+ "tokio 1.10.1",
  "tokio-util 0.6.7",
 ]
 
@@ -88,7 +88,7 @@ dependencies = [
  "sha-1",
  "smallvec",
  "time 0.2.26",
- "tokio 1.9.0",
+ "tokio 1.10.1",
  "zstd",
 ]
 
@@ -148,7 +148,7 @@ checksum = "bc7d7cd957c9ed92288a7c3c96af81fa5291f65247a76a34dac7b6af74e52ba0"
 dependencies = [
  "actix-macros 0.2.1",
  "futures-core",
- "tokio 1.9.0",
+ "tokio 1.10.1",
 ]
 
 [[package]]
@@ -185,7 +185,7 @@ dependencies = [
  "mio 0.7.11",
  "num_cpus",
  "slab",
- "tokio 1.9.0",
+ "tokio 1.10.1",
 ]
 
 [[package]]
@@ -1249,7 +1249,7 @@ dependencies = [
  "config",
  "num_cpus",
  "serde",
- "tokio 1.9.0",
+ "tokio 1.10.1",
 ]
 
 [[package]]
@@ -1439,7 +1439,7 @@ checksum = "29f05aab7fdd015024fd4c55c7a1927c7ea5ddfe9ff6378d5cf66886c91311b0"
 dependencies = [
  "http",
  "prost",
- "tokio 1.9.0",
+ "tokio 1.10.1",
  "tokio-stream",
  "tonic",
  "tonic-build",
@@ -1740,7 +1740,7 @@ dependencies = [
  "http",
  "indexmap",
  "slab",
- "tokio 1.9.0",
+ "tokio 1.10.1",
  "tokio-util 0.6.7",
  "tracing",
 ]
@@ -1935,6 +1935,7 @@ dependencies = [
  "deadpool",
  "derivative",
  "derive_more",
+ "digest",
  "dirs",
  "dyn-clone",
  "educe",
@@ -2000,7 +2001,7 @@ dependencies = [
  "term",
  "thiserror",
  "time 0.2.26",
- "tokio 1.9.0",
+ "tokio 1.10.1",
  "tokio-stream",
  "tokio-test",
  "tokio-util 0.6.7",
@@ -2042,7 +2043,7 @@ dependencies = [
  "itoa",
  "pin-project-lite 0.2.6",
  "socket2 0.4.0",
- "tokio 1.9.0",
+ "tokio 1.10.1",
  "tower-service",
  "tracing",
  "want",
@@ -2058,7 +2059,7 @@ dependencies = [
  "hyper",
  "log",
  "rustls",
- "tokio 1.9.0",
+ "tokio 1.10.1",
  "tokio-rustls",
  "webpki",
 ]
@@ -2071,7 +2072,7 @@ checksum = "bbb958482e8c7be4bc3cf272a766a2b0bf1a6755e7a6ae777f017a31d11b13b1"
 dependencies = [
  "hyper",
  "pin-project-lite 0.2.6",
- "tokio 1.9.0",
+ "tokio 1.10.1",
  "tokio-io-timeout",
 ]
 
@@ -3402,7 +3403,7 @@ dependencies = [
  "rustls",
  "serde",
  "serde_urlencoded",
- "tokio 1.9.0",
+ "tokio 1.10.1",
  "tokio-rustls",
  "url",
  "wasm-bindgen",
@@ -4253,9 +4254,9 @@ dependencies = [
 
 [[package]]
 name = "tokio"
-version = "1.9.0"
+version = "1.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b7b349f11a7047e6d1276853e612d152f5e8a352c61917887cc2169e2366b4c"
+checksum = "92036be488bb6594459f2e03b60e42df6f937fe6ca5c5ffdcb539c6b84dc40f5"
 dependencies = [
  "autocfg",
  "bytes 1.0.1",
@@ -4278,7 +4279,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "90c49f106be240de154571dd31fbe48acb10ba6c6dd6f6517ad603abffa42de9"
 dependencies = [
  "pin-project-lite 0.2.6",
- "tokio 1.9.0",
+ "tokio 1.10.1",
 ]
 
 [[package]]
@@ -4299,7 +4300,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bc6844de72e57df1980054b38be3a9f4702aba4858be64dd700181a8a6d0e1b6"
 dependencies = [
  "rustls",
- "tokio 1.9.0",
+ "tokio 1.10.1",
  "webpki",
 ]
 
@@ -4311,7 +4312,7 @@ checksum = "7b2f3f698253f03119ac0102beaa64f67a67e08074d03a22d18784104543727f"
 dependencies = [
  "futures-core",
  "pin-project-lite 0.2.6",
- "tokio 1.9.0",
+ "tokio 1.10.1",
 ]
 
 [[package]]
@@ -4323,7 +4324,7 @@ dependencies = [
  "async-stream",
  "bytes 1.0.1",
  "futures-core",
- "tokio 1.9.0",
+ "tokio 1.10.1",
  "tokio-stream",
 ]
 
@@ -4352,7 +4353,7 @@ dependencies = [
  "futures-sink",
  "log",
  "pin-project-lite 0.2.6",
- "tokio 1.9.0",
+ "tokio 1.10.1",
 ]
 
 [[package]]
@@ -4376,7 +4377,7 @@ dependencies = [
  "pin-project 1.0.8",
  "prost",
  "prost-derive",
- "tokio 1.9.0",
+ "tokio 1.10.1",
  "tokio-rustls",
  "tokio-stream",
  "tokio-util 0.6.7",
@@ -4411,7 +4412,7 @@ dependencies = [
  "pin-project 1.0.8",
  "rand 0.8.3",
  "slab",
- "tokio 1.9.0",
+ "tokio 1.10.1",
  "tokio-stream",
  "tokio-util 0.6.7",
  "tower-layer",
@@ -4495,7 +4496,7 @@ dependencies = [
  "smallvec",
  "thiserror",
  "tinyvec",
- "tokio 1.9.0",
+ "tokio 1.10.1",
  "url",
 ]
 
@@ -4515,7 +4516,7 @@ dependencies = [
  "resolv-conf",
  "smallvec",
  "thiserror",
- "tokio 1.9.0",
+ "tokio 1.10.1",
  "trust-dns-proto",
 ]
 

@@ -1,8 +1,10 @@
+mod buf_reader;
 mod pipe;
 mod read_ahead;
 mod read_at;
 mod read_full;
 
+pub use buf_reader::*;
 pub use pipe::*;
 pub use read_ahead::*;
 pub use read_at::*;

@@ -120,7 +120,7 @@ struct XlMetaV2Object {
     #[serde(rename = "PartETags")]
     part_etags: Vec<String>,
     #[serde(rename = "PartSizes")]
-    part_sizes: Vec<i64>,
+    part_sizes: Vec<u64>,
     #[serde(rename = "PartASizes")]
     part_actual_sizes: Vec<i64>,
     #[serde(rename = "Size")]

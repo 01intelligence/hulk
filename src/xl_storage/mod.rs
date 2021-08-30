@@ -25,7 +25,7 @@ use crate::globals::Guard;
 use crate::pool::{TypedPool, TypedPoolGuard};
 use crate::prelude::*;
 use crate::storage::FileInfo;
-use crate::utils::{Path, PathBuf};
+use crate::utils::{BufGuard, Path, PathBuf};
 use crate::xl_storage::openoptions_ext::{OpenOptionsNoAtime, OpenOptionsSync};
 use crate::{config, fs, globals, storage, utils};
 
@@ -61,12 +61,26 @@ type LargeAlignedBlock = fs::SizedAlignedBlock<BLOCK_SIZE_LARGE>;
 type ReallyLargeAlignedBlock = fs::SizedAlignedBlock<BLOCK_SIZE_REALLY_LARGE>;
 
 lazy_static! {
-    static ref XL_POOL_SMALL: Arc<TypedPool<SmallAlignedBlock>> =
+    pub static ref XL_POOL_SMALL: Arc<TypedPool<SmallAlignedBlock>> =
         Arc::new(TypedPool::new(XL_POOL_SMALL_MAX_SIZE));
     static ref XL_POOL_LARGE: Arc<TypedPool<LargeAlignedBlock>> =
         Arc::new(TypedPool::new(XL_POOL_LARGE_MAX_SIZE));
     static ref XL_POOL_REALLY_LARGE: Arc<TypedPool<ReallyLargeAlignedBlock>> =
         Arc::new(TypedPool::new(XL_POOL_REALLY_LARGE_MAX_SIZE));
+}
+
+impl<const SIZE: usize> utils::BufGuard for TypedPoolGuard<'static, fs::SizedAlignedBlock<SIZE>> {
+    fn buf(&self) -> &[u8] {
+        &***self
+    }
+}
+
+impl<const SIZE: usize> utils::BufGuardMut
+    for TypedPoolGuard<'static, fs::SizedAlignedBlock<SIZE>>
+{
+    fn buf_mut(&mut self) -> &mut [u8] {
+        &mut ***self
+    }
 }
 
 // Storage backed by a disk.
@@ -511,13 +525,24 @@ impl XlStorage {
         let erasure = fi.erasure.as_ref().unwrap();
 
         for part in &fi.parts {
-            let checksum = &erasure.checksums;
+            let checksum_info = erasure.get_checksum_info(part.number).unwrap();
             let part_path = crate::object::path_join(&[
                 &volume_dir,
                 path,
                 &fi.data_dir,
                 &format!("part.{}", part.number),
             ]);
+            let file = fs::OpenOptions::new().read(true).open(&part_path).await?;
+            let file_size = file.metadata().await?.len();
+            crate::bitrot::bitrot_verify(
+                file,
+                file_size,
+                erasure.shard_file_size(part.size),
+                checksum_info.algorithm,
+                &checksum_info.hash,
+                erasure.shard_size(),
+            )
+            .await?; // TODO: logging error
         }
         todo!();
 
@@ -684,18 +709,18 @@ impl XlStorage {
             impl utils::BufGuard for PoolGuard {
                 fn buf(&self) -> &[u8] {
                     if let Some(guard) = &self.0 {
-                        &**guard
+                        guard.buf()
                     } else {
-                        &***self.1.as_ref().unwrap()
+                        self.1.as_ref().unwrap().buf()
                     }
                 }
             }
             impl utils::BufGuardMut for PoolGuard {
                 fn buf_mut(&mut self) -> &mut [u8] {
                     if let Some(guard) = &mut self.0 {
-                        &mut **guard
+                        guard.buf_mut()
                     } else {
-                        &mut ***self.1.as_mut().unwrap()
+                        self.1.as_mut().unwrap().buf_mut()
                     }
                 }
             }
@@ -741,7 +766,6 @@ async fn read_all_data(
     file_path: &str,
     require_direct_io: bool,
 ) -> anyhow::Result<Vec<u8>> {
-    let mut guard = None;
     let mut r = match if require_direct_io {
         match fs::OpenOptions::new()
             .read(true)
@@ -750,8 +774,8 @@ async fn read_all_data(
             .await
         {
             Ok(r) => {
-                guard = Some(XL_POOL_SMALL.get().await?);
-                Ok(Box::pin(fs::BufReader::new(guard.as_mut().unwrap(), r))
+                let guard = XL_POOL_SMALL.get().await?;
+                Ok(Box::pin(crate::io::BufReader::new(r, guard))
                     as Pin<Box<dyn tokio::io::AsyncRead>>)
             }
             Err(err) => Err(err),

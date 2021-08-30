@@ -78,3 +78,41 @@ impl<'de, 'a> Deserialize<'de> for Effect<'a> {
         deserializer.deserialize_str(EffectVisitor)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::Allowed;
+    use super::*;
+
+    #[test]
+    fn test_effect_is_allowed() {
+        let cases = [
+            (ALLOW, false, false),
+            (ALLOW, true, true),
+            (DENY, false, true),
+            (DENY, true, false),
+        ];
+
+        for (effect, check, expected_result) in cases {
+            let result = effect.is_allowed(check);
+
+            assert_eq!(result, expected_result);
+        }
+    }
+
+    #[test]
+    fn test_effect_is_valid() {
+        let cases = [
+            (ALLOW, true),
+            (DENY, true),
+            (Effect(""), false),
+            (Effect("foo"), false),
+        ];
+
+        for (effect, expected_result) in cases {
+            let result = effect.is_valid();
+
+            assert_eq!(result, expected_result);
+        }
+    }
+}

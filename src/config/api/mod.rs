@@ -73,7 +73,7 @@ lazy_static! {
     ]);
 }
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize, Default, Debug)]
 pub struct Config {
     pub requests_max: usize,
     pub requests_deadline: Duration,
@@ -164,4 +164,290 @@ pub fn lookup_config(kvs: &KVS) -> anyhow::Result<Config> {
         replication_workers,
         replication_failed_workers,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::assert::{assert_err, assert_ok};
+
+    #[test]
+    fn test_config_api() {
+        let cases: [(KVS, bool, isize); 7] = [
+            (
+                // default value
+                KVS(vec![
+                    KV {
+                        key: API_REQUESTS_MAX.to_owned(),
+                        value: "0".to_owned(),
+                    },
+                    KV {
+                        key: API_REQUESTS_DEADLINE.to_owned(),
+                        value: "10s".to_owned(),
+                    },
+                    KV {
+                        key: API_CLUSTER_DEADLINE.to_owned(),
+                        value: "10s".to_owned(),
+                    },
+                    KV {
+                        key: API_CORS_ALLOW_ORIGIN.to_owned(),
+                        value: "*".to_owned(),
+                    },
+                    KV {
+                        key: API_REMOTE_TRANSPORT_DEADLINE.to_owned(),
+                        value: "2h".to_owned(),
+                    },
+                    KV {
+                        key: API_LIST_QUORUM.to_owned(),
+                        value: "optimal".to_owned(),
+                    },
+                    KV {
+                        key: API_EXTEND_LIST_CACHE_LIFE.to_owned(),
+                        value: "0s".to_owned(),
+                    },
+                    KV {
+                        key: API_REPLICATION_WORKERS.to_owned(),
+                        value: "250".to_owned(),
+                    },
+                    KV {
+                        key: API_REPLICATION_FAILED_WORKERS.to_owned(),
+                        value: "8".to_owned(),
+                    },
+                ]),
+                false,
+                3,
+            ),
+            (
+                // miss some key-value
+                KVS(vec![KV {
+                    key: API_REQUESTS_MAX.to_owned(),
+                    value: "11".to_owned(),
+                }]),
+                true,
+                0,
+            ),
+            (
+                // duration format error
+                KVS(vec![
+                    KV {
+                        key: API_REQUESTS_MAX.to_owned(),
+                        value: "0".to_owned(),
+                    },
+                    KV {
+                        key: API_REQUESTS_DEADLINE.to_owned(),
+                        value: "10".to_owned(),
+                    },
+                    KV {
+                        key: API_CLUSTER_DEADLINE.to_owned(),
+                        value: "10s".to_owned(),
+                    },
+                    KV {
+                        key: API_CORS_ALLOW_ORIGIN.to_owned(),
+                        value: "*".to_owned(),
+                    },
+                    KV {
+                        key: API_REMOTE_TRANSPORT_DEADLINE.to_owned(),
+                        value: "2h".to_owned(),
+                    },
+                    KV {
+                        key: API_LIST_QUORUM.to_owned(),
+                        value: "optimal".to_owned(),
+                    },
+                    KV {
+                        key: API_EXTEND_LIST_CACHE_LIFE.to_owned(),
+                        value: "0s".to_owned(),
+                    },
+                    KV {
+                        key: API_REPLICATION_WORKERS.to_owned(),
+                        value: "250".to_owned(),
+                    },
+                    KV {
+                        key: API_REPLICATION_FAILED_WORKERS.to_owned(),
+                        value: "8".to_owned(),
+                    },
+                ]),
+                true,
+                0,
+            ),
+            (
+                // number format error
+                KVS(vec![
+                    KV {
+                        key: API_REQUESTS_MAX.to_owned(),
+                        value: "fff".to_owned(),
+                    },
+                    KV {
+                        key: API_REQUESTS_DEADLINE.to_owned(),
+                        value: "10s".to_owned(),
+                    },
+                    KV {
+                        key: API_CLUSTER_DEADLINE.to_owned(),
+                        value: "10s".to_owned(),
+                    },
+                    KV {
+                        key: API_CORS_ALLOW_ORIGIN.to_owned(),
+                        value: "*".to_owned(),
+                    },
+                    KV {
+                        key: API_REMOTE_TRANSPORT_DEADLINE.to_owned(),
+                        value: "2h".to_owned(),
+                    },
+                    KV {
+                        key: API_LIST_QUORUM.to_owned(),
+                        value: "optimal".to_owned(),
+                    },
+                    KV {
+                        key: API_EXTEND_LIST_CACHE_LIFE.to_owned(),
+                        value: "0s".to_owned(),
+                    },
+                    KV {
+                        key: API_REPLICATION_WORKERS.to_owned(),
+                        value: "250".to_owned(),
+                    },
+                    KV {
+                        key: API_REPLICATION_FAILED_WORKERS.to_owned(),
+                        value: "8".to_owned(),
+                    },
+                ]),
+                true,
+                0,
+            ),
+            // different vaild value
+            (
+                KVS(vec![
+                    KV {
+                        key: API_REQUESTS_MAX.to_owned(),
+                        value: "3".to_owned(),
+                    },
+                    KV {
+                        key: API_REQUESTS_DEADLINE.to_owned(),
+                        value: "30s".to_owned(),
+                    },
+                    KV {
+                        key: API_CLUSTER_DEADLINE.to_owned(),
+                        value: "20s".to_owned(),
+                    },
+                    KV {
+                        key: API_CORS_ALLOW_ORIGIN.to_owned(),
+                        value: "hh,ff,".to_owned(),
+                    },
+                    KV {
+                        key: API_REMOTE_TRANSPORT_DEADLINE.to_owned(),
+                        value: "3h".to_owned(),
+                    },
+                    KV {
+                        key: API_LIST_QUORUM.to_owned(),
+                        value: "reduced".to_owned(),
+                    },
+                    KV {
+                        key: API_EXTEND_LIST_CACHE_LIFE.to_owned(),
+                        value: "1s".to_owned(),
+                    },
+                    KV {
+                        key: API_REPLICATION_WORKERS.to_owned(),
+                        value: "200".to_owned(),
+                    },
+                    KV {
+                        key: API_REPLICATION_FAILED_WORKERS.to_owned(),
+                        value: "300".to_owned(),
+                    },
+                ]),
+                false,
+                2,
+            ),
+            (
+                KVS(vec![
+                    KV {
+                        key: API_REQUESTS_MAX.to_owned(),
+                        value: "10".to_owned(),
+                    },
+                    KV {
+                        key: API_REQUESTS_DEADLINE.to_owned(),
+                        value: "1m".to_owned(),
+                    },
+                    KV {
+                        key: API_CLUSTER_DEADLINE.to_owned(),
+                        value: "100s".to_owned(),
+                    },
+                    KV {
+                        key: API_CORS_ALLOW_ORIGIN.to_owned(),
+                        value: "12,yy".to_owned(),
+                    },
+                    KV {
+                        key: API_REMOTE_TRANSPORT_DEADLINE.to_owned(),
+                        value: "1h".to_owned(),
+                    },
+                    KV {
+                        key: API_LIST_QUORUM.to_owned(),
+                        value: "disk".to_owned(),
+                    },
+                    KV {
+                        key: API_EXTEND_LIST_CACHE_LIFE.to_owned(),
+                        value: "5s".to_owned(),
+                    },
+                    KV {
+                        key: API_REPLICATION_WORKERS.to_owned(),
+                        value: "25".to_owned(),
+                    },
+                    KV {
+                        key: API_REPLICATION_FAILED_WORKERS.to_owned(),
+                        value: "10".to_owned(),
+                    },
+                ]),
+                false,
+                1,
+            ),
+            (
+                KVS(vec![
+                    KV {
+                        key: API_REQUESTS_MAX.to_owned(),
+                        value: "22".to_owned(),
+                    },
+                    KV {
+                        key: API_REQUESTS_DEADLINE.to_owned(),
+                        value: "1s".to_owned(),
+                    },
+                    KV {
+                        key: API_CLUSTER_DEADLINE.to_owned(),
+                        value: "10m".to_owned(),
+                    },
+                    KV {
+                        key: API_CORS_ALLOW_ORIGIN.to_owned(),
+                        value: "hello".to_owned(),
+                    },
+                    KV {
+                        key: API_REMOTE_TRANSPORT_DEADLINE.to_owned(),
+                        value: "9h".to_owned(),
+                    },
+                    KV {
+                        key: API_LIST_QUORUM.to_owned(),
+                        value: "strict".to_owned(),
+                    },
+                    KV {
+                        key: API_EXTEND_LIST_CACHE_LIFE.to_owned(),
+                        value: "10s".to_owned(),
+                    },
+                    KV {
+                        key: API_REPLICATION_WORKERS.to_owned(),
+                        value: "200".to_owned(),
+                    },
+                    KV {
+                        key: API_REPLICATION_FAILED_WORKERS.to_owned(),
+                        value: "200".to_owned(),
+                    },
+                ]),
+                false,
+                -1,
+            ),
+        ];
+        for (kvs, is_err, expected_quorum) in cases.iter() {
+            let cfg = lookup_config(kvs);
+            if *is_err {
+                assert_err!(cfg);
+            } else {
+                let cfg = assert_ok!(cfg);
+                assert_eq!(cfg.get_list_quorum(), *expected_quorum);
+            }
+        }
+    }
 }

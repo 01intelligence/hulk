@@ -63,7 +63,7 @@ impl DateTimeExt<Utc> for DateTime {
 }
 
 pub trait DateTimeFormatExt {
-    fn fmt(&self, fmt: &str) -> String;
+    fn fmt_to(&self, fmt: &str) -> String;
     fn rfc3339(&self) -> String;
     fn rfc3339_nano(&self) -> String;
     fn parse(s: &str, fmt: &str) -> anyhow::Result<Self>
@@ -78,7 +78,7 @@ pub trait DateTimeFormatExt {
 }
 
 impl DateTimeFormatExt for chrono::DateTime<FixedOffset> {
-    fn fmt(&self, fmt: &str) -> String {
+    fn fmt_to(&self, fmt: &str) -> String {
         self.format(fmt).to_string()
     }
 
@@ -114,7 +114,7 @@ impl DateTimeFormatExt for chrono::DateTime<FixedOffset> {
 }
 
 impl DateTimeFormatExt for chrono::DateTime<Utc> {
-    fn fmt(&self, fmt: &str) -> String {
+    fn fmt_to(&self, fmt: &str) -> String {
         self.format(fmt).to_string()
     }
 

@@ -206,7 +206,7 @@ impl RestoreStatus {
             if expiry_tokens[0].trim() != "expiry-date" {
                 bail!(ERR_RESTORE_HDR_MALFORMED);
             }
-            let expiry = DateTime::parse(expiry_tokens[1], RESTORE_STATUS_DATETIME_FORMAT);
+            let expiry = DateTime::parse(expiry_tokens[1].trim(), RESTORE_STATUS_DATETIME_FORMAT);
             match expiry {
                 Ok(expiry) => return Ok(RestoreStatus::completed(expiry)),
                 Err(_) => bail!(ERR_RESTORE_HDR_MALFORMED),

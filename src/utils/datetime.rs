@@ -130,8 +130,13 @@ impl DateTimeFormatExt for chrono::DateTime<Utc> {
     where
         Self: Sized,
     {
-        let dt = chrono::DateTime::parse_from_str(s, fmt)?;
-        Ok(dt.with_timezone(&Utc))
+        Ok(chrono::DateTime::parse_from_str(s, fmt)
+            .map(|dt| dt.with_timezone(&Utc))
+            .or_else(|_| {
+                // When time zone specifier is `%Z`,
+                // fallback to time zone abbreviation parsing.
+                Utc.datetime_from_str(s, fmt)
+            })?)
     }
 
     fn from_rfc3339(s: &str) -> anyhow::Result<Self> {

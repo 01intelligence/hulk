@@ -255,6 +255,709 @@ impl<'de> Deserialize<'de> for ResourceSet {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::assert::*;
+
+    #[test]
+    fn test_resource_is_bucket_pattern() {
+        let cases = [
+            (Resource::new("*".to_string(), "".to_string()), true),
+            (Resource::new("mybucket".to_string(), "".to_string()), true),
+            (Resource::new("mybucket*".to_string(), "".to_string()), true),
+            (
+                Resource::new("mybucket?0".to_string(), "".to_string()),
+                true,
+            ),
+            (Resource::new("".to_string(), "*".to_string()), false),
+            (Resource::new("*".to_string(), "*".to_string()), false),
+            (
+                Resource::new("mybucket".to_string(), "*".to_string()),
+                false,
+            ),
+            (
+                Resource::new("mybucket*".to_string(), "/myobject".to_string()),
+                false,
+            ),
+            (
+                Resource::new("mybucket".to_string(), "/2010/photos/*".to_string()),
+                false,
+            ),
+        ];
+
+        for (resource, expected_result) in cases {
+            let result = resource.is_bucket_pattern();
+
+            assert_eq!(
+                result, expected_result,
+                "resource: {}, expected: {}, got: {}",
+                resource, expected_result, result
+            );
+        }
+    }
+
+    #[test]
+    fn test_resource_is_object_pattern() {
+        let cases = [
+            (Resource::new("*".to_string(), "".to_string()), true),
+            (Resource::new("mybucket*".to_string(), "".to_string()), true),
+            (Resource::new("".to_string(), "*".to_string()), true),
+            (Resource::new("*".to_string(), "*".to_string()), true),
+            (Resource::new("mybucket".to_string(), "*".to_string()), true),
+            (
+                Resource::new("mybucket*".to_string(), "/myobject".to_string()),
+                true,
+            ),
+            (
+                Resource::new("mybucket?0".to_string(), "/2010/photos/*".to_string()),
+                true,
+            ),
+            (Resource::new("mybucket".to_string(), "".to_string()), false),
+            (
+                Resource::new("mybucket?0".to_string(), "".to_string()),
+                false,
+            ),
+        ];
+
+        for (resource, expected_result) in cases {
+            let result = resource.is_object_pattern();
+
+            assert_eq!(
+                result, expected_result,
+                "resource: {}, expected: {}, got: {}",
+                resource, expected_result, result
+            );
+        }
+    }
+
+    #[test]
+    fn test_resource_is_valid() {
+        let cases = [
+            (Resource::new("*".to_string(), "".to_string()), true),
+            (Resource::new("mybucket".to_string(), "".to_string()), true),
+            (Resource::new("*".to_string(), "*".to_string()), true),
+            (Resource::new("mybucket".to_string(), "*".to_string()), true),
+            (
+                Resource::new("mybucket*".to_string(), "/myobject/*".to_string()),
+                true,
+            ),
+            (
+                Resource::new("mybucket?0".to_string(), "/2010/photos/*".to_string()),
+                true,
+            ),
+            (Resource::new("mybucket".to_string(), "".to_string()), true),
+            (
+                Resource::new("mybucket?0".to_string(), "".to_string()),
+                true,
+            ),
+            (Resource::new("".to_string(), "".to_string()), false),
+            (Resource::new("".to_string(), "*".to_string()), false),
+        ];
+
+        for (resource, expected_result) in cases {
+            let result = resource.is_valid();
+
+            assert_eq!(
+                result, expected_result,
+                "resource: {}, expected: {}, got: {}",
+                resource, expected_result, result
+            );
+        }
+    }
+
+    #[test]
+    fn test_resource_match() {
+        let cases = [
+            (
+                Resource::new("*".to_string(), "".to_string()),
+                "mybucket",
+                true,
+            ),
+            (
+                Resource::new("*".to_string(), "".to_string()),
+                "mybucket/myobject",
+                true,
+            ),
+            (
+                Resource::new("mybucket*".to_string(), "".to_string()),
+                "mybucket",
+                true,
+            ),
+            (
+                Resource::new("mybucket*".to_string(), "".to_string()),
+                "mybucket/myobject",
+                true,
+            ),
+            (
+                Resource::new("".to_string(), "*".to_string()),
+                "/myobject",
+                true,
+            ),
+            (
+                Resource::new("*".to_string(), "*".to_string()),
+                "mybucket/myobject",
+                true,
+            ),
+            (
+                Resource::new("mybucket".to_string(), "*".to_string()),
+                "mybucket/myobject",
+                true,
+            ),
+            (
+                Resource::new("mybucket*".to_string(), "/myobject".to_string()),
+                "mybucket/myobject",
+                true,
+            ),
+            (
+                Resource::new("mybucket*".to_string(), "/myobject".to_string()),
+                "mybucket100/myobject",
+                true,
+            ),
+            (
+                Resource::new("mybucket?0".to_string(), "/2010/photos/*".to_string()),
+                "mybucket20/2010/photos/1.jpg",
+                true,
+            ),
+            (
+                Resource::new("mybucket".to_string(), "".to_string()),
+                "mybucket",
+                true,
+            ),
+            (
+                Resource::new("mybucket?0".to_string(), "".to_string()),
+                "mybucket30",
+                true,
+            ),
+            (
+                Resource::new("".to_string(), "*".to_string()),
+                "mybucket/myobject",
+                false,
+            ),
+            (
+                Resource::new("*".to_string(), "*".to_string()),
+                "mybucket",
+                false,
+            ),
+            (
+                Resource::new("mybucket".to_string(), "*".to_string()),
+                "mybucket10/myobject",
+                false,
+            ),
+            (
+                Resource::new("mybucket?0".to_string(), "/2010/photos/*".to_string()),
+                "mybucket0/2010/photos/1.jpg",
+                false,
+            ),
+            (
+                Resource::new("mybucket".to_string(), "".to_string()),
+                "mybucket/myobject",
+                false,
+            ),
+        ];
+
+        for (resource, object_name, expected_result) in cases {
+            let result = resource.is_match(object_name, &HashMap::new());
+
+            assert_eq!(
+                result, expected_result,
+                "resource: {}, expected: {}, got: {}",
+                resource, expected_result, result
+            );
+        }
+    }
+
+    #[test]
+    fn test_resource_serialize_json() {
+        let cases = [
+            (
+                Resource::new("*".to_string(), "".to_string()),
+                Some(r#""arn:aws:s3:::*""#),
+                false,
+            ),
+            (
+                Resource::new("mybucket*".to_string(), "".to_string()),
+                Some(r#""arn:aws:s3:::mybucket*""#),
+                false,
+            ),
+            (
+                Resource::new("mybucket".to_string(), "".to_string()),
+                Some(r#""arn:aws:s3:::mybucket""#),
+                false,
+            ),
+            (
+                Resource::new("*".to_string(), "*".to_string()),
+                Some(r#""arn:aws:s3:::*/*""#),
+                false,
+            ),
+            (
+                Resource::new("mybucket".to_string(), "*".to_string()),
+                Some(r#""arn:aws:s3:::mybucket/*""#),
+                false,
+            ),
+            (
+                Resource::new("mybucket*".to_string(), "myobject".to_string()),
+                Some(r#""arn:aws:s3:::mybucket*/myobject""#),
+                false,
+            ),
+            (
+                Resource::new("mybucket?0".to_string(), "/2010/photos/*".to_string()),
+                Some(r#""arn:aws:s3:::mybucket?0/2010/photos/*""#),
+                false,
+            ),
+            (Resource::new("".to_string(), "*".to_string()), None, true),
+        ];
+
+        for (resource, expected_result, expect_err) in cases {
+            let result = serde_json::to_string(&resource);
+
+            match result {
+                Ok(result) => {
+                    if let Some(expected_result) = expected_result {
+                        assert_eq!(
+                            result, expected_result,
+                            "resource: {}, expected: {}, got: {}",
+                            resource, expected_result, result
+                        );
+                    }
+                }
+                Err(_) => assert!(expect_err, "expect an error"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_resource_deserialize_json() {
+        let cases = [
+            (
+                r#""arn:aws:s3:::*""#,
+                Some(Resource::new("*".to_string(), "".to_string())),
+                false,
+            ),
+            (
+                r#""arn:aws:s3:::mybucket*""#,
+                Some(Resource::new("mybucket*".to_string(), "".to_string())),
+                false,
+            ),
+            (
+                r#""arn:aws:s3:::mybucket""#,
+                Some(Resource::new("mybucket".to_string(), "".to_string())),
+                false,
+            ),
+            (
+                r#""arn:aws:s3:::*/*""#,
+                Some(Resource::new("*".to_string(), "*".to_string())),
+                false,
+            ),
+            (
+                r#""arn:aws:s3:::mybucket/*""#,
+                Some(Resource::new("mybucket".to_string(), "*".to_string())),
+                false,
+            ),
+            (
+                r#""arn:aws:s3:::mybucket*/myobject""#,
+                Some(Resource::new(
+                    "mybucket*".to_string(),
+                    "myobject".to_string(),
+                )),
+                false,
+            ),
+            (
+                r#""arn:aws:s3:::mybucket?0/2010/photos/*""#,
+                Some(Resource::new(
+                    "mybucket?0".to_string(),
+                    "/2010/photos/*".to_string(),
+                )),
+                false,
+            ),
+            (r#""mybucket/myobject*""#, None, true),
+            (r#""arn:aws:s3:::/*""#, None, true),
+        ];
+
+        for (data, expected_result, expect_err) in cases {
+            let result = serde_json::from_str::<Resource>(data);
+
+            match result {
+                Ok(result) => {
+                    if let Some(expected_result) = expected_result {
+                        assert_eq!(
+                            result, expected_result,
+                            "data: {}, expected: {}, got: {}",
+                            data, expected_result, result
+                        );
+                    }
+                }
+                Err(_) => assert!(expect_err, "expect an error"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_resource_validate() {
+        let cases = [
+            (
+                Resource::new("mybucket".to_string(), "/myobject".to_string()),
+                "mybucket",
+                false,
+            ),
+            (
+                Resource::new("".to_string(), "/myobject*".to_string()),
+                "yourbucket",
+                true,
+            ),
+            (
+                Resource::new("mybucket".to_string(), "/myobject*".to_string()),
+                "yourbucket",
+                true,
+            ),
+        ];
+
+        for (resource, bucket_name, expect_err) in cases {
+            if expect_err {
+                assert_err!(resource.validate(bucket_name));
+            } else {
+                assert_ok!(resource.validate(bucket_name));
+            }
+        }
+    }
+
+    #[test]
+    fn test_resource_set_bucket_resource_exists() {
+        let cases = [
+            (
+                ResourceSet::new(vec![Resource::new("*".to_string(), "".to_string())]),
+                true,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new("mybucket".to_string(), "".to_string())]),
+                true,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new("mybucket*".to_string(), "".to_string())]),
+                true,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new(
+                    "mybucket?0".to_string(),
+                    "".to_string(),
+                )]),
+                true,
+            ),
+            (
+                ResourceSet::new(vec![
+                    Resource::new("mybucket".to_string(), "/2010/photos/*".to_string()),
+                    Resource::new("mybucket*".to_string(), "".to_string()),
+                ]),
+                true,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new("".to_string(), "*".to_string())]),
+                false,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new("*".to_string(), "*".to_string())]),
+                false,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new("mybucket".to_string(), "*".to_string())]),
+                false,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new(
+                    "mybucket*".to_string(),
+                    "/myobject".to_string(),
+                )]),
+                false,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new(
+                    "mybucket?0".to_string(),
+                    "/2010/photos/*".to_string(),
+                )]),
+                false,
+            ),
+        ];
+
+        for (set, expected_result) in cases {
+            let result = set.bucket_resource_exists();
+
+            assert_eq!(
+                result, expected_result,
+                "set: {}, expected: {}, got: {}",
+                set, expected_result, result
+            );
+        }
+    }
+
+    #[test]
+    fn test_resource_set_object_resource_exists() {
+        let cases = [
+            (
+                ResourceSet::new(vec![Resource::new("*".to_string(), "".to_string())]),
+                true,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new("mybucket*".to_string(), "".to_string())]),
+                true,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new("".to_string(), "*".to_string())]),
+                true,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new("*".to_string(), "*".to_string())]),
+                true,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new("mybucket".to_string(), "*".to_string())]),
+                true,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new(
+                    "mybucket*".to_string(),
+                    "/myobject".to_string(),
+                )]),
+                true,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new(
+                    "mybucket?0".to_string(),
+                    "/2010/photos/*".to_string(),
+                )]),
+                true,
+            ),
+            (
+                ResourceSet::new(vec![
+                    Resource::new("mybucket".to_string(), "/2010/photos/*".to_string()),
+                    Resource::new("mybucket".to_string(), "".to_string()),
+                ]),
+                true,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new("mybucket".to_string(), "".to_string())]),
+                false,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new(
+                    "mybucket?0".to_string(),
+                    "".to_string(),
+                )]),
+                false,
+            ),
+        ];
+
+        for (set, expected_result) in cases {
+            let result = set.object_resource_exists();
+
+            assert_eq!(
+                result, expected_result,
+                "set: {}, expected: {}, got: {}",
+                set, expected_result, result
+            );
+        }
+    }
+
+    #[test]
+    fn test_resource_set_add() {
+        let cases = [
+            (
+                ResourceSet::new(vec![]),
+                Resource::new("mybucket".to_string(), "/myobject*".to_string()),
+                ResourceSet::new(vec![Resource::new(
+                    "mybucket".to_string(),
+                    "/myobject*".to_string(),
+                )]),
+            ),
+            (
+                ResourceSet::new(vec![Resource::new(
+                    "mybucket".to_string(),
+                    "/myobject*".to_string(),
+                )]),
+                Resource::new("mybucket".to_string(), "/yourobject*".to_string()),
+                ResourceSet::new(vec![
+                    Resource::new("mybucket".to_string(), "/myobject*".to_string()),
+                    Resource::new("mybucket".to_string(), "/yourobject*".to_string()),
+                ]),
+            ),
+            (
+                ResourceSet::new(vec![Resource::new(
+                    "mybucket".to_string(),
+                    "/myobject*".to_string(),
+                )]),
+                Resource::new("mybucket".to_string(), "/myobject*".to_string()),
+                ResourceSet::new(vec![Resource::new(
+                    "mybucket".to_string(),
+                    "/myobject*".to_string(),
+                )]),
+            ),
+        ];
+
+        for (mut set, resource, expected_result) in cases {
+            set.add(resource);
+
+            assert_eq!(set, expected_result)
+        }
+    }
+
+    #[test]
+    fn test_resource_set_intersection() {
+        let cases = [
+            (
+                ResourceSet::new(vec![]),
+                ResourceSet::new(vec![Resource::new(
+                    "mybucket".to_string(),
+                    "/myobject*".to_string(),
+                )]),
+                ResourceSet::new(vec![]),
+            ),
+            (
+                ResourceSet::new(vec![Resource::new(
+                    "mybucket".to_string(),
+                    "/myobject*".to_string(),
+                )]),
+                ResourceSet::new(vec![]),
+                ResourceSet::new(vec![]),
+            ),
+            (
+                ResourceSet::new(vec![Resource::new(
+                    "mybucket".to_string(),
+                    "/myobject*".to_string(),
+                )]),
+                ResourceSet::new(vec![
+                    Resource::new("mybucket".to_string(), "/myobject*".to_string()),
+                    Resource::new("mybucket".to_string(), "/yourobject*".to_string()),
+                ]),
+                ResourceSet::new(vec![Resource::new(
+                    "mybucket".to_string(),
+                    "/myobject*".to_string(),
+                )]),
+            ),
+        ];
+
+        for (set, set_to_intersect, expected_result) in cases {
+            let mut result = set.intersection(&set_to_intersect);
+
+            assert_eq!(
+                result, expected_result,
+                "set: {}, expected: {}, got: {}",
+                set, expected_result, result
+            );
+        }
+    }
+
+    #[test]
+    fn test_resource_set_match() {
+        let cases = [
+            (
+                ResourceSet::new(vec![Resource::new("*".to_string(), "".to_string())]),
+                "mybucket",
+                true,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new("*".to_string(), "".to_string())]),
+                "mybucket/myobject",
+                true,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new("mybucket*".to_string(), "".to_string())]),
+                "mybucket",
+                true,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new("mybucket*".to_string(), "".to_string())]),
+                "mybucket/myobject",
+                true,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new("".to_string(), "*".to_string())]),
+                "/myobject",
+                true,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new("*".to_string(), "*".to_string())]),
+                "mybucket/myobject",
+                true,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new("mybucket".to_string(), "*".to_string())]),
+                "mybucket/myobject",
+                true,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new(
+                    "mybucket*".to_string(),
+                    "/myobject".to_string(),
+                )]),
+                "mybucket/myobject",
+                true,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new(
+                    "mybucket*".to_string(),
+                    "/myobject".to_string(),
+                )]),
+                "mybucket100/myobject",
+                true,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new(
+                    "mybucket?0".to_string(),
+                    "/2010/photos/*".to_string(),
+                )]),
+                "mybucket20/2010/photos/1.jpg",
+                true,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new("mybucket".to_string(), "".to_string())]),
+                "mybucket",
+                true,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new(
+                    "mybucket?0".to_string(),
+                    "".to_string(),
+                )]),
+                "mybucket30",
+                true,
+            ),
+            (
+                ResourceSet::new(vec![
+                    Resource::new("mybucket?0".to_string(), "/2010/photos/*".to_string()),
+                    Resource::new("mybucket".to_string(), "/2010/photos/*".to_string()),
+                ]),
+                "mybucket/2010/photos/1.jpg",
+                true,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new("".to_string(), "*".to_string())]),
+                "mybucket/myobject",
+                false,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new("*".to_string(), "*".to_string())]),
+                "mybucket",
+                false,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new("mybucket".to_string(), "*".to_string())]),
+                "mybucket10/myobject",
+                false,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new("mybucket".to_string(), "".to_string())]),
+                "mybucket/myobject",
+                false,
+            ),
+            (ResourceSet::new(vec![]), "mybucket/myobject", false),
+        ];
+
+        for (set, resource, expected_result) in cases {
+            let result = set.is_match(resource, &HashMap::new());
+
+            assert_eq!(
+                result, expected_result,
+                "set: {}, expected: {}, got: {}",
+                set, expected_result, result
+            );
+        }
+    }
 
     #[test]
     fn test_resource_set_serialize_json() {
@@ -334,5 +1037,41 @@ mod tests {
         }
     }
 
-    // TODO
+    #[test]
+    fn test_resource_set_validate() {
+        let cases = [
+            (
+                ResourceSet::new(vec![Resource::new(
+                    "mybucket".to_string(),
+                    "/myobject*".to_string(),
+                )]),
+                "mybucket",
+                false,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new(
+                    "".to_string(),
+                    "/myobject*".to_string(),
+                )]),
+                "yourbucket",
+                true,
+            ),
+            (
+                ResourceSet::new(vec![Resource::new(
+                    "mybucket".to_string(),
+                    "/myobject*".to_string(),
+                )]),
+                "yourbucket",
+                true,
+            ),
+        ];
+
+        for (resource, bucket_name, expect_err) in cases {
+            if expect_err {
+                assert_err!(resource.validate(bucket_name));
+            } else {
+                assert_ok!(resource.validate(bucket_name));
+            }
+        }
+    }
 }

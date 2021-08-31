@@ -28,7 +28,12 @@ const COMP_READ_AHEAD_BUFFERS: usize = 5;
 // Size of each buffer.
 const COMP_READ_AHEAD_BUF_SIZE: usize = 1 << 20;
 
-// Join paths and retains trailing SlashSeparator of the last element.
+/// Tests whether the path refers to a directory.
+pub fn is_dir(path: &str) -> bool {
+    path.ends_with(SLASH_SEPARATOR)
+}
+
+/// Join paths and retains trailing SlashSeparator of the last element.
 pub fn path_join(elements: &[&str]) -> String {
     if elements.is_empty() {
         return "".to_owned();

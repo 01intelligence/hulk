@@ -9,7 +9,7 @@ mod slab;
 
 pub struct TypedPoolGuard<'a, T: Default + Send>(TypedPoolGuardInner<'a, T>);
 enum TypedPoolGuardInner<'a, T: Default + Send> {
-    DeadPool(deadpool::TypedGuard<T>),
+    // DeadPool(deadpool::TypedGuard<T>),
     Slab(slab::TypedGuard<'a, T>),
 }
 
@@ -18,7 +18,7 @@ impl<'a, T: Default + Send> Deref for TypedPoolGuard<'a, T> {
 
     fn deref(&self) -> &Self::Target {
         match &self.0 {
-            TypedPoolGuardInner::DeadPool(guard) => guard.deref(),
+            // TypedPoolGuardInner::DeadPool(guard) => guard.deref(),
             TypedPoolGuardInner::Slab(guard) => guard.deref(),
         }
     }
@@ -27,7 +27,7 @@ impl<'a, T: Default + Send> Deref for TypedPoolGuard<'a, T> {
 impl<'a, T: Default + Send> DerefMut for TypedPoolGuard<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         match &mut self.0 {
-            TypedPoolGuardInner::DeadPool(guard) => guard.deref_mut(),
+            // TypedPoolGuardInner::DeadPool(guard) => guard.deref_mut(),
             TypedPoolGuardInner::Slab(guard) => guard.deref_mut(),
         }
     }
@@ -35,21 +35,23 @@ impl<'a, T: Default + Send> DerefMut for TypedPoolGuard<'a, T> {
 
 pub struct TypedPool<T: Default + Send>(TypedPoolInner<T>);
 enum TypedPoolInner<T: Default + Send> {
-    DeadPool(deadpool::TypedPool<T>),
+    // DeadPool(deadpool::TypedPool<T>),
     Slab(slab::TypedPool<T>),
 }
 
 impl<T: Default + Send> TypedPool<T> {
     pub fn new(max_size: usize) -> Self {
-        TypedPool(TypedPoolInner::DeadPool(deadpool::TypedPool::new(max_size)))
+        TypedPool(TypedPoolInner::Slab(slab::TypedPool::new(max_size)))
     }
 
     pub async fn get(&self) -> anyhow::Result<TypedPoolGuard<'_, T>> {
         match &self.0 {
+            /*
             TypedPoolInner::DeadPool(pool) => match pool.try_get().await {
                 Ok(guard) => Ok(TypedPoolGuard(TypedPoolGuardInner::DeadPool(guard.into()))),
                 Err(err) => Err(err.into()),
             },
+            */
             TypedPoolInner::Slab(pool) => match pool.get() {
                 Ok(guard) => Ok(TypedPoolGuard(TypedPoolGuardInner::Slab(guard))),
                 Err(err) => Err(err),

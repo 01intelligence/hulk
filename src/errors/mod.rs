@@ -16,6 +16,14 @@ pub use ui_errors::*;
 
 pub trait AsError {
     fn as_error<E: std::error::Error + 'static>(&self) -> Option<&E>;
+
+    fn is_error<E: std::error::Error + PartialEq + 'static>(&self, err: &E) -> bool {
+        if let Some(e) = self.as_error::<E>() {
+            e == err
+        } else {
+            false
+        }
+    }
 }
 
 impl AsError for anyhow::Error {

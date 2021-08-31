@@ -5,6 +5,7 @@ use strum::{Display, EnumString};
 
 use crate::{utils, xl_storage};
 
+#[derive(Clone)]
 pub struct DiskInfo {
     pub total: u64,
     pub free: u64,
@@ -17,10 +18,11 @@ pub struct DiskInfo {
     pub endpoint: String,
     pub mount_path: String,
     pub id: String,
-    pub metrics: DiskMetrics,
-    pub error: String,
+    pub metrics: Option<DiskMetrics>,
+    pub error: Option<String>,
 }
 
+#[derive(Clone)]
 pub struct DiskMetrics {
     pub api_latencies: HashMap<String, String>,
     pub api_calls: HashMap<String, u64>,

@@ -1,9 +1,7 @@
-use std::time::SystemTime;
-
 use rand::rngs::StdRng;
 pub use rand::Rng;
 use rand::SeedableRng;
-use tokio::time::{timeout, Instant};
+pub use tokio::time::Instant;
 
 pub mod assert;
 mod atomic;
@@ -13,6 +11,7 @@ mod hash;
 mod path;
 mod ptr;
 mod str;
+mod timed_value;
 mod units;
 
 pub use atomic::*;
@@ -21,11 +20,13 @@ pub use guard::*;
 pub use hash::*;
 pub use path::*;
 pub use ptr::*;
+pub use timed_value::*;
 pub use units::*;
 
 pub use self::str::*;
 
 pub fn rng_seed_now() -> StdRng {
+    use std::time::SystemTime;
     StdRng::seed_from_u64(
         SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)

@@ -1,6 +1,7 @@
+use std::future::Future;
 use std::io::ErrorKind;
+use std::pin::Pin;
 
-use async_trait::async_trait;
 use tokio::fs::File;
 
 use crate::prelude::{Deref, DerefMut};
@@ -8,55 +9,51 @@ use crate::utils::Path;
 
 pub const DIRECTIO_ALIGN_SIZE: usize = 4096;
 
-#[async_trait]
 pub trait OpenOptionsDirectIo {
-    async fn open_direct_io(
-        &mut self,
-        path: impl AsRef<Path> + Send + Sync + 'async_trait,
-    ) -> std::io::Result<File>;
+    fn open_direct_io<'a>(
+        &'a mut self,
+        path: impl AsRef<Path> + Send + Sync + 'a,
+    ) -> Pin<Box<dyn Future<Output = std::io::Result<File>> + Send + Sync + 'a>>;
 }
 
 #[cfg(all(target_family = "unix", not(target_os = "macos")))]
-#[async_trait]
 impl OpenOptionsDirectIo for super::OpenOptions {
-    async fn open_direct_io(
-        &mut self,
-        path: impl AsRef<Path> + Send + Sync + 'async_trait,
-    ) -> std::io::Result<File> {
-        let file = self.append_custom_flags(libc::O_DIRECT).open(path).await?;
-        Ok(file)
+    fn open_direct_io<'a>(
+        &'a mut self,
+        path: impl AsRef<Path> + Send + Sync + 'a,
+    ) -> Pin<Box<dyn Future<Output = std::io::Result<File>> + Send + Sync + 'a>> {
+        Box::pin(self.append_custom_flags(libc::O_DIRECT).open(path))
     }
 }
 
 #[cfg(target_os = "macos")]
-#[async_trait]
 impl OpenOptionsDirectIo for super::OpenOptions {
-    async fn open_direct_io(
-        &mut self,
-        path: impl AsRef<Path> + Send + Sync + 'async_trait,
-    ) -> std::io::Result<File> {
-        use std::os::unix::io::AsRawFd;
-        let file = self.open(path).await?;
-        // F_NOCACHE: Turns data caching off/on.
-        // A non-zero value in arg turns data caching off.
-        // A value of zero in arg turns data caching on.
-        let res = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_NOCACHE, 1) };
-        let _ = nix::errno::Errno::result(res)
-            .map_err(|e| std::io::Error::from(e.as_errno().unwrap()))?;
-        Ok(file)
+    fn open_direct_io<'a>(
+        &'a mut self,
+        path: impl AsRef<Path> + Send + Sync + 'a,
+    ) -> Pin<Box<dyn Future<Output = std::io::Result<File>> + Send + Sync + 'a>> {
+        Box::pin(async move {
+            use std::os::unix::io::AsRawFd;
+            let file = self.open(path).await?;
+            // F_NOCACHE: Turns data caching off/on.
+            // A non-zero value in arg turns data caching off.
+            // A value of zero in arg turns data caching on.
+            let res = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_NOCACHE, 1) };
+            let _ = nix::errno::Errno::result(res)
+                .map_err(|e| std::io::Error::from(e.as_errno().unwrap()))?;
+            Ok(file)
+        })
     }
 }
 
 #[cfg(target_family = "windows")]
-#[async_trait]
 impl OpenOptionsDirectIo for super::OpenOptions {
-    async fn open_direct_io(
-        &mut self,
-        path: impl AsRef<Path> + Send + Sync + 'async_trait,
-    ) -> std::io::Result<File> {
+    fn open_direct_io<'a>(
+        &'a mut self,
+        path: impl AsRef<Path> + Send + Sync + 'a,
+    ) -> Pin<Box<dyn Future<Output = std::io::Result<File>> + Send + Sync + 'a>> {
         // Do not support O_DIRECT on Windows.
-        let file = self.open(path).await?;
-        Ok(file)
+        Box::pin(self.open(path))
     }
 }
 
@@ -158,6 +155,9 @@ impl DerefMut for AlignedBlock {
 }
 
 pub struct SizedAlignedBlock<const SIZE: usize>(AlignedBlock);
+
+unsafe impl<const SIZE: usize> Send for SizedAlignedBlock<SIZE> {}
+unsafe impl<const SIZE: usize> Sync for SizedAlignedBlock<SIZE> {}
 
 impl<const SIZE: usize> Default for SizedAlignedBlock<SIZE> {
     fn default() -> Self {

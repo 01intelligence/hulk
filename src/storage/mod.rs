@@ -5,48 +5,77 @@ pub use datatypes::*;
 pub use heal::*;
 use tokio::io::{AsyncRead, AsyncWrite};
 
+use crate::xl_storage::XlStorage;
 use crate::{bitrot, utils};
 
-pub enum StorageApi {}
+pub enum StorageApi {
+    XlStorage(XlStorage),
+}
 
 impl StorageApi {
     pub fn is_online(&self) -> bool {
-        todo!()
+        match self {
+            StorageApi::XlStorage(inner) => inner.is_online(),
+        }
     }
 
     pub fn last_conn(&self) -> utils::DateTime {
-        todo!()
+        match self {
+            StorageApi::XlStorage(inner) => inner.last_conn(),
+        }
     }
 
     pub fn is_local(&self) -> bool {
-        todo!()
+        match self {
+            StorageApi::XlStorage(inner) => inner.is_local(),
+        }
     }
 
     pub fn hostname(&self) -> &str {
-        todo!()
+        match self {
+            StorageApi::XlStorage(inner) => inner.hostname(),
+        }
     }
 
     pub fn endpoint(&self) -> &crate::endpoint::Endpoint {
-        todo!()
+        match self {
+            StorageApi::XlStorage(inner) => inner.endpoint(),
+        }
     }
 
     pub fn close(&mut self) -> anyhow::Result<()> {
-        todo!()
+        match self {
+            StorageApi::XlStorage(inner) => inner.close(),
+        }
     }
 
     pub fn get_disk_id(&self) -> anyhow::Result<&str> {
-        todo!()
+        match self {
+            StorageApi::XlStorage(inner) => inner.get_disk_id(),
+        }
     }
 
     pub fn set_disk_id(&mut self, id: String) {
-        todo!()
+        match self {
+            StorageApi::XlStorage(inner) => inner.set_disk_id(id),
+        }
     }
 
-    pub fn healing(&self) -> HealingTracker {
+    pub fn healing(&self) -> Option<HealingTracker> {
+        /*
+        match self {
+            StorageApi::XlStorage(inner) => inner.healing()
+        }
+        */
         todo!()
     }
 
     pub async fn disk_info(&self) -> anyhow::Result<DiskInfo> {
+        /*
+        match self {
+            StorageApi::XlStorage(inner) => inner.disk_info()
+        }
+        */
         todo!()
     }
 
@@ -55,19 +84,29 @@ impl StorageApi {
     }
 
     pub async fn make_volume(&self, volume: &str) -> anyhow::Result<()> {
-        todo!()
+        match self {
+            StorageApi::XlStorage(inner) => inner.make_volume(volume).await,
+        }
     }
     pub async fn make_volumes(&self, volumes: &[&str]) -> anyhow::Result<()> {
-        todo!()
+        match self {
+            StorageApi::XlStorage(inner) => inner.make_volumes(volumes).await,
+        }
     }
     pub async fn list_volumes(&self) -> anyhow::Result<Vec<VolInfo>> {
-        todo!()
+        match self {
+            StorageApi::XlStorage(inner) => inner.list_volumes().await,
+        }
     }
     pub async fn stat_volume(&self, volume: &str) -> anyhow::Result<VolInfo> {
-        todo!()
+        match self {
+            StorageApi::XlStorage(inner) => inner.stat_volume(volume).await,
+        }
     }
     pub async fn delete_volume(&self, volume: &str, force_delete: bool) -> anyhow::Result<()> {
-        todo!()
+        match self {
+            StorageApi::XlStorage(inner) => inner.delete_volume(volume, force_delete).await,
+        }
     }
     pub async fn walk_dir(&self) -> anyhow::Result<()> {
         todo!()
@@ -76,10 +115,16 @@ impl StorageApi {
         &self,
         volume: &str,
         path: &str,
-        file: &FileInfo,
+        fi: &FileInfo,
         force_delete_marker: bool,
     ) -> anyhow::Result<()> {
-        todo!()
+        match self {
+            StorageApi::XlStorage(inner) => {
+                inner
+                    .delete_version(volume, path, fi, force_delete_marker)
+                    .await
+            }
+        }
     }
     pub async fn delete_versions(
         &self,
@@ -117,11 +162,17 @@ impl StorageApi {
         &self,
         src_volume: &str,
         src_path: &str,
-        file: FileInfo,
+        fi: FileInfo,
         dest_volume: &str,
         dest_path: &str,
     ) -> anyhow::Result<()> {
-        todo!()
+        match self {
+            StorageApi::XlStorage(inner) => {
+                inner
+                    .rename_data(src_volume, src_path, fi, dest_volume, dest_path)
+                    .await
+            }
+        }
     }
     pub async fn list_dir(
         &self,
@@ -129,7 +180,9 @@ impl StorageApi {
         dir_path: &str,
         count: usize,
     ) -> anyhow::Result<Vec<String>> {
-        todo!()
+        match self {
+            StorageApi::XlStorage(inner) => inner.list_dir(volume, dir_path, count).await,
+        }
     }
     pub async fn read_file(
         &self,
@@ -150,7 +203,9 @@ impl StorageApi {
         path: &str,
         file_size: Option<u64>,
     ) -> anyhow::Result<Box<dyn AsyncWrite + Unpin>> {
-        todo!()
+        match self {
+            StorageApi::XlStorage(inner) => inner.create_file_writer(volume, path, file_size).await,
+        }
     }
     pub async fn read_file_reader(
         &self,
@@ -159,7 +214,11 @@ impl StorageApi {
         offset: u64,
         size: u64,
     ) -> anyhow::Result<Box<dyn AsyncRead + Unpin + Send>> {
-        todo!()
+        match self {
+            StorageApi::XlStorage(inner) => {
+                inner.read_file_reader(volume, path, offset, size).await
+            }
+        }
     }
     pub async fn rename_file(
         &self,
@@ -168,40 +227,61 @@ impl StorageApi {
         dest_volume: &str,
         dest_path: &str,
     ) -> anyhow::Result<()> {
-        todo!()
+        match self {
+            StorageApi::XlStorage(inner) => {
+                inner
+                    .rename_file(src_volume, src_path, dest_volume, dest_path)
+                    .await
+            }
+        }
     }
-    pub async fn check_parts(
-        &self,
-        volume: &str,
-        path: &str,
-        file: &FileInfo,
-    ) -> anyhow::Result<()> {
+    pub async fn check_parts(&self, volume: &str, path: &str, fi: &FileInfo) -> anyhow::Result<()> {
+        /*
+        match self {
+            StorageApi::XlStorage(inner) => inner.check_parts(volume, path, fi),
+        }
+        */
         todo!()
     }
     pub async fn check_file(&self, volume: &str, path: &str) -> anyhow::Result<()> {
+        /*
+        match self {
+            StorageApi::XlStorage(inner) => inner.check_file(volume, path),
+        }
+        */
         todo!()
     }
     pub async fn delete(&self, volume: &str, path: &str, recursive: bool) -> anyhow::Result<()> {
-        todo!()
+        match self {
+            StorageApi::XlStorage(inner) => inner.delete(volume, path, recursive).await,
+        }
     }
-    pub async fn verify_file(
-        &self,
-        volume: &str,
-        path: &str,
-        file: &FileInfo,
-    ) -> anyhow::Result<()> {
-        todo!()
+    pub async fn verify_file(&self, volume: &str, path: &str, fi: &FileInfo) -> anyhow::Result<()> {
+        match self {
+            StorageApi::XlStorage(inner) => inner.verify_file(volume, path, fi).await,
+        }
     }
     pub async fn write_all(&self, volume: &str, path: &str, data: &[u8]) -> anyhow::Result<()> {
+        /*
+        match self {
+            StorageApi::XlStorage(inner) => inner.write_all(volume, path, data),
+        }
+        */
         todo!()
     }
     pub async fn read_all(&self, volume: &str, path: &str) -> anyhow::Result<Vec<u8>> {
-        todo!()
+        match self {
+            StorageApi::XlStorage(inner) => inner.read_all(volume, path).await,
+        }
     }
-    pub fn get_disk_location(&self) -> (usize, usize, usize) {
-        todo!()
+    pub fn get_disk_location(&self) -> (isize, isize, isize) {
+        match self {
+            StorageApi::XlStorage(inner) => inner.get_disk_location(),
+        }
     }
     pub fn set_disk_location(&mut self, pool_idx: isize, set_idx: isize, disk_idx: isize) {
-        todo!()
+        match self {
+            StorageApi::XlStorage(inner) => inner.set_disk_location(pool_idx, set_idx, disk_idx),
+        }
     }
 }

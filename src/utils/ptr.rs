@@ -1,8 +1,9 @@
 /// Raw pointer workaround for "cannot be sent between threads safely".
 /// Use with caution!
-pub struct SendRawPtr<P>(P);
+#[derive(Copy, Clone)]
+pub struct SendRawPtr<P: Copy>(P);
 
-impl<P> SendRawPtr<P> {
+impl<P: Copy> SendRawPtr<P> {
     pub fn new(p: P) -> Self {
         Self(p)
     }
@@ -11,4 +12,5 @@ impl<P> SendRawPtr<P> {
     }
 }
 
-unsafe impl<T> Send for SendRawPtr<T> {}
+unsafe impl<P: Copy> Send for SendRawPtr<P> {}
+unsafe impl<P: Copy> Sync for SendRawPtr<P> {}

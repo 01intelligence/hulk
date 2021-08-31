@@ -5,6 +5,17 @@ use maplit::hashmap;
 
 use crate::utils::Path;
 
+pub async fn get_disk_info(disk_path: &str) -> anyhow::Result<Info> {
+    super::check_path_length(disk_path)?;
+    match get_info(disk_path).await {
+        Ok(info) => Ok(info),
+        Err(err) => {
+            // TODO: error wrap
+            Err(err)
+        }
+    }
+}
+
 pub struct Info {
     pub total: u64,
     pub free: u64,

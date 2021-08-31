@@ -208,7 +208,7 @@ impl XlStorage {
     }
 
     pub(super) async fn new(endpoint: Endpoint) -> anyhow::Result<Self> {
-        let path = get_valid_path(endpoint.url.path()).await?;
+        let path = get_valid_path(endpoint.path()).await?;
         let path = path.to_str().ok_or_else(|| StorageError::Unexpected)?;
 
         let root_disk = if std::env::var("HULK_CI_CD").is_ok() {

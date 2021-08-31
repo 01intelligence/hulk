@@ -3,7 +3,6 @@ use std::convert::TryInto;
 use std::fmt;
 
 use anyhow::ensure;
-use path_absolutize::Absolutize;
 
 use crate::errors::UiError;
 use crate::globals::*;
@@ -20,6 +19,8 @@ pub use ellipses::*;
 pub use net::*;
 pub use setup_type::*;
 
+use crate::prelude::*;
+
 #[derive(Debug, Eq, PartialEq)]
 pub enum EndpointType {
     Path,
@@ -27,9 +28,9 @@ pub enum EndpointType {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub struct Endpoint {
-    pub url: url::Url,
-    pub is_local: bool,
+pub enum Endpoint {
+    Path(PathBuf),
+    Url(url::Url, bool),
 }
 
 pub struct Endpoints(Vec<Endpoint>);
@@ -52,7 +53,11 @@ impl Endpoint {
 
         let url = url::Url::parse(arg);
         if url.is_ok() && url.as_ref().unwrap().has_host() {
+            // URL style of endpoint.
             let mut url = url.unwrap();
+            // Valid URL style endpoint is
+            // - Scheme field must contain "http" or "https"
+            // - All fields should be empty except `host` and `path`.
             ensure!(
                 (url.scheme() == "http" || url.scheme() == "https")
                     && url.username().is_empty()
@@ -70,10 +75,7 @@ impl Endpoint {
                 "empty or root path is not supported in URL endpoint"
             );
 
-            Ok(Endpoint {
-                url,
-                is_local: false,
-            })
+            Ok(Endpoint::Url(url, false))
         } else {
             ensure!(
                 url != Err(url::ParseError::InvalidPort),
@@ -87,43 +89,80 @@ impl Endpoint {
                 !is_host_ip(arg),
                 "invalid URL endpoint format: missing scheme http or https"
             );
-            use path_absolutize::*;
-            let path = Path::new(arg).absolutize()?;
-            let path = path_clean::clean(
-                path.to_str()
-                    .ok_or_else(|| anyhow::anyhow!("invalid path"))?,
-            );
-            Ok(Endpoint {
-                url: url::Url::from_file_path(path).map_err(|_| anyhow::anyhow!("invalid path"))?,
-                is_local: true,
-            })
+            let path = Path::new(arg).absolutize()?.clean();
+            Ok(Endpoint::Path(path))
         }
     }
 
     pub fn typ(&self) -> EndpointType {
-        if !self.url.has_host() {
-            EndpointType::Path
+        match self {
+            Endpoint::Path(_) => EndpointType::Path,
+            Endpoint::Url(_, _) => EndpointType::Url,
+        }
+    }
+
+    pub fn scheme(&self) -> &str {
+        if let Endpoint::Url(url, _) = self {
+            url.scheme()
         } else {
-            EndpointType::Url
+            ""
         }
     }
 
     pub fn is_https(&self) -> bool {
-        self.url.scheme() == "https"
+        if let Endpoint::Url(url, _) = self {
+            url.scheme() == "https"
+        } else {
+            false
+        }
     }
 
     pub fn host(&self) -> &str {
-        self.url.host_str().unwrap_or_default()
+        if let Endpoint::Url(url, _) = self {
+            url.host_str().unwrap_or_default()
+        } else {
+            ""
+        }
+    }
+
+    pub fn port(&self) -> Option<u16> {
+        if let Endpoint::Url(url, _) = self {
+            url.port_or_known_default()
+        } else {
+            None
+        }
+    }
+
+    pub fn set_port(&mut self, port: u16) {
+        if let Endpoint::Url(url, _) = self {
+            let _ = url.set_port(Some(port));
+        }
+    }
+
+    pub fn path(&self) -> &str {
+        match self {
+            Endpoint::Path(path) => path.as_str(),
+            Endpoint::Url(url, _) => url.path(),
+        }
+    }
+
+    pub fn is_local(&self) -> bool {
+        match self {
+            Endpoint::Path(_) => true,
+            Endpoint::Url(_, is_local) => *is_local,
+        }
     }
 
     pub async fn update_is_local(&mut self) -> anyhow::Result<()> {
-        if !self.is_local {
-            self.is_local = is_local_host(
-                self.url.host_str().unwrap(),
-                &self.url.port().map(|p| p.to_string()).unwrap_or_default(),
-                &*GLOBALS.port.guard(),
-            )
-            .await?;
+        if !self.is_local() {
+            if let Endpoint::Url(url, is_local) = self {
+                *is_local = is_local_host(
+                    url.host_str().unwrap(),
+                    &url.port().map(|p| p.to_string()).unwrap_or_default(),
+                    &*GLOBALS.port.guard(),
+                )
+                .await?;
+            }
         }
         Ok(())
     }
@@ -131,10 +170,15 @@ impl Endpoint {
 
 impl fmt::Display for Endpoint {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if !self.url.has_host() {
-            write!(f, "{}", self.url.path())
-        } else {
-            write!(f, "{}", self.url.to_string())
+        match self {
+            Endpoint::Path(path) => path.fmt(f),
+            Endpoint::Url(url, _) => {
+                if !url.has_host() {
+                    url.path().fmt(f)
+                } else {
+                    url.to_string().fmt(f)
+                }
+            }
         }
     }
 }
@@ -149,14 +193,14 @@ impl Endpoints {
             let endpoint = Endpoint::new(arg)?;
             if i == 0 {
                 endpoint_type = Some(endpoint.typ());
-                scheme = Some(endpoint.url.scheme().to_owned());
+                scheme = Some(endpoint.scheme().to_owned());
             } else {
                 ensure!(
                     Some(endpoint.typ()) == endpoint_type,
                     "mixed style endpoints are not supported"
                 );
                 ensure!(
-                    endpoint.url.scheme() == scheme.as_ref().unwrap(),
+                    endpoint.scheme() == scheme.as_ref().unwrap(),
                     "mixed scheme is not supported"
                 );
             }
@@ -184,15 +228,10 @@ impl Endpoints {
     }
 
     async fn check_cross_device_mounts(&self) -> anyhow::Result<()> {
-        let mut abs_paths = Vec::<PathBuf>::new();
+        let mut abs_paths = Vec::new();
         for e in &self.0 {
-            if e.is_local {
-                let path: PathBuf = e
-                    .url
-                    .to_file_path()
-                    .map_err(|_| anyhow::anyhow!("invalid file path"))?
-                    .try_into()?;
-                abs_paths.push(crate::fs::canonicalize(path).await?.try_into()?)
+            if e.is_local() {
+                abs_paths.push(Path::new(e.path()).absolutize()?)
             }
         }
         crate::mount::check_cross_device(&abs_paths)
@@ -207,7 +246,7 @@ impl EndpointServerPools {
     pub fn get_local_pool_idx(&self, endpoint: &Endpoint) -> isize {
         for (i, p) in self.0.iter().enumerate() {
             for e in &p.endpoints.0 {
-                if e.is_local && endpoint.is_local && e == endpoint {
+                if e.is_local() && endpoint.is_local() && e == endpoint {
                     return i as isize;
                 }
             }
@@ -235,8 +274,8 @@ impl EndpointServerPools {
     pub fn local_host(&self) -> String {
         for p in &self.0 {
             for e in &p.endpoints.0 {
-                if e.is_local {
-                    return e.url.to_string(); // TODO: right?
+                if e.is_local() {
+                    return format!("{}://{}", e.scheme(), e.host());
                 }
             }
         }
@@ -247,8 +286,8 @@ impl EndpointServerPools {
         let mut disks = Vec::new();
         for p in &self.0 {
             for e in &p.endpoints.0 {
-                if e.is_local {
-                    disks.push(e.url.path().to_owned());
+                if e.is_local() {
+                    disks.push(e.path().to_owned());
                 }
             }
         }
@@ -256,7 +295,7 @@ impl EndpointServerPools {
     }
 
     pub fn first_local(&self) -> bool {
-        self.0[0].endpoints.0[0].is_local
+        self.0[0].endpoints.0[0].is_local()
     }
 
     pub fn https(&self) -> bool {
@@ -274,7 +313,7 @@ impl EndpointServerPools {
         let mut found = StringSet::new();
         for p in &self.0 {
             for e in &p.endpoints.0 {
-                let host = e.url.host_str().unwrap();
+                let host = e.host();
                 if found.contains(host) {
                     found.add(host.to_owned());
                 }
@@ -291,11 +330,11 @@ impl EndpointServerPools {
                 if e.typ() != EndpointType::Url {
                     continue;
                 }
-                let host = e.url.host_str().unwrap().to_owned();
-                let port = e.url.port_or_known_default().unwrap();
+                let host = e.host().to_owned();
+                let port = e.port().unwrap();
                 let peer = crate::net::Host::new(host, Some(port)).to_string();
                 all.add(peer.clone());
-                if e.is_local {
+                if e.is_local() {
                     if port.to_string() == *GLOBALS.port.guard() {
                         local = Some(peer);
                     }
@@ -318,8 +357,8 @@ impl EndpointServerPools {
                 if endpoint.typ() != EndpointType::Url {
                     continue;
                 }
-                if endpoint.is_local && endpoint.url.host_str().is_some() {
-                    peers.add(endpoint.url.host_str().unwrap().to_owned());
+                if endpoint.is_local() && !endpoint.host().is_empty() {
+                    peers.add(endpoint.host().to_owned());
                 }
             }
         }
@@ -389,12 +428,11 @@ pub(self) async fn create_endpoints(
     let mut local_port_set = StringSet::new();
 
     for endpoint in &endpoints.0 {
-        endpoint_path_set.add(endpoint.url.path().to_owned());
-        if endpoint.is_local {
-            local_server_host_set.add(endpoint.url.host_str().unwrap().to_owned());
+        endpoint_path_set.add(endpoint.path().to_owned());
+        if endpoint.is_local() {
+            local_server_host_set.add(endpoint.host().to_owned());
             let port = endpoint
-                .url
-                .port_or_known_default()
+                .port()
                 .map(|p| p.to_string())
                 .unwrap_or_else(|| server_addr_port.clone());
             local_port_set.add(port);
@@ -405,19 +443,19 @@ pub(self) async fn create_endpoints(
     {
         let mut path_ip_map: HashMap<String, StringSet> = HashMap::new();
         for endpoint in &endpoints.0 {
-            let host_ips = get_host_ip(endpoint.url.host_str().unwrap()).await;
+            let host_ips = get_host_ip(endpoint.host()).await;
             let host_ips = host_ips.unwrap_or_else(|_| StringSet::new()); // ignore error
-            if let Some(ips) = path_ip_map.get_mut(endpoint.url.path()) {
+            if let Some(ips) = path_ip_map.get_mut(endpoint.path()) {
                 ensure!(
                     ips.intersection(&host_ips).is_empty(),
                     UiError::InvalidErasureEndpoints.msg(format!(
                         "path '{}' can not be served by different port on same address",
-                        endpoint.url.path()
+                        endpoint.path()
                     ))
                 );
                 *ips = ips.union(&host_ips);
             } else {
-                path_ip_map.insert(endpoint.url.path().to_owned(), host_ips);
+                path_ip_map.insert(endpoint.path().to_owned(), host_ips);
             }
         }
     }
@@ -425,17 +463,17 @@ pub(self) async fn create_endpoints(
     {
         let mut local_path_set = StringSet::new();
         for endpoint in &endpoints.0 {
-            if !endpoint.is_local {
+            if !endpoint.is_local() {
                 continue;
             }
             ensure!(
-                !local_path_set.contains(endpoint.url.path()),
+                !local_path_set.contains(endpoint.path()),
                 UiError::InvalidErasureEndpoints.msg(format!(
                     "path '{}' cannot be served by different address on same server",
-                    endpoint.url.path()
+                    endpoint.path()
                 ))
             );
-            local_path_set.add(endpoint.url.path().to_owned());
+            local_path_set.add(endpoint.path().to_owned());
         }
     }
 
@@ -451,16 +489,13 @@ pub(self) async fn create_endpoints(
     }
 
     for endpoint in endpoints.0.iter_mut() {
-        match endpoint.url.port_or_known_default() {
-            None => {
-                endpoint
-                    .url
-                    .set_port(Some(server_addr_port.parse().unwrap()))
-                    .unwrap();
-            }
+        match endpoint.port() {
+            None => endpoint.set_port(server_addr_port.parse().unwrap()),
             Some(port) => {
-                if endpoint.is_local && server_addr_port != port.to_string() {
-                    endpoint.is_local = false;
+                if endpoint.is_local() && server_addr_port != port.to_string() {
+                    if let Endpoint::Url(_, is_local) = endpoint {
+                        *is_local = false;
+                    }
                 }
             }
         }
@@ -468,7 +503,7 @@ pub(self) async fn create_endpoints(
 
     let mut unique_args = StringSet::new();
     for endpoint in &endpoints.0 {
-        unique_args.add(endpoint.url.host_str().unwrap().to_owned());
+        unique_args.add(endpoint.host().to_owned());
     }
 
     ensure!(unique_args.len() >= 2, UiError::InvalidErasureEndpoints.msg(format!("Unsupported number of endpoints ({:?}), minimum number of servers cannot be less than 2 in distributed setup", endpoints.0)));
@@ -515,149 +550,99 @@ mod tests {
         let u12 = url::Url::parse("http://server/path").unwrap();
         let u_any = u2.clone();
         let cases = vec![
-            /* TODO
             (
                 "/foo",
-                Endpoint {
-                    url: url::Url::from_file_path("/foo").unwrap(),
-                    is_local: true,
-                },
+                Endpoint::Path(Path::new("/foo").absolutize().unwrap().clean()),
                 EndpointType::Path,
                 false,
             ),
-            */
             (
                 "https://example.org/path",
-                Endpoint {
-                    url: u2,
-                    is_local: false,
-                },
+                Endpoint::Url(u2, false),
                 EndpointType::Url,
                 false,
             ),
             (
                 "http://192.168.253.200/path",
-                Endpoint {
-                    url: u4,
-                    is_local: false,
-                },
+                Endpoint::Url(u4, false),
                 EndpointType::Url,
                 false,
             ),
             (
                 "",
-                Endpoint {
-                    url: u_any.clone(),
-                    is_local: false,
-                },
+                Endpoint::Url(u_any.clone(), false),
                 EndpointType::Url,
                 true,
             ),
             (
                 SLASH_SEPARATOR,
-                Endpoint {
-                    url: u_any.clone(),
-                    is_local: false,
-                },
+                Endpoint::Url(u_any.clone(), false),
                 EndpointType::Url,
                 true,
             ),
             (
                 "\\",
-                Endpoint {
-                    url: u_any.clone(),
-                    is_local: false,
-                },
+                Endpoint::Url(u_any.clone(), false),
                 EndpointType::Url,
                 true,
             ),
             (
                 "c://foo",
-                Endpoint {
-                    url: u_any.clone(),
-                    is_local: false,
-                },
+                Endpoint::Url(u_any.clone(), false),
                 EndpointType::Url,
                 true,
             ),
             (
                 "ftp://foo",
-                Endpoint {
-                    url: u_any.clone(),
-                    is_local: false,
-                },
+                Endpoint::Url(u_any.clone(), false),
                 EndpointType::Url,
                 true,
             ),
             (
                 "http://server/path?location",
-                Endpoint {
-                    url: u_any.clone(),
-                    is_local: false,
-                },
+                Endpoint::Url(u_any.clone(), false),
                 EndpointType::Url,
                 true,
             ),
             (
                 "http://:/path",
-                Endpoint {
-                    url: u_any.clone(),
-                    is_local: false,
-                },
+                Endpoint::Url(u_any.clone(), false),
                 EndpointType::Url,
                 true,
             ),
             (
                 "http://:8080/path",
-                Endpoint {
-                    url: u_any.clone(),
-                    is_local: false,
-                },
+                Endpoint::Url(u_any.clone(), false),
                 EndpointType::Url,
                 true,
             ),
             (
                 "http://server:/path",
-                Endpoint {
-                    url: u12,
-                    is_local: false,
-                },
+                Endpoint::Url(u12, false),
                 EndpointType::Url,
                 false,
             ),
             (
                 "https://93.184.216.34:808080/path",
-                Endpoint {
-                    url: u_any.clone(),
-                    is_local: false,
-                },
+                Endpoint::Url(u_any.clone(), false),
                 EndpointType::Url,
                 true,
             ),
             (
                 "http://server:8080//",
-                Endpoint {
-                    url: u_any.clone(),
-                    is_local: false,
-                },
+                Endpoint::Url(u_any.clone(), false),
                 EndpointType::Url,
                 true,
             ),
             (
                 "http://server:8080/",
-                Endpoint {
-                    url: u_any.clone(),
-                    is_local: false,
-                },
+                Endpoint::Url(u_any.clone(), false),
                 EndpointType::Url,
                 true,
             ),
             (
                 "192.168.1.210:9000",
-                Endpoint {
-                    url: u_any.clone(),
-                    is_local: false,
-                },
+                Endpoint::Url(u_any.clone(), false),
                 EndpointType::Url,
                 true,
             ),
@@ -676,7 +661,7 @@ mod tests {
                 }
                 Ok(endpoint) => {
                     assert!(!expected_err, endpoint.to_string());
-                    assert_eq!(endpoint.url.as_str(), expected_endpoint.url.as_str());
+                    assert_eq!(endpoint.to_string(), expected_endpoint.to_string());
                     assert_eq!(endpoint, expected_endpoint);
                     assert_eq!(endpoint.typ(), expected_type);
                 }

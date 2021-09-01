@@ -115,6 +115,78 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_principal_is_valid() {
+        let cases = [
+            (principal!("*".to_owned()), true),
+            (
+                principal!("arn:aws:iam::AccountNumber:root".to_owned()),
+                true,
+            ),
+            (principal!(), false),
+        ];
+
+        for (principal, expected_result) in cases {
+            let result = principal.is_valid();
+
+            assert_eq!(result, expected_result);
+        }
+    }
+
+    #[test]
+    fn test_principal_intersection() {
+        let cases = [
+            (
+                principal!("*".to_owned()),
+                principal!("*".to_owned()),
+                StringSet::from_slice(&["*"]),
+            ),
+            (
+                principal!("arn:aws:iam::AccountNumber:root".to_owned()),
+                principal!("arn:aws:iam::AccountNumber:myuser".to_owned()),
+                StringSet::new(),
+            ),
+            (
+                principal!("".to_owned()),
+                principal!("*".to_owned()),
+                StringSet::new(),
+            ),
+        ];
+
+        for (principal, to_intersect, expected_result) in cases {
+            let result = principal.intersection(&to_intersect.aws);
+
+            assert_eq!(
+                result, expected_result,
+                "principal: {:?}, expected: {}, got: {}",
+                principal, expected_result, result
+            );
+        }
+    }
+
+    #[test]
+    fn test_principal_match() {
+        let cases = [
+            (principal!("*".to_owned()), "AccountNumber", true),
+            (
+                principal!("arn:aws:iam:*".to_owned()),
+                "arn:aws:iam::AccountNumber:root",
+                true,
+            ),
+            (
+                principal!("arn:aws:iam::AccountNumber:*".to_owned()),
+                "arn:aws:iam::TestAccountNumber:root",
+                false,
+            ),
+        ];
+
+        for (principal, data, expected_result) in cases {
+            let result = principal.is_match(data);
+
+            assert_eq!(result, expected_result);
+        }
+    }
+
+    #[test]
     fn test_principal_serialize_json() {
         let cases = vec![
             (principal!("*".to_owned()), r#"{"AWS":["*"]}"#, false),

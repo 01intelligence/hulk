@@ -42,3 +42,34 @@ pub fn check_path_length(path_name: &str) -> anyhow::Result<(), StorageError> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    // Check path length restrictions are not same on windows/darwin
+    #[cfg(target_family = "unix")]
+    fn test_check_path_length() {
+        let cases: [(&str, bool, StorageError); 5] = [
+            (".", true, StorageError::FileAccessDenied),
+            ("/", true, StorageError::FileAccessDenied),
+            ("..", true, StorageError::FileAccessDenied),
+            ("data/G_792/srv-tse/c/users/denis/documents/gestion!20locative/heritier/propri!E9taire/20190101_a2.03!20-!20m.!20heritier!20re!B4mi!20-!20proce!60s-verbal!20de!20livraison!20et!20de!20remise!20des!20cle!B4s!20acque!B4reurs!20-!204-!20livraison!20-!20lp!20promotion!20toulouse!20-!20encre!20et!20plume!20-!205!20de!B4c.!202019!20a!60!2012-49.pdf.ecc", true, StorageError::FileNameTooLong),
+            ("data/G_792/srv-tse/c/users/denis/documents/gestionlocative.txt", false, StorageError::Unexpected),
+        ];
+        for (path, is_err, expected_err) in cases.iter() {
+            let result = check_path_length(path);
+            match result {
+                Ok(result) => {
+                    assert!(!is_err);
+                    assert_eq!(result, ())
+                }
+                Err(err) => {
+                    assert!(is_err);
+                    assert_eq!(err, *expected_err)
+                }
+            }
+        }
+    }
+}

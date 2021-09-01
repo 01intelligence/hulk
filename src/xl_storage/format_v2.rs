@@ -1180,7 +1180,11 @@ mod tests {
         );
         // Corrupt metadata, last 5 bytes is the checksum, so go a bit further back.
         let trimmed_len = trimmed.len();
-        trimmed[trimmed_len - 5] += 10;
+        if trimmed[trimmed_len - 5] < 128 {
+            trimmed[trimmed_len - 5] += 10;
+        } else {
+            trimmed[trimmed_len - 5] -= 10;
+        }
         assert_err!(
             XlMetaV2::load_with_data(&trimmed),
             "metadata corruption not detected"

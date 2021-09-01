@@ -3,12 +3,14 @@ use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use strum::Display;
+use trust_dns_resolver::proto::rr::record_type::RecordType::NULL;
 
 use super::{is_null_version_id, StorageError};
 use crate::fs::StdOpenOptionsNoAtime;
 use crate::prelude::*;
 use crate::utils;
 use crate::utils::{DateTimeExt, StrExt};
+use crate::xl_storage::NULL_VERSION_ID;
 
 const XL_HEADER: &[u8; 4] = b"XL2 ";
 
@@ -61,7 +63,7 @@ fn check_xl2_v1(buf: &[u8]) -> anyhow::Result<(&[u8], u16, u16)> {
     Ok((&buf[8..], major, minor))
 }
 
-fn is_xl2_v1_format(buf: &[u8]) -> bool {
+pub fn is_xl2_v1_format(buf: &[u8]) -> bool {
     check_xl2_v1(buf).is_err()
 }
 
@@ -149,7 +151,7 @@ pub struct XlMetaV2 {
     #[serde(rename = "Versions")]
     versions: Vec<XlMetaV2Version>,
     #[serde(skip)]
-    pub data: HashMap<String, Vec<u8>>,
+    pub(super) data: HashMap<String, Vec<u8>>,
 }
 
 impl XlMetaV2Version {
@@ -978,6 +980,28 @@ impl XlMetaV2 {
             }
         }
     }
+}
+
+pub fn get_file_info(
+    xl_meta: &[u8],
+    volume: &str,
+    path: &str,
+    version_id: &str,
+    read_data: bool,
+) -> anyhow::Result<crate::storage::FileInfo> {
+    let mut xl_meta = XlMetaV2::load_with_data(xl_meta)?;
+    let mut fi = xl_meta.to_file_info(volume, path, version_id)?;
+    if !read_data {
+        return Ok(fi);
+    }
+    let mut version_id: &str = &fi.version_id;
+    if version_id.is_empty() {
+        version_id = NULL_VERSION_ID;
+    }
+    if let Some(data) = xl_meta.data.remove(version_id) {
+        fi.data = data;
+    }
+    Ok(fi)
 }
 
 fn get_mod_time_from_version(v: &XlMetaV2Version) -> utils::DateTime {

@@ -20,7 +20,7 @@ pub enum BitrotAlgorithm {
 }
 
 pub trait BitrotHasher {
-    fn write(&mut self, bytes: &[u8]);
+    fn append(&mut self, bytes: &[u8]);
     fn finish(&mut self) -> &[u8];
     fn reset(&mut self);
 }
@@ -31,7 +31,7 @@ impl AsyncWrite for Box<dyn BitrotHasher + Unpin> {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize, Error>> {
-        self.get_mut().write(buf);
+        self.get_mut().append(buf);
         Poll::Ready(Ok(buf.len()))
     }
 

@@ -25,7 +25,7 @@ fn high_way_hasher() -> highway::HighwayHasher {
 pub struct HighwayHasher(highway::HighwayHasher, [u8; 32]);
 
 impl super::BitrotHasher for HighwayHasher {
-    fn write(&mut self, bytes: &[u8]) {
+    fn append(&mut self, bytes: &[u8]) {
         self.0.append(bytes)
     }
 

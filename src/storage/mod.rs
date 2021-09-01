@@ -127,24 +127,30 @@ impl StorageApi {
         &self,
         volume: &str,
         versions: &[&FileInfo],
-    ) -> anyhow::Result<()> {
-        todo!()
+    ) -> Vec<anyhow::Result<()>> {
+        match self {
+            StorageApi::XlStorage(inner) => inner.delete_versions(volume, versions).await,
+        }
     }
     pub async fn write_metadata(
         &self,
         volume: &str,
         path: &str,
-        file: &FileInfo,
+        fi: &FileInfo,
     ) -> anyhow::Result<()> {
-        todo!()
+        match self {
+            StorageApi::XlStorage(inner) => inner.write_metadata(volume, path, fi).await,
+        }
     }
     pub async fn update_metadata(
         &self,
         volume: &str,
         path: &str,
-        file: &FileInfo,
+        fi: &FileInfo,
     ) -> anyhow::Result<()> {
-        todo!()
+        match self {
+            StorageApi::XlStorage(inner) => inner.update_metadata(volume, path, fi).await,
+        }
     }
     pub async fn read_version(
         &self,
@@ -152,8 +158,14 @@ impl StorageApi {
         path: &str,
         version_id: &str,
         read_data: bool,
-    ) -> anyhow::Result<()> {
-        todo!()
+    ) -> anyhow::Result<FileInfo> {
+        match self {
+            StorageApi::XlStorage(inner) => {
+                inner
+                    .read_version(volume, path, version_id, read_data)
+                    .await
+            }
+        }
     }
     pub async fn rename_data(
         &self,
@@ -186,13 +198,19 @@ impl StorageApi {
         volume: &str,
         path: &str,
         offset: u64,
-        buf: &[u8],
-        verifier: &bitrot::BitrotVerifier,
+        buf: &mut [u8],
+        verifier: Option<bitrot::BitrotVerifier>,
     ) -> anyhow::Result<u64> {
-        todo!()
+        match self {
+            StorageApi::XlStorage(inner) => {
+                inner.read_file(volume, path, offset, buf, verifier).await
+            }
+        }
     }
     pub async fn append_file(&self, volume: &str, path: &str, buf: &[u8]) -> anyhow::Result<()> {
-        todo!()
+        match self {
+            StorageApi::XlStorage(inner) => inner.append_file(volume, path, buf).await,
+        }
     }
     pub async fn create_file_writer(
         &self,
@@ -233,20 +251,14 @@ impl StorageApi {
         }
     }
     pub async fn check_parts(&self, volume: &str, path: &str, fi: &FileInfo) -> anyhow::Result<()> {
-        /*
         match self {
-            StorageApi::XlStorage(inner) => inner.check_parts(volume, path, fi),
+            StorageApi::XlStorage(inner) => inner.check_parts(volume, path, fi).await,
         }
-        */
-        todo!()
     }
     pub async fn check_file(&self, volume: &str, path: &str) -> anyhow::Result<()> {
-        /*
         match self {
-            StorageApi::XlStorage(inner) => inner.check_file(volume, path),
+            StorageApi::XlStorage(inner) => inner.check_file(volume, path).await,
         }
-        */
-        todo!()
     }
     pub async fn delete(&self, volume: &str, path: &str, recursive: bool) -> anyhow::Result<()> {
         match self {

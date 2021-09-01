@@ -2,7 +2,6 @@ mod format_utils;
 mod format_v2;
 mod types;
 mod with_check;
-use std::fs::Metadata;
 use std::io::{Error, ErrorKind, SeekFrom};
 
 pub use format_utils::*;
@@ -14,6 +13,7 @@ pub use types::*;
 pub use with_check::*;
 
 use crate::admin::TraceType::Storage;
+use crate::bitrot::BitrotVerifier;
 use crate::endpoint::Endpoint;
 use crate::errors::{AsError, StorageError, TypedError};
 use crate::fs::{
@@ -22,12 +22,13 @@ use crate::fs::{
     OpenOptionsDirectIo, OpenOptionsNoAtime, OpenOptionsSync,
 };
 use crate::globals::Guard;
+use crate::io::{AsyncReadAt, AsyncReadFull};
 use crate::object::{self, path_ensure_dir, path_is_dir, path_join};
 use crate::pool::{TypedPool, TypedPoolGuard};
 use crate::prelude::*;
 use crate::storage::FileInfo;
 use crate::utils::{BufGuard, Path, PathBuf};
-use crate::xl_storage::format_v2::XlMetaV2;
+use crate::xl_storage::format_v2::{get_file_info, is_xl2_v1_format, XlMetaV2};
 use crate::{config, fs, globals, storage, utils};
 
 const NULL_VERSION_ID: &str = "null";
@@ -431,6 +432,61 @@ impl XlStorage {
         }
     }
 
+    pub async fn read_version(
+        &self,
+        volume: &str,
+        path: &str,
+        version_id: &str,
+        read_data: bool,
+    ) -> anyhow::Result<FileInfo> {
+        let volume_dir = self.get_volume_dir(volume)?;
+        let buf = self
+            .read_all(volume, &path_join(&[path, XL_STORAGE_FORMAT_FILE]))
+            .await?;
+
+        if buf.is_empty() {
+            return if !version_id.is_empty() {
+                Err(StorageError::FileVersionNotFound.into())
+            } else {
+                Err(StorageError::FileNotFound.into())
+            };
+        }
+
+        let mut fi = get_file_info(&buf, volume, path, version_id, read_data)?;
+
+        if read_data {
+            if !fi.data.is_empty() || fi.size == 0 {
+                if !fi.data.is_empty() {
+                    let key = globals::RESERVED_METADATA_PREFIX_LOWER.to_owned() + "inline-data";
+                    let _ = fi.metadata.entry(key).or_insert("true".to_owned());
+                }
+                return Ok(fi);
+            }
+
+            // Reading data for small objects when:
+            // - object has not yet transitioned
+            // - object size is small
+            // - object has maximum of 1 parts
+            if fi.transition_status.is_empty()
+                && fi.data_dir.is_empty()
+                && fi.size <= SMALL_FILE_THRESHOLD as u64
+                && fi.parts.len() == 1
+            {
+                let require_direct_io = &globals::GLOBALS.storage_class.guard().dma
+                    == crate::config::storageclass::DMA_READ_WRITE;
+                let part_path = format!("part.{}", fi.parts[0].number);
+                fi.data = read_all_data(
+                    &volume_dir,
+                    &path_join(&[&volume_dir, path, &fi.data_dir, &part_path]),
+                    require_direct_io,
+                )
+                .await?;
+            }
+        }
+
+        Ok(fi)
+    }
+
     pub async fn read_all(&self, volume: &str, path: &str) -> anyhow::Result<Vec<u8>> {
         let volume_dir = self.get_volume_dir(volume)?;
         let file_path = path_join(&[&volume_dir, path]);
@@ -440,17 +496,32 @@ impl XlStorage {
         read_all_data(&volume_dir, &file_path, require_direct_io).await
     }
 
+    pub async fn delete_versions(
+        &self,
+        volume: &str,
+        versions: &[&FileInfo],
+    ) -> Vec<anyhow::Result<()>> {
+        let mut errs = Vec::with_capacity(versions.len());
+        for version in versions {
+            let ret = self
+                .delete_version(volume, &version.name, version, false)
+                .await;
+            errs.push(ret);
+        }
+        errs
+    }
+
     pub async fn delete_version(
         &self,
         volume: &str,
         path: &str,
-        file: &storage::FileInfo,
+        fi: &storage::FileInfo,
         force_delete_marker: bool,
     ) -> anyhow::Result<()> {
         if path.ends_with(globals::SLASH_SEPARATOR) {
             return self.delete(volume, path, false).await;
         }
-        let buf = match self
+        let mut buf = match self
             .read_all(volume, &path_join(&[path, XL_STORAGE_FORMAT_FILE]))
             .await
         {
@@ -458,8 +529,10 @@ impl XlStorage {
                 if let Some(&StorageError::FileNotFound) = err.as_error::<StorageError>() {
                     return Err(err);
                 }
-                if file.deleted && force_delete_marker {}
-                if !file.version_id.is_empty() {
+                if fi.deleted && force_delete_marker {
+                    return self.write_metadata(volume, path, fi).await;
+                }
+                if !fi.version_id.is_empty() {
                     return Err(StorageError::FileVersionNotFound.into());
                 }
                 return Err(StorageError::FileNotFound.into());
@@ -468,7 +541,7 @@ impl XlStorage {
         };
 
         if buf.is_empty() {
-            if !file.version_id.is_empty() {
+            if !fi.version_id.is_empty() {
                 return Err(StorageError::FileVersionNotFound.into());
             }
             return Err(StorageError::FileNotFound.into());
@@ -476,7 +549,178 @@ impl XlStorage {
 
         let volume_dir = self.get_volume_dir(volume)?;
 
-        todo!()
+        if !is_xl2_v1_format(&buf) {
+            // Delete the meta file, if there are no more versions the
+            // top level parent is automatically removed.
+            return Self::delete_file(
+                self.disk_path.clone(),
+                volume_dir.clone(),
+                path_join(&[&volume_dir, path]),
+                true,
+            )
+            .await;
+        }
+
+        let mut xl_meta = XlMetaV2::load_with_data(&buf)?;
+        let (data_dir, last_version) = xl_meta.delete_version(fi)?;
+
+        if !data_dir.is_empty() {
+            let mut version_id: &str = &fi.version_id;
+            if version_id.is_empty() {
+                version_id = NULL_VERSION_ID;
+            }
+            let _ = xl_meta.data.remove(version_id);
+            let _ = xl_meta.data.remove(&data_dir);
+            let file_path = path_join(&[&volume_dir, path, &data_dir]);
+            check_path_length(&file_path)?;
+
+            fs::reliable_rename(
+                &file_path,
+                path_join(&[
+                    &self.disk_path,
+                    object::SYSTEM_META_TMP_DELETED_BUCKET,
+                    &uuid::Uuid::new_v4().to_string(),
+                ]),
+            )
+            .await?;
+        }
+
+        if !last_version {
+            buf = xl_meta.dump()?;
+            return self
+                .write_all(volume, &path_join(&[path, XL_STORAGE_FORMAT_FILE]), &buf)
+                .await;
+        }
+
+        // Move everything to trash.
+        let dir_path = path_ensure_dir(&path_join(&[&volume_dir, path])).into_owned();
+        check_path_length(&dir_path)?;
+        let ret = fs::reliable_rename(
+            &dir_path,
+            path_join(&[
+                &self.disk_path,
+                object::SYSTEM_META_TMP_DELETED_BUCKET,
+                &uuid::Uuid::new_v4().to_string(),
+            ]),
+        )
+        .await;
+
+        // Delete parents if needed.
+        let dir_path = path_ensure_dir(
+            Path::new(&path_join(&[&volume_dir, path]))
+                .parent()
+                .unwrap()
+                .as_str(),
+        )
+        .into_owned();
+        if &dir_path != &path_ensure_dir(&volume_dir) {
+            let _ = Self::delete_file(self.disk_path.clone(), volume_dir, dir_path, false).await;
+        }
+
+        ret
+    }
+
+    pub async fn append_file(&self, volume: &str, path: &str, buf: &[u8]) -> anyhow::Result<()> {
+        let volume_dir = self.get_volume_dir(volume)?;
+        if let Err(err) = fs::access(&volume_dir).await {
+            return if err_not_found(&err) {
+                Err(StorageError::VolumeNotFound.into())
+            } else if err_permission(&err) {
+                Err(StorageError::VolumeAccessDenied.into())
+            } else if err_io(&err) {
+                Err(StorageError::FaultyDisk.into())
+            } else {
+                Err(err.into())
+            };
+        }
+
+        let file_path = path_join(&[&volume_dir, path]);
+        check_path_length(&file_path)?;
+
+        fs::reliable_mkdir_all(&volume_dir, 0o777).await?;
+
+        let mut file = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .write(true)
+            .sync()
+            .open(file_path)
+            .await?;
+        file.write_all(buf).await?;
+
+        Ok(())
+    }
+
+    pub async fn check_parts(&self, volume: &str, path: &str, fi: &FileInfo) -> anyhow::Result<()> {
+        let volume_dir = self.get_volume_dir(volume)?;
+        if let Err(err) = fs::access(&volume_dir).await {
+            return if err_not_found(&err) {
+                Err(StorageError::VolumeNotFound.into())
+            } else {
+                Err(err.into())
+            };
+        }
+
+        for part in &fi.parts {
+            let part_path = path_join(&[path, &fi.data_dir, &format!("part.{}", part.number)]);
+            let file_path = path_join(&[&volume_dir, &part_path]);
+            check_path_length(&file_path)?;
+            let meta = fs::metadata(&file_path).await?;
+            if meta.is_dir() {
+                return Err(StorageError::FileNotFound.into());
+            }
+            // Check if shard is truncated.
+            if meta.len()
+                < fi.erasure
+                    .as_ref()
+                    .map(|e| e.shard_file_size(part.size))
+                    .unwrap_or_default()
+            {
+                return Err(StorageError::FileCorrupt.into());
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn check_file(&self, volume: &str, path: &str) -> anyhow::Result<()> {
+        let volume_dir = self.get_volume_dir(volume)?;
+
+        Self::check_file_inner(volume_dir, Some(path.to_owned())).await
+    }
+
+    fn check_file_inner(
+        volume_dir: String,
+        path: Option<String>,
+    ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send + Sync>> {
+        Box::pin(async move {
+            let path = match path {
+                None => return Err(StorageError::PathNotFound.into()),
+                Some(path) => path,
+            };
+            if &path == "." || &path == globals::SLASH_SEPARATOR {
+                return Err(StorageError::PathNotFound.into());
+            }
+
+            let file_path = path_join(&[&volume_dir, &path, XL_STORAGE_FORMAT_FILE]);
+            check_path_length(&file_path)?;
+            match fs::metadata(&file_path).await {
+                Err(_) => {
+                    Self::check_file_inner(
+                        volume_dir,
+                        Path::new(&path).parent().map(|p| p.to_string()),
+                    )
+                    .await
+                }
+                Ok(meta) => {
+                    if !meta.is_file() {
+                        Err(StorageError::FileNotFound.into())
+                    } else {
+                        Ok(())
+                    }
+                }
+            }
+        })
     }
 
     pub async fn delete(&self, volume: &str, path: &str, recursive: bool) -> anyhow::Result<()> {
@@ -566,6 +810,55 @@ impl XlStorage {
 
             Ok(())
         })
+    }
+
+    pub async fn update_metadata(
+        &self,
+        volume: &str,
+        path: &str,
+        fi: &FileInfo,
+    ) -> anyhow::Result<()> {
+        let path = path_join(&[path, XL_STORAGE_FORMAT_FILE]);
+        let mut buf = match self.read_all(volume, &path).await {
+            Ok(buf) => buf,
+            Err(err) => {
+                return if err.is_error(&StorageError::FileNotFound) && !fi.version_id.is_empty() {
+                    Err(StorageError::FileVersionNotFound.into())
+                } else {
+                    Err(err)
+                }
+            }
+        };
+
+        if !is_xl2_v1_format(&buf) {
+            return Err(StorageError::FileVersionNotFound.into());
+        }
+
+        let mut xl_meta = XlMetaV2::load_with_data(&buf)?;
+        xl_meta.update_version(fi)?;
+
+        let buf = xl_meta.dump()?;
+        self.write_all(volume, &path, &buf).await
+    }
+
+    pub async fn write_metadata(
+        &self,
+        volume: &str,
+        path: &str,
+        fi: &FileInfo,
+    ) -> anyhow::Result<()> {
+        let path = path_join(&[path, XL_STORAGE_FORMAT_FILE]);
+        let mut buf = self.read_all(volume, &path).await?;
+
+        let mut xl_meta = if !is_xl2_v1_format(&buf) {
+            XlMetaV2::default()
+        } else {
+            XlMetaV2::load_with_data(&buf)?
+        };
+        xl_meta.add_version(fi)?;
+        buf = xl_meta.dump()?;
+
+        self.write_all(volume, &path, &buf).await
     }
 
     pub async fn write_all(&self, volume: &str, path: &str, data: &[u8]) -> anyhow::Result<()> {
@@ -952,6 +1245,68 @@ impl XlStorage {
             .boxed_local(),
         };
         Ok(Box::new(w))
+    }
+
+    pub async fn read_file(
+        &self,
+        volume: &str,
+        path: &str,
+        offset: u64,
+        buf: &mut [u8],
+        verifier: Option<crate::bitrot::BitrotVerifier>,
+    ) -> anyhow::Result<u64> {
+        let volume_dir = self.get_volume_dir(volume)?;
+
+        if let Err(err) = fs::access(&volume_dir).await {
+            return if err_not_found(&err) {
+                Err(StorageError::VolumeNotFound.into())
+            } else if err_io(&err) {
+                Err(StorageError::FaultyDisk.into())
+            } else if err_permission(&err) {
+                Err(StorageError::FileAccessDenied.into())
+            } else {
+                Err(err.into())
+            };
+        }
+
+        let file_path = path_join(&[&volume_dir, path]);
+        check_path_length(&file_path)?;
+
+        let mut file = fs::OpenOptions::new().open(&file_path).await?;
+        let meta = file.metadata().await?;
+        if !meta.is_file() {
+            return Err(StorageError::IsNotRegular.into());
+        }
+
+        let verifier = match verifier {
+            None => {
+                return match file.read_at(buf, offset).await {
+                    Ok(n) => Ok(n as u64),
+                    Err(err) => Err(err.into()),
+                };
+            }
+            Some(v) => v,
+        };
+
+        let mut h = verifier.algorithm.hasher();
+        let mut reader = file.take(offset);
+        let _ = tokio::io::copy(&mut reader, &mut h).await?;
+
+        let mut file = reader.into_inner();
+        let n = file.read_full(buf).await?;
+        if n != buf.len() {
+            let err: std::io::Error = ErrorKind::UnexpectedEof.into();
+            return Err(err.into());
+        }
+
+        h.append(buf);
+        let _ = tokio::io::copy(&mut file, &mut h).await?;
+
+        if h.finish() != &verifier.hash[..] {
+            return Err(StorageError::FileCorrupt.into());
+        }
+
+        Ok(buf.len() as u64)
     }
 
     pub async fn read_file_reader(

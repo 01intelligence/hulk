@@ -3,6 +3,7 @@ use relative_path::{RelativePath, RelativePathBuf};
 use tokio::io::AsyncRead;
 
 use super::*;
+use crate::prelude::*;
 use crate::utils::Path;
 
 pub const SLASH_SEPARATOR: &str = "/";
@@ -29,12 +30,30 @@ const COMP_READ_AHEAD_BUFFERS: usize = 5;
 const COMP_READ_AHEAD_BUF_SIZE: usize = 1 << 20;
 
 /// Tests whether the path refers to a directory.
-pub fn is_dir(path: &str) -> bool {
+pub fn path_is_dir(path: &str) -> bool {
     path.ends_with(SLASH_SEPARATOR)
 }
 
-/// Join paths and retains trailing SlashSeparator of the last element.
+/// Retain trailing slash to ensure directory.
+pub fn path_ensure_dir(path: &str) -> Cow<str> {
+    if path.is_empty() || path.ends_with(SLASH_SEPARATOR) {
+        Cow::Borrowed(path)
+    } else {
+        Cow::Owned(path.to_owned() + SLASH_SEPARATOR)
+    }
+}
+
+/// Join paths and trim tailing slash.
+pub fn path_join_not_dir(elements: &[&str]) -> String {
+    path_join_inner(elements, false)
+}
+
+/// Join paths and retains trailing slash of the last element.
 pub fn path_join(elements: &[&str]) -> String {
+    path_join_inner(elements, true)
+}
+
+fn path_join_inner(elements: &[&str], retain_dir: bool) -> String {
     if elements.is_empty() {
         return "".to_owned();
     }
@@ -42,14 +61,14 @@ pub fn path_join(elements: &[&str]) -> String {
     for e in elements {
         p.push(e);
     }
-    // Retail prefix slash.
     let mut s = if elements[0].starts_with(SLASH_SEPARATOR) {
+        // Retail prefix slash.
         SLASH_SEPARATOR.to_owned() + &p.normalize().to_string()
     } else {
         p.normalize().to_string()
     };
-    // Retail suffix slash.
-    if elements[elements.len() - 1].ends_with(SLASH_SEPARATOR) {
+    if retain_dir && elements[elements.len() - 1].ends_with(SLASH_SEPARATOR) {
+        // Retail suffix slash.
         s.push_str(SLASH_SEPARATOR);
     }
     return s;

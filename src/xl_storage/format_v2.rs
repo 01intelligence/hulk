@@ -5,10 +5,10 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
 use strum::Display;
 
 use super::{is_null_version_id, StorageError};
+use crate::fs::StdOpenOptionsNoAtime;
 use crate::prelude::*;
 use crate::utils;
 use crate::utils::{DateTimeExt, StrExt};
-use crate::xl_storage::openoptions_ext::StdOpenOptionsNoAtime;
 
 const XL_HEADER: &[u8; 4] = b"XL2 ";
 
@@ -86,7 +86,7 @@ pub enum ChecksumAlgo {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-struct XlMetaV2DeleteMarker {
+pub struct XlMetaV2DeleteMarker {
     #[serde(rename = "ID")]
     version_id: Option<uuid::Uuid>,
     #[serde(rename = "MTime")]
@@ -96,7 +96,7 @@ struct XlMetaV2DeleteMarker {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-struct XlMetaV2Object {
+pub struct XlMetaV2Object {
     #[serde(rename = "ID")]
     version_id: Option<uuid::Uuid>,
     #[serde(rename = "DDir")]
@@ -135,7 +135,7 @@ struct XlMetaV2Object {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-struct XlMetaV2Version {
+pub struct XlMetaV2Version {
     #[serde(rename = "Type")]
     type_: VersionType,
     #[serde(rename = "V2Obj")]
@@ -144,15 +144,13 @@ struct XlMetaV2Version {
     delete_marker: Option<XlMetaV2DeleteMarker>,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
-struct XlMetaV2 {
+#[derive(Serialize, Deserialize, Debug, PartialEq, Default)]
+pub struct XlMetaV2 {
     #[serde(rename = "Versions")]
     versions: Vec<XlMetaV2Version>,
     #[serde(skip)]
-    data: HashMap<String, Vec<u8>>,
+    pub data: HashMap<String, Vec<u8>>,
 }
-
-struct XlMetaInlineData<'a>(Cow<'a, [u8]>);
 
 impl XlMetaV2Version {
     fn valid(&self) -> bool {
@@ -320,20 +318,6 @@ impl XlMetaV2DeleteMarker {
 }
 
 const XL_META_INLINE_DATA_VERSION: u8 = 1;
-
-impl<'a> XlMetaInlineData<'a> {
-    fn version_ok(&self) -> bool {
-        self.0.is_empty() || (self.0[0] > 0 && self.0[0] <= XL_META_INLINE_DATA_VERSION)
-    }
-
-    fn after_version(&self) -> &[u8] {
-        if self.0.is_empty() {
-            &self.0[..]
-        } else {
-            &self.0[1..]
-        }
-    }
-}
 
 impl XlMetaV2 {
     pub fn add_version(&mut self, fi: &crate::storage::FileInfo) -> anyhow::Result<()> {

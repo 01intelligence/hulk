@@ -71,12 +71,9 @@ impl StorageApi {
     }
 
     pub async fn disk_info(&self) -> anyhow::Result<DiskInfo> {
-        /*
         match self {
-            StorageApi::XlStorage(inner) => inner.disk_info()
+            StorageApi::XlStorage(inner) => inner.disk_info().await,
         }
-        */
-        todo!()
     }
 
     pub async fn namespace_scanner(&self) -> anyhow::Result<()> {
@@ -262,12 +259,9 @@ impl StorageApi {
         }
     }
     pub async fn write_all(&self, volume: &str, path: &str, data: &[u8]) -> anyhow::Result<()> {
-        /*
         match self {
-            StorageApi::XlStorage(inner) => inner.write_all(volume, path, data),
+            StorageApi::XlStorage(inner) => inner.write_all(volume, path, data).await,
         }
-        */
-        todo!()
     }
     pub async fn read_all(&self, volume: &str, path: &str) -> anyhow::Result<Vec<u8>> {
         match self {

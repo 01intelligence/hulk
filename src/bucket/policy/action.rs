@@ -504,19 +504,30 @@ impl<'de, 'a> Deserialize<'de> for ActionSet<'a> {
                 use serde::de::Error;
                 let mut set = ActionSet(HashSet::new());
                 while let Some(v) = seq.next_element()? {
-                    if set.contains(&v) {
-                        return Err(A::Error::custom(format!("duplicate value found '{}'", v.0)));
+                    if !set.contains(&v) {
+                        set.insert(v);
                     }
-                    set.insert(v);
                 }
                 if set.is_empty() {
                     return Err(A::Error::custom("empty actions"));
                 }
                 Ok(set)
             }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                let action = SUPPORTED_ACTIONS
+                    .iter()
+                    .find(|&a| a.0 == v)
+                    .cloned()
+                    .ok_or(E::custom(format!("invalid action '{}'", v)))?;
+                Ok(ActionSet(HashSet::from([action])))
+            }
         }
 
-        deserializer.deserialize_seq(ActionSetVisitor)
+        deserializer.deserialize_any(ActionSetVisitor)
     }
 }
 
@@ -529,4 +540,226 @@ macro_rules! actionset {
         )*
         set
     }};
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_action_is_object_action() {
+        let cases = [
+            (ABORT_MULTIPART_UPLOAD_ACTION, true),
+            (DELETE_OBJECT_ACTION, true),
+            (GET_OBJECT_ACTION, true),
+            (LIST_MULTIPART_UPLOAD_PARTS_ACTION, true),
+            (PUT_OBJECT_ACTION, true),
+            (CREATE_BUCKET_ACTION, false),
+        ];
+
+        for (action, expected_result) in cases {
+            let result = action.is_object_action();
+
+            assert_eq!(result, expected_result);
+        }
+    }
+
+    #[test]
+    fn test_action_is_valid() {
+        let cases = [
+            (ABORT_MULTIPART_UPLOAD_ACTION, true),
+            (Action("foo"), false),
+        ];
+
+        for (action, expected_result) in cases {
+            let result = action.is_valid();
+
+            assert_eq!(result, expected_result);
+        }
+    }
+
+    #[test]
+    fn test_action_serialize_json() {
+        let cases = [
+            (PUT_OBJECT_ACTION, r#""s3:PutObject""#, false),
+            (Action("foo"), "", true),
+        ];
+
+        for (action, expected_result, expect_err) in cases {
+            let result = serde_json::to_string(&action);
+
+            match result {
+                Ok(result) => assert_eq!(result, expected_result),
+                Err(_) => assert!(expect_err, "expect an error"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_action_deserialize_json() {
+        let cases = [
+            (r#""s3:PutObject""#, PUT_OBJECT_ACTION, false),
+            (r#""foo""#, Action(""), true),
+        ];
+
+        for (data, expected_result, expect_err) in cases {
+            let result = serde_json::from_str::<Action>(data);
+
+            match result {
+                Ok(result) => assert_eq!(result, expected_result),
+                Err(_) => assert!(expect_err, "expect an error"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_action_set_add() {
+        let set1 = ActionSet(HashSet::new());
+        let cases = [
+            (
+                actionset!(),
+                PUT_OBJECT_ACTION,
+                actionset!(PUT_OBJECT_ACTION),
+            ),
+            (
+                actionset!(PUT_OBJECT_ACTION),
+                PUT_OBJECT_ACTION,
+                actionset!(PUT_OBJECT_ACTION),
+            ),
+        ];
+
+        for (mut set, action, expected_result) in cases {
+            let _result = set.insert(action);
+
+            // assert!(result);
+            assert_eq!(set, expected_result);
+        }
+    }
+
+    #[test]
+    fn test_action_set_contains() {
+        let cases = [
+            (actionset!(PUT_OBJECT_ACTION), PUT_OBJECT_ACTION, true),
+            (
+                actionset!(PUT_OBJECT_ACTION, GET_OBJECT_ACTION),
+                PUT_OBJECT_ACTION,
+                true,
+            ),
+            (
+                actionset!(PUT_OBJECT_ACTION, GET_OBJECT_ACTION),
+                ABORT_MULTIPART_UPLOAD_ACTION,
+                false,
+            ),
+        ];
+
+        for (set, action, expected_result) in cases {
+            let result = set.contains(&action);
+
+            assert_eq!(result, expected_result);
+        }
+    }
+
+    #[test]
+    fn test_action_set_intersection() {
+        let cases = [
+            (actionset!(), actionset!(PUT_OBJECT_ACTION), actionset!()),
+            (actionset!(PUT_OBJECT_ACTION), actionset!(), actionset!()),
+            (
+                actionset!(PUT_OBJECT_ACTION),
+                actionset!(PUT_OBJECT_ACTION, GET_OBJECT_ACTION),
+                actionset!(PUT_OBJECT_ACTION),
+            ),
+        ];
+
+        for (set, set_to_intersect, expected_result) in cases {
+            let result = ActionSet(set.intersection(&set_to_intersect).cloned().collect());
+
+            assert_eq!(result, expected_result);
+        }
+    }
+
+    #[test]
+    fn test_action_set_serialize_json() {
+        let cases = [
+            (
+                actionset!(PUT_OBJECT_ACTION),
+                Some(r#"["s3:PutObject"]"#),
+                false,
+            ),
+            (actionset!(), None, true),
+        ];
+
+        for (set, expected_result, expect_err) in cases {
+            let result = serde_json::to_string(&set);
+
+            match result {
+                Ok(result) => {
+                    if let Some(expected_result) = expected_result {
+                        assert_eq!(result, expected_result);
+                    }
+                }
+                Err(_) => assert!(expect_err, "expect an error"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_action_set_deserialize_json() {
+        let cases = [
+            (
+                r#""s3:PutObject""#,
+                Some(actionset!(PUT_OBJECT_ACTION)),
+                false,
+            ),
+            (
+                r#"["s3:PutObject"]"#,
+                Some(actionset!(PUT_OBJECT_ACTION)),
+                false,
+            ),
+            (
+                r#"["s3:PutObject", "s3:GetObject"]"#,
+                Some(actionset!(PUT_OBJECT_ACTION, GET_OBJECT_ACTION)),
+                false,
+            ),
+            (
+                r#"["s3:PutObject", "s3:GetObject", "s3:PutObject"]"#,
+                Some(actionset!(PUT_OBJECT_ACTION, GET_OBJECT_ACTION)),
+                false,
+            ),
+            (r#"[]"#, Some(actionset!()), true), // Empty array.
+            (r#""foo""#, None, true),            // Invalid action.
+            (r#"["s3:PutObject", "foo"]"#, None, true), // Invalid action.
+        ];
+
+        for (data, expected_result, expect_err) in cases {
+            let result = serde_json::from_str::<ActionSet>(data);
+
+            match result {
+                Ok(result) => {
+                    if let Some(expected_result) = expected_result {
+                        assert_eq!(
+                            result, expected_result,
+                            "data: '{}', expected: {}, got: {}",
+                            data, expected_result, result
+                        );
+                    }
+                }
+                Err(e) => assert!(expect_err, "expect an error"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_action_set_to_slice() {
+        let cases = [
+            (actionset!(PUT_OBJECT_ACTION), vec![PUT_OBJECT_ACTION]),
+            (actionset!(), vec![]),
+        ];
+
+        for (set, expected_result) in cases {
+            let result = set.to_vec();
+
+            assert_eq!(result, expected_result);
+        }
+    }
 }

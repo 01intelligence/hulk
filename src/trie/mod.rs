@@ -109,13 +109,13 @@ mod tests {
     fn test_trie_prefix_match() {
         let mut trie = Trie::default();
 
-        // Feed it some fodder: only "minio" and "miny-o's" should trip the matcher.
-        trie.insert("minio".to_string());
+        // Feed it some fodder: only "hulk" and "hulky-o's" should trip the matcher.
+        trie.insert("hulk".to_string());
         trie.insert("amazon".to_string());
         trie.insert("cheerio".to_string());
-        trie.insert("miny-o's".to_string());
+        trie.insert("hulky-o's".to_string());
 
-        let matches = trie.prefix_match("min");
+        let matches = trie.prefix_match("hul");
         assert_eq!(
             matches.len(),
             2,
@@ -123,9 +123,9 @@ mod tests {
             matches.len()
         );
 
-        if matches[0] != "minio" && matches[1] != "minio" {
+        if matches[0] != "hulk" && matches[1] != "hulk" {
             panic!(
-                "expected one match to be 'minio', got: '{}' and '{}'",
+                "expected one match to be 'hulk', got: '{}' and '{}'",
                 matches[0], matches[1]
             )
         }

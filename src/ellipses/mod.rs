@@ -220,11 +220,11 @@ mod tests {
             (vec!["{1...64}"], true),
             (vec!["{...}"], true),
             (vec!["{1...64}", "{65...128}"], true),
-            (vec!["http://minio{2...3}/export/set{1...64}"], true),
+            (vec!["http://hulk{2...3}/export/set{1...64}"], true),
             (
                 vec![
-                    "http://minio{2...3}/export/set{1...64}",
-                    "http://minio{2...3}/export/set{65...128}",
+                    "http://hulk{2...3}/export/set{1...64}",
+                    "http://hulk{2...3}/export/set{65...128}",
                 ],
                 true,
             ),

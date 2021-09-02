@@ -67,7 +67,10 @@ impl<'a> Function for NullFunc<'a> {
     }
 }
 
-pub(super) fn new_null_func(key: Key, values: ValueSet) -> anyhow::Result<Box<dyn Function + '_>> {
+pub(in super::super) fn new_null_func(
+    key: Key,
+    values: ValueSet,
+) -> anyhow::Result<Box<dyn Function + '_>> {
     if values.len() != 1 {
         bail!("only one value is allowed for {} condition", NULL);
     }

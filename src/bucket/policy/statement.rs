@@ -200,3 +200,621 @@ impl<'de, 'a, 'b> Deserialize<'de> for Statement<'a, 'b> {
         deserializer.deserialize_map(StatementVisitor)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::prelude::HashMap;
+    use crate::utils::assert::*;
+    use crate::{actionset, principal};
+
+    #[test]
+    fn test_statement_is_allowed() -> anyhow::Result<()> {
+        let statement1 = Statement {
+            sid: "".to_string(),
+            effect: ALLOW,
+            principal: principal!("*".to_string()),
+            actions: actionset!(GET_BUCKET_LOCATION_ACTION, PUT_OBJECT_ACTION),
+            resources: ResourceSet::new(vec![Resource::new("*".to_string(), "".to_string())]),
+            conditions: condition::Functions::new(vec![]),
+        };
+
+        let statement2 = Statement {
+            sid: "".to_string(),
+            effect: ALLOW,
+            principal: principal!("*".to_string()),
+            actions: actionset!(GET_OBJECT_ACTION, PUT_OBJECT_ACTION),
+            resources: ResourceSet::new(vec![Resource::new(
+                "mybucket".to_string(),
+                "/myobject*".to_string(),
+            )]),
+            conditions: condition::Functions::new(vec![]),
+        };
+
+        let func1 = condition::new_ip_address_func(
+            condition::AWS_SOURCE_IP,
+            condition::ValueSet::new(vec![condition::Value::String("192.168.1.0/24".to_string())]),
+        )?;
+
+        let statement3 = Statement {
+            sid: "".to_string(),
+            effect: ALLOW,
+            principal: principal!("*".to_string()),
+            actions: actionset!(GET_OBJECT_ACTION, PUT_OBJECT_ACTION),
+            resources: ResourceSet::new(vec![Resource::new(
+                "mybucket".to_string(),
+                "/myobject*".to_string(),
+            )]),
+            conditions: condition::Functions::new(vec![func1.clone()]),
+        };
+
+        let statement4 = Statement {
+            sid: "".to_string(),
+            effect: DENY,
+            principal: principal!("*".to_string()),
+            actions: actionset!(GET_OBJECT_ACTION, PUT_OBJECT_ACTION),
+            resources: ResourceSet::new(vec![Resource::new(
+                "mybucket".to_string(),
+                "/myobject*".to_string(),
+            )]),
+            conditions: condition::Functions::new(vec![func1]),
+        };
+
+        let anon_get_bucket_location_args = Args {
+            account_name: "Q3AM3UQ867SPQQA43P2F".to_string(),
+            groups: vec![],
+            action: GET_BUCKET_LOCATION_ACTION,
+            bucket_name: "mybucket".to_string(),
+            condition_values: HashMap::new(),
+            is_owner: false,
+            object_name: "".to_string(),
+        };
+
+        let anon_put_object_action_args = Args {
+            account_name: "Q3AM3UQ867SPQQA43P2F".to_string(),
+            groups: vec![],
+            action: PUT_OBJECT_ACTION,
+            bucket_name: "mybucket".to_string(),
+            condition_values: HashMap::from([
+                (
+                    "x-amz-copy-source".to_string(),
+                    vec!["mybucket/myobject".to_string()],
+                ),
+                ("SourceIp".to_string(), vec!["192.168.1.10".to_string()]),
+            ]),
+            is_owner: false,
+            object_name: "myobject".to_string(),
+        };
+
+        let anon_get_object_action_args = Args {
+            account_name: "Q3AM3UQ867SPQQA43P2F".to_string(),
+            groups: vec![],
+            action: GET_OBJECT_ACTION,
+            bucket_name: "mybucket".to_string(),
+            condition_values: HashMap::new(),
+            is_owner: false,
+            object_name: "myobject".to_string(),
+        };
+
+        let get_bucket_location_args = Args {
+            account_name: "Q3AM3UQ867SPQQA43P2F".to_string(),
+            groups: vec![],
+            action: GET_BUCKET_LOCATION_ACTION,
+            bucket_name: "mybucket".to_string(),
+            condition_values: HashMap::new(),
+            is_owner: true,
+            object_name: "".to_string(),
+        };
+
+        let put_object_action_args = Args {
+            account_name: "Q3AM3UQ867SPQQA43P2F".to_string(),
+            groups: vec![],
+            action: PUT_OBJECT_ACTION,
+            bucket_name: "mybucket".to_string(),
+            condition_values: HashMap::from([
+                (
+                    "x-amz-copy-source".to_string(),
+                    vec!["mybucket/myobject".to_string()],
+                ),
+                ("SourceIp".to_string(), vec!["192.168.1.10".to_string()]),
+            ]),
+            is_owner: true,
+            object_name: "myobject".to_string(),
+        };
+
+        let get_object_action_args = Args {
+            account_name: "Q3AM3UQ867SPQQA43P2F".to_string(),
+            groups: vec![],
+            action: GET_OBJECT_ACTION,
+            bucket_name: "mybucket".to_string(),
+            condition_values: HashMap::new(),
+            is_owner: true,
+            object_name: "myobject".to_string(),
+        };
+
+        let cases = [
+            (&statement1, &anon_get_bucket_location_args, true),
+            (&statement1, &anon_put_object_action_args, true),
+            (&statement1, &anon_get_object_action_args, false),
+            (&statement1, &get_bucket_location_args, true),
+            (&statement1, &put_object_action_args, true),
+            (&statement1, &get_object_action_args, false),
+            (&statement2, &anon_get_bucket_location_args, false),
+            (&statement2, &anon_put_object_action_args, true),
+            (&statement2, &anon_get_object_action_args, true),
+            (&statement2, &get_bucket_location_args, false),
+            (&statement2, &put_object_action_args, true),
+            (&statement2, &get_object_action_args, true),
+            (&statement3, &anon_get_bucket_location_args, false),
+            (&statement3, &anon_put_object_action_args, true),
+            (&statement3, &anon_get_object_action_args, false),
+            (&statement3, &get_bucket_location_args, false),
+            (&statement3, &put_object_action_args, true),
+            (&statement3, &get_object_action_args, false),
+            (&statement4, &anon_get_bucket_location_args, true),
+            (&statement4, &anon_put_object_action_args, false),
+            (&statement4, &anon_get_object_action_args, true),
+            (&statement4, &get_bucket_location_args, true),
+            (&statement4, &put_object_action_args, false),
+            (&statement4, &get_object_action_args, true),
+        ];
+
+        for (statement, args, expected_result) in cases {
+            let result = statement.is_allowed(args);
+
+            assert_eq!(result, expected_result);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_statement_is_valid() -> anyhow::Result<()> {
+        let func1 = condition::new_ip_address_func(
+            condition::AWS_SOURCE_IP,
+            condition::ValueSet::new(vec![condition::Value::String("192.168.1.0/24".to_string())]),
+        )?;
+
+        let func2 = condition::new_string_not_equals_func(
+            condition::S3X_AMZ_COPY_SOURCE,
+            condition::ValueSet::new(vec![condition::Value::String(
+                "mybucket/myobject".to_string(),
+            )]),
+        )?;
+
+        let cases = [
+            // Invalid effect error.
+            // (
+            //     Statement {
+            //         sid: "".to_string(),
+            //         effect: Effect("foo"),
+            //         principal: principal!("*".to_string()),
+            //         actions: actionset!(GET_BUCKET_LOCATION_ACTION, PUT_OBJECT_ACTION),
+            //         resources: ResourceSet::new(vec![Resource::new(
+            //             "*".to_string(),
+            //             "".to_string(),
+            //         )]),
+            //         conditions: Default::default(),
+            //     },
+            //     true,
+            // ),
+            // Invalid principal error.
+            (
+                Statement {
+                    sid: "".to_string(),
+                    effect: ALLOW,
+                    principal: Default::default(),
+                    actions: actionset!(GET_BUCKET_LOCATION_ACTION, PUT_OBJECT_ACTION),
+                    resources: ResourceSet::new(vec![Resource::new(
+                        "*".to_string(),
+                        "".to_string(),
+                    )]),
+                    conditions: Default::default(),
+                },
+                true,
+            ),
+            // Empty actions error.
+            (
+                Statement {
+                    sid: "".to_string(),
+                    effect: ALLOW,
+                    principal: principal!("*".to_string()),
+                    actions: Default::default(),
+                    resources: ResourceSet::new(vec![Resource::new(
+                        "*".to_string(),
+                        "".to_string(),
+                    )]),
+                    conditions: Default::default(),
+                },
+                true,
+            ),
+            // Empty resources error
+            (
+                Statement {
+                    sid: "".to_string(),
+                    effect: ALLOW,
+                    principal: principal!("*".to_string()),
+                    actions: actionset!(GET_BUCKET_LIFECYCLE_ACTION, PUT_OBJECT_ACTION),
+                    resources: ResourceSet::new(vec![Resource::new(
+                        "mybucket".to_string(),
+                        "".to_string(),
+                    )]),
+                    conditions: Default::default(),
+                },
+                true,
+            ),
+            // Unsupported resource found for bucket action.
+            (
+                Statement {
+                    sid: "".to_string(),
+                    effect: ALLOW,
+                    principal: principal!("*".to_string()),
+                    actions: actionset!(GET_BUCKET_LIFECYCLE_ACTION, PUT_OBJECT_ACTION),
+                    resources: ResourceSet::new(vec![Resource::new(
+                        "mybucket".to_string(),
+                        "myobject*".to_string(),
+                    )]),
+                    conditions: Default::default(),
+                },
+                true,
+            ),
+            // Unsupported condition key for action.
+            (
+                Statement {
+                    sid: "".to_string(),
+                    effect: ALLOW,
+                    principal: principal!("*".to_string()),
+                    actions: actionset!(GET_OBJECT_ACTION, PUT_OBJECT_ACTION),
+                    resources: ResourceSet::new(vec![Resource::new(
+                        "mybucket".to_string(),
+                        "myobject*".to_string(),
+                    )]),
+                    conditions: condition::Functions::new(vec![func1.clone(), func2]),
+                },
+                true,
+            ),
+            (
+                Statement {
+                    sid: "".to_string(),
+                    effect: DENY,
+                    principal: principal!("*".to_string()),
+                    actions: actionset!(GET_OBJECT_ACTION, PUT_OBJECT_ACTION),
+                    resources: ResourceSet::new(vec![Resource::new(
+                        "mybucket".to_string(),
+                        "myobject*".to_string(),
+                    )]),
+                    conditions: condition::Functions::new(vec![func1]),
+                },
+                false,
+            ),
+        ];
+
+        for (statement, expect_err) in cases {
+            if expect_err {
+                assert_err!(statement.is_valid());
+            } else {
+                assert_ok!(statement.is_valid());
+            }
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_statement_serialize_json() -> anyhow::Result<()> {
+        let statement1 = Statement {
+            sid: "SomeId1".to_string(),
+            effect: ALLOW,
+            principal: principal!("*".to_string()),
+            actions: actionset!(PUT_OBJECT_ACTION),
+            resources: ResourceSet::new(vec![Resource::new(
+                "mybucket".to_string(),
+                "/myobject*".to_string(),
+            )]),
+            conditions: Default::default(),
+        };
+
+        let data1 = r#"{"Sid":"SomeId1","Effect":"Allow","Principal":{"AWS":["*"]},"Action":["s3:PutObject"],"Resource":["arn:aws:s3:::mybucket/myobject*"]}"#;
+
+        let func1 = condition::new_null_func(
+            condition::S3X_AMZ_COPY_SOURCE,
+            condition::ValueSet::new(vec![condition::Value::Bool(true)]),
+        )?;
+
+        let statement2 = Statement {
+            sid: "".to_string(),
+            effect: ALLOW,
+            principal: principal!("*".to_string()),
+            actions: actionset!(PUT_OBJECT_ACTION),
+            resources: ResourceSet::new(vec![Resource::new(
+                "mybucket".to_string(),
+                "/myobject*".to_string(),
+            )]),
+            conditions: condition::Functions::new(vec![func1.clone()]),
+        };
+
+        let data2 = r#"{"Effect":"Allow","Principal":{"AWS":["*"]},"Action":["s3:PutObject"],"Resource":["arn:aws:s3:::mybucket/myobject*"],"Condition":{"Null":{"s3:x-amz-copy-source":[true]}}}"#;
+
+        let func2 = condition::new_null_func(
+            condition::S3X_AMZ_SERVER_SIDE_ENCRYPTION,
+            condition::ValueSet::new(vec![condition::Value::Bool(false)]),
+        )?;
+
+        let statement3 = Statement {
+            sid: "".to_string(),
+            effect: DENY,
+            principal: principal!("*".to_string()),
+            actions: actionset!(PUT_OBJECT_ACTION),
+            resources: ResourceSet::new(vec![Resource::new(
+                "mybucket".to_string(),
+                "/myobject*".to_string(),
+            )]),
+            conditions: condition::Functions::new(vec![func2.clone()]),
+        };
+
+        let data3 = r#"{"Effect":"Deny","Principal":{"AWS":["*"]},"Action":["s3:PutObject"],"Resource":["arn:aws:s3:::mybucket/myobject*"],"Condition":{"Null":{"s3:x-amz-server-side-encryption":[false]}}}"#;
+
+        let statement4 = Statement {
+            sid: "".to_string(),
+            effect: ALLOW,
+            principal: principal!("*".to_string()),
+            actions: actionset!(GET_OBJECT_ACTION, PUT_OBJECT_ACTION),
+            resources: ResourceSet::new(vec![Resource::new(
+                "mybucket".to_string(),
+                "myobject*".to_string(),
+            )]),
+            conditions: condition::Functions::new(vec![func1, func2]),
+        };
+
+        let cases = [
+            (statement1, data1, false),
+            (statement2, data2, false),
+            (statement3, data3, false),
+            (statement4, "", true),
+        ];
+
+        for (statement, expected_result, expect_err) in cases {
+            let result = serde_json::to_string(&statement);
+
+            match result {
+                Ok(result) => assert_eq!(result, expected_result),
+                Err(_) => assert!(expect_err),
+            }
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_statement_deserialize_json() -> anyhow::Result<()> {
+        let data1 = r#"{
+            "Sid": "SomeId1",
+            "Effect": "Allow",
+            "Principal": "*",
+            "Action": "s3:PutObject",
+            "Resource": "arn:aws:s3:::mybucket/myobject*"
+        }"#;
+
+        let statement1 = Statement {
+            sid: "SomeId1".to_string(),
+            effect: ALLOW,
+            principal: principal!("*".to_string()),
+            actions: actionset!(PUT_OBJECT_ACTION),
+            resources: ResourceSet::new(vec![Resource::new(
+                "mybucket".to_string(),
+                "/myobject*".to_string(),
+            )]),
+            conditions: Default::default(),
+        };
+
+        let data2 = r#"{
+            "Effect": "Allow",
+            "Principal": "*",
+            "Action": "s3:PutObject",
+            "Resource": "arn:aws:s3:::mybucket/myobject*",
+            "Condition": {
+                "Null": {
+                    "s3:x-amz-copy-source": true
+                }
+            }
+        }"#;
+
+        let func1 = condition::new_null_func(
+            condition::S3X_AMZ_COPY_SOURCE,
+            condition::ValueSet::new(vec![condition::Value::Bool(true)]),
+        )?;
+
+        let statement2 = Statement {
+            sid: "".to_string(),
+            effect: ALLOW,
+            principal: principal!("*".to_string()),
+            actions: actionset!(PUT_OBJECT_ACTION),
+            resources: ResourceSet::new(vec![Resource::new(
+                "mybucket".to_string(),
+                "/myobject*".to_string(),
+            )]),
+            conditions: condition::Functions::new(vec![func1]),
+        };
+
+        let data3 = r#"{
+            "Sid": "",
+            "Effect": "Deny",
+            "Principal": {
+                "AWS": "*"
+            },
+            "Action": [
+                "s3:PutObject",
+                "s3:GetObject"
+            ],
+            "Resource": "arn:aws:s3:::mybucket/myobject*",
+            "Condition": {
+                "Null": {
+                    "s3:x-amz-server-side-encryption": "false"
+                }
+            }
+        }"#;
+
+        let func2 = condition::new_null_func(
+            condition::S3X_AMZ_SERVER_SIDE_ENCRYPTION,
+            condition::ValueSet::new(vec![condition::Value::Bool(false)]),
+        )?;
+
+        let statement3 = Statement {
+            sid: "".to_string(),
+            effect: DENY,
+            principal: principal!("*".to_string()),
+            actions: actionset!(PUT_OBJECT_ACTION, GET_OBJECT_ACTION),
+            resources: ResourceSet::new(vec![Resource::new(
+                "mybucket".to_string(),
+                "/myobject*".to_string(),
+            )]),
+            conditions: condition::Functions::new(vec![func2]),
+        };
+
+        let data4 = r#"{
+            "Effect": "Allow",
+            "Principal": "Q3AM3UQ867SPQQA43P2F",
+            "Action": "s3:PutObject",
+            "Resource": "arn:aws:s3:::mybucket/myobject*"
+        }"#;
+
+        let data5 = r#"{
+            "Principal": "*",
+            "Action": "s3:PutObject",
+            "Resource": "arn:aws:s3:::mybucket/myobject*"
+        }"#;
+
+        let data6 = r#"{
+            "Effect": "Allow",
+            "Action": "s3:PutObject",
+            "Resource": "arn:aws:s3:::mybucket/myobject*"
+        }"#;
+
+        let data7 = r#"{
+            "Effect": "Allow",
+            "Principal": "*",
+            "Resource": "arn:aws:s3:::mybucket/myobject*"
+        }"#;
+
+        let data8 = r#"{
+            "Effect": "Allow",
+            "Principal": "*",
+            "Action": "s3:PutObject"
+        }"#;
+
+        let data9 = r#"{
+            "Effect": "Allow",
+            "Principal": "*",
+            "Action": "s3:PutObject",
+            "Resource": "arn:aws:s3:::mybucket/myobject*",
+            "Condition": {
+            }
+        }"#;
+
+        let data10 = r#"{
+            "Effect": "Deny",
+            "Principal": {
+                "AWS": "*"
+            },
+            "Action": [
+                "s3:PutObject",
+                "s3:GetObject"
+            ],
+            "Resource": "arn:aws:s3:::mybucket/myobject*",
+            "Condition": {
+                "StringEquals": {
+                    "s3:x-amz-copy-source": "yourbucket/myobject*"
+                }
+            }
+        }"#;
+
+        let cases = [
+            (data1, Some(statement1), false),
+            (data2, Some(statement2), false),
+            (data3, Some(statement3), false),
+            // JSON deserializing error.
+            (data4, None, true),
+            // Invalid effect error.
+            (data5, None, true),
+            // Empty principal error.
+            (data6, None, true),
+            // Empty action error.
+            (data7, None, true),
+            // Empty resource error.
+            (data8, None, true),
+            // Empty condition error.
+            (data9, None, true),
+            // Unsupported condition key error.
+            (data10, None, true),
+        ];
+
+        for (data, expected_result, expect_err) in cases {
+            let result = serde_json::from_str::<Statement>(data);
+
+            match result {
+                Ok(result) => {
+                    if let Some(expected_result) = expected_result {
+                        println!("{}", result == expected_result);
+                        assert!(result == expected_result);
+                    }
+                }
+                Err(err) => assert!(expect_err),
+            }
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_statement_validate() -> anyhow::Result<()> {
+        let statement1 = Statement {
+            sid: "".to_string(),
+            effect: ALLOW,
+            principal: principal!("*".to_string()),
+            actions: actionset!(PUT_OBJECT_ACTION),
+            resources: ResourceSet::new(vec![Resource::new(
+                "mybucket".to_string(),
+                "/myobject*".to_string(),
+            )]),
+            conditions: Default::default(),
+        };
+
+        let func1 = condition::new_null_func(
+            condition::S3X_AMZ_COPY_SOURCE,
+            condition::ValueSet::new(vec![condition::Value::Bool(true)]),
+        )?;
+
+        let func2 = condition::new_null_func(
+            condition::S3X_AMZ_SERVER_SIDE_ENCRYPTION,
+            condition::ValueSet::new(vec![condition::Value::Bool(false)]),
+        )?;
+
+        let statement2 = Statement {
+            sid: "".to_string(),
+            effect: ALLOW,
+            principal: principal!("*".to_string()),
+            actions: actionset!(GET_OBJECT_ACTION, PUT_OBJECT_ACTION),
+            resources: ResourceSet::new(vec![Resource::new(
+                "mybucket".to_string(),
+                "myobject*".to_string(),
+            )]),
+            conditions: condition::Functions::new(vec![func1, func2]),
+        };
+
+        let cases = [
+            (&statement1, "mybucket", false),
+            (&statement2, "mybucket", true),
+            (&statement1, "yourbucket", true),
+        ];
+
+        for (statement, bucket_name, expect_err) in cases {
+            if expect_err {
+                assert_err!(statement.validate(bucket_name));
+            } else {
+                assert_ok!(statement.validate(bucket_name));
+            }
+        }
+
+        Ok(())
+    }
+}

@@ -8,6 +8,7 @@ use trust_dns_resolver::proto::rr::record_type::RecordType::NULL;
 use super::{is_null_version_id, StorageError};
 use crate::fs::StdOpenOptionsNoAtime;
 use crate::prelude::*;
+use crate::storage::{FileInfo, FileInfoVersions};
 use crate::utils;
 use crate::utils::{DateTimeExt, StrExt};
 use crate::xl_storage::NULL_VERSION_ID;
@@ -139,17 +140,17 @@ pub struct XlMetaV2Object {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct XlMetaV2Version {
     #[serde(rename = "Type")]
-    type_: VersionType,
+    pub type_: VersionType,
     #[serde(rename = "V2Obj")]
-    object_v2: Option<XlMetaV2Object>,
+    pub object_v2: Option<XlMetaV2Object>,
     #[serde(rename = "DelObj")]
-    delete_marker: Option<XlMetaV2DeleteMarker>,
+    pub delete_marker: Option<XlMetaV2DeleteMarker>,
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Default)]
 pub struct XlMetaV2 {
     #[serde(rename = "Versions")]
-    versions: Vec<XlMetaV2Version>,
+    pub versions: Vec<XlMetaV2Version>,
     #[serde(skip)]
     pub(super) data: HashMap<String, Vec<u8>>,
 }
@@ -193,7 +194,7 @@ impl XlMetaV2Object {
         crate::bucket::is_restored_object_on_disk(&self.meta_user)
     }
 
-    fn to_file_info(&self, volume: &str, path: &str) -> anyhow::Result<crate::storage::FileInfo> {
+    fn to_file_info(&self, volume: &str, path: &str) -> anyhow::Result<FileInfo> {
         let mut parts = Vec::with_capacity(self.part_numbers.len());
         let mut checksums = Vec::with_capacity(parts.capacity());
         for i in 0..self.part_numbers.len() {
@@ -251,7 +252,7 @@ impl XlMetaV2Object {
                 .to_owned()
         };
         use crate::bucket::*;
-        Ok(crate::storage::FileInfo {
+        Ok(FileInfo {
             volume: volume.to_string(),
             name: path.to_string(),
             version_id: self.version_id.map(|u| u.to_string()).unwrap_or_default(),
@@ -265,7 +266,6 @@ impl XlMetaV2Object {
             data_dir: self.data_dir.map(|u| u.to_string()).unwrap_or_default(),
             mod_time: utils::DateTime::from_timestamp_nanos(self.mod_time),
             size: self.size,
-            mode: 0,
             metadata,
             parts,
             erasure: Some(erasure),
@@ -274,13 +274,13 @@ impl XlMetaV2Object {
             version_purge_status,
             data: vec![],
             num_versions: 0,
-            successor_mod_time: utils::MIN_DATETIME,
+            successor_mod_time: utils::DateTime::zero(),
         })
     }
 }
 
 impl XlMetaV2DeleteMarker {
-    fn to_file_info(&self, volume: &str, path: &str) -> anyhow::Result<crate::storage::FileInfo> {
+    fn to_file_info(&self, volume: &str, path: &str) -> anyhow::Result<FileInfo> {
         let mut delete_marker_replication_status = None;
         let mut version_purge_status = None;
         for (k, v) in &self.meta_sys {
@@ -291,7 +291,7 @@ impl XlMetaV2DeleteMarker {
             }
         }
 
-        Ok(crate::storage::FileInfo {
+        Ok(FileInfo {
             volume: volume.to_string(),
             name: path.to_string(),
             version_id: self.version_id.map(|u| u.to_string()).unwrap_or_default(),
@@ -305,7 +305,6 @@ impl XlMetaV2DeleteMarker {
             data_dir: "".to_string(),
             mod_time: utils::DateTime::from_timestamp_nanos(self.mod_time),
             size: 0,
-            mode: 0,
             metadata: Default::default(),
             parts: vec![],
             erasure: None,
@@ -314,7 +313,7 @@ impl XlMetaV2DeleteMarker {
             version_purge_status: None,
             data: vec![],
             num_versions: 0,
-            successor_mod_time: utils::MIN_DATETIME,
+            successor_mod_time: utils::DateTime::zero(),
         })
     }
 }
@@ -322,7 +321,7 @@ impl XlMetaV2DeleteMarker {
 const XL_META_INLINE_DATA_VERSION: u8 = 1;
 
 impl XlMetaV2 {
-    pub fn add_version(&mut self, fi: &crate::storage::FileInfo) -> anyhow::Result<()> {
+    pub fn add_version(&mut self, fi: &FileInfo) -> anyhow::Result<()> {
         let version_id: &str = if !fi.version_id.is_empty() {
             &fi.version_id
         } else {
@@ -448,7 +447,7 @@ impl XlMetaV2 {
         Ok(())
     }
 
-    pub fn update_version(&mut self, fi: &crate::storage::FileInfo) -> anyhow::Result<()> {
+    pub fn update_version(&mut self, fi: &FileInfo) -> anyhow::Result<()> {
         let version_id: &str = if !fi.version_id.is_empty() {
             &fi.version_id
         } else {
@@ -477,7 +476,7 @@ impl XlMetaV2 {
                                 object_v2.meta_user.insert(k.to_owned(), v.to_owned());
                             }
                         }
-                        if !fi.mod_time.is_min() {
+                        if !fi.mod_time.is_zero() {
                             object_v2.mod_time = fi.mod_time.timestamp_nanos();
                         }
                         return Ok(());
@@ -496,7 +495,7 @@ impl XlMetaV2 {
         &self,
         volume: &str,
         path: &str,
-    ) -> anyhow::Result<(Vec<crate::storage::FileInfo>, utils::DateTime)> {
+    ) -> anyhow::Result<(Vec<FileInfo>, utils::DateTime)> {
         let mut versions = Vec::new();
         for version in &self.versions {
             if !version.valid() {
@@ -546,7 +545,7 @@ impl XlMetaV2 {
         volume: &str,
         path: &str,
         version_id: &str,
-    ) -> anyhow::Result<crate::storage::FileInfo> {
+    ) -> anyhow::Result<FileInfo> {
         let uv = if !is_null_version_id(version_id) {
             Some(
                 uuid::Uuid::parse_str(&version_id)
@@ -634,10 +633,7 @@ impl XlMetaV2 {
         };
     }
 
-    pub fn delete_version(
-        &mut self,
-        fi: &crate::storage::FileInfo,
-    ) -> anyhow::Result<(String, bool)> {
+    pub fn delete_version(&mut self, fi: &FileInfo) -> anyhow::Result<(String, bool)> {
         let version_id = if !fi.version_id.is_empty() {
             Some(
                 uuid::Uuid::parse_str(&fi.version_id)
@@ -982,13 +978,29 @@ impl XlMetaV2 {
     }
 }
 
+pub fn get_file_info_versions(
+    xl_meta: &[u8],
+    volume: &str,
+    path: &str,
+) -> anyhow::Result<FileInfoVersions> {
+    let xl_meta = XlMetaV2::load_with_data(xl_meta)?;
+    let (versions, latest_mod_time) = xl_meta.list_versions(volume, path)?;
+    Ok(FileInfoVersions {
+        volume: volume.to_owned(),
+        name: path.to_owned(),
+        is_empty_dir: false,
+        latest_mod_time,
+        versions,
+    })
+}
+
 pub fn get_file_info(
     xl_meta: &[u8],
     volume: &str,
     path: &str,
     version_id: &str,
     read_data: bool,
-) -> anyhow::Result<crate::storage::FileInfo> {
+) -> anyhow::Result<FileInfo> {
     let mut xl_meta = XlMetaV2::load_with_data(xl_meta)?;
     let mut fi = xl_meta.to_file_info(volume, path, version_id)?;
     if !read_data {
@@ -1017,15 +1029,11 @@ fn get_mod_time_from_version(v: &XlMetaV2Version) -> utils::DateTime {
 
 #[cfg(test)]
 mod tests {
-    use std::hash::Hash;
-    use std::ptr::hash;
-
     use maplit::hashmap;
 
     use super::*;
     use crate::bitrot::BitrotAlgorithm;
     use crate::bucket::{RestoreStatus, TransitionStatus};
-    use crate::storage::{FileInfo, VersionPurgeStatus};
     use crate::utils;
     use crate::utils::assert::{assert_err, assert_ok};
     use crate::utils::{now, ChronoDuration, DateTime};
@@ -1077,7 +1085,6 @@ mod tests {
             data_dir: String::from("bffea160-ca7f-465f-98bc-9b4f1c3ba1ef"),
             mod_time: utils::now(),
             size: 0,
-            mode: 0,
             metadata: HashMap::new(),
             parts: Vec::new(),
             erasure: Some(ErasureInfo {
@@ -1098,7 +1105,7 @@ mod tests {
             version_purge_status: None,
             data: data.to_vec(),
             num_versions: 1,
-            successor_mod_time: utils::MIN_DATETIME,
+            successor_mod_time: utils::DateTime::zero(),
         };
 
         assert_ok!(xl.add_version(&fi));
@@ -1419,7 +1426,6 @@ mod tests {
                 data_dir: data_dir.to_string(),
                 mod_time: utils::now(),
                 size: 0,
-                mode: 0,
                 metadata: HashMap::new(),
                 parts: Vec::new(),
                 erasure: Some(ErasureInfo {
@@ -1440,7 +1446,7 @@ mod tests {
                 version_purge_status: None,
                 data: data.to_vec(),
                 num_versions: 1,
-                successor_mod_time: utils::MIN_DATETIME,
+                successor_mod_time: utils::DateTime::zero(),
             };
             if fi.data.len() == 0 {
                 fi.size = 42;

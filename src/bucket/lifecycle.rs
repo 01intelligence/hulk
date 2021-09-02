@@ -6,7 +6,7 @@ use strum::Display;
 
 use super::*;
 use crate::prelude::*;
-use crate::utils::{now, DateTime, DateTimeFormatExt, MIN_DATETIME};
+use crate::utils::{self, now, DateTime, DateTimeExt, DateTimeFormatExt};
 
 pub const TRANSITION_STATUS: &str = "transition-status";
 pub const TRANSITIONED_OBJECT_NAME: &str = "transitioned-object";
@@ -156,7 +156,7 @@ impl RestoreStatus {
     pub fn ongoing() -> RestoreStatus {
         return RestoreStatus {
             ongoing: true,
-            expiry: MIN_DATETIME,
+            expiry: utils::DateTime::zero(),
         };
     }
 

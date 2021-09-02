@@ -53,6 +53,7 @@ pub struct FileInfoVersions {
     pub versions: Vec<FileInfo>,
 }
 
+#[derive(Default, Clone)]
 pub struct FileInfo {
     pub volume: String,
     pub name: String,
@@ -80,8 +81,6 @@ pub struct FileInfo {
     pub mod_time: utils::DateTime,
     /// Total file size.
     pub size: u64,
-    /// File mode bits.
-    pub mode: u32,
     /// File Metadata.
     pub metadata: HashMap<String, String>,
 

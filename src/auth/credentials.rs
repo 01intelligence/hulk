@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::jwt::MapClaims;
+use crate::utils::DateTimeExt;
 use crate::{jwt, utils};
 
 // Minimum length for Hulk access key.
@@ -43,7 +44,7 @@ pub fn is_secret_key_valid(secret_key: &str) -> bool {
 }
 
 lazy_static! {
-    static ref TIME_SENTINEL: utils::DateTime = *utils::UNIX_EPOCH;
+    static ref TIME_SENTINEL: utils::DateTime = utils::DateTime::unix_epoch();
 }
 const TIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S%.9f %z %Z";
 

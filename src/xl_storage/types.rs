@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{bitrot, utils};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct ObjectPartInfo {
     #[serde(skip_serializing_if = "String::is_empty")]
     pub etag: String,
@@ -13,6 +13,7 @@ pub struct ObjectPartInfo {
 }
 
 /// Holds erasure-coding and bitrot related information.
+#[derive(Clone)]
 pub struct ErasureInfo {
     /// Erasure-coding algorithm.
     pub algorithm: String,
@@ -31,6 +32,7 @@ pub struct ErasureInfo {
 }
 
 /// Checksum of individual scattered part.
+#[derive(Clone)]
 pub struct ChecksumInfo {
     pub part_number: usize,
     pub algorithm: bitrot::BitrotAlgorithm,

@@ -28,7 +28,7 @@ opentelemetry = "0.14.0"
 opentelemetry-jaeger = "0.13.0"
 derivative = "2.2.0"
 backtrace = "0.3.59"
-chrono = { version = "0.4.19", default-features = false, features = ["std", "clock", "serde"] }
+chrono = { version = "0.4.19", default-features = false, features = ["std", "clock", "serde", "datetime_default"] }
 highway = "0.6.4"
 hex-literal = "0.3.1"
 byteorder = "1.4.3"
@@ -129,6 +129,7 @@ quick-xml = { git = 'https://github.com/01intelligence/quick-xml', branch = 'gol
 mime = { git = 'https://github.com/01intelligence/mime', branch = '0.3.x' }
 camino = { git = 'https://github.com/01intelligence/camino', branch = 'master' }
 slog-term = { git = 'https://github.com/01intelligence/term', branch = 'master' }
+chrono = { git = 'https://github.com/01intelligence/chrono', branch = 'v0.4.19' }
 
 [target.'cfg(unix)'.dependencies]
 pprof = "0.4.3"

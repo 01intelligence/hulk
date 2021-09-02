@@ -7,10 +7,9 @@ pub type DateTime = chrono::DateTime<Utc>;
 pub type ChronoDuration = chrono::Duration;
 
 lazy_static! {
-    pub static ref UNIX_EPOCH: DateTime = Utc.timestamp(0, 0);
+    static ref ZERO_DATETIME: DateTime = Utc.ymd(1, 1, 1).and_hms(0, 0, 0);
+    static ref UNIX_EPOCH: DateTime = Utc.timestamp(0, 0);
 }
-
-pub const MIN_DATETIME: DateTime = chrono::MIN_DATETIME;
 
 pub fn now() -> DateTime {
     Utc::now()
@@ -24,7 +23,10 @@ pub trait DateTimeExt<Tz: TimeZone> {
     fn duration_since(self, earlier: chrono::DateTime<Tz>) -> Duration;
     /// Returns the amount of time between another datetime and this one,
     fn duration_offset(self, other: chrono::DateTime<Tz>) -> Duration;
-    fn is_min(&self) -> bool;
+    fn unix_epoch() -> DateTime;
+    fn zero() -> DateTime;
+    fn is_zero(&self) -> bool;
+    fn is_unix_epoch(&self) -> bool;
     fn from_timestamp_nanos(nanos_since_unix_epoch: i64) -> Self;
 }
 
@@ -49,8 +51,20 @@ impl DateTimeExt<Utc> for DateTime {
         }
     }
 
-    fn is_min(&self) -> bool {
-        self == &chrono::MIN_DATETIME
+    fn unix_epoch() -> DateTime {
+        *UNIX_EPOCH
+    }
+
+    fn zero() -> DateTime {
+        *ZERO_DATETIME
+    }
+
+    fn is_zero(&self) -> bool {
+        self == &*ZERO_DATETIME
+    }
+
+    fn is_unix_epoch(&self) -> bool {
+        self == &*UNIX_EPOCH
     }
 
     fn from_timestamp_nanos(nanos_since_unix_epoch: i64) -> Self {
@@ -159,6 +173,25 @@ impl DateTimeFormatExt for chrono::DateTime<Utc> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_datetime_zero_default_unix_epoch() {
+        let zero = DateTime::zero();
+        let default = DateTime::default();
+        let epoch = DateTime::unix_epoch();
+        println!("DateTime zero: {}", zero);
+        println!("DateTime default: {}", default);
+        println!("DateTime unix epoch: {}", epoch);
+        assert_eq!(zero, default);
+        assert!(zero.is_zero());
+        assert!(default.is_zero());
+        assert!(!epoch.is_zero());
+        // assert!(!now().is_zero());
+        assert!(!zero.is_unix_epoch());
+        assert!(!default.is_unix_epoch());
+        assert!(epoch.is_unix_epoch());
+        // assert!(!now().is_unix_epoch());
+    }
 
     #[test]
     fn test_datetime_format_and_parse() {

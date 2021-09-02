@@ -5,6 +5,7 @@ mod with_check;
 use std::io::{Error, ErrorKind, SeekFrom};
 
 pub use format_utils::*;
+pub use format_v2::*;
 use futures_util::{ready, FutureExt};
 use lazy_static::lazy_static;
 use path_absolutize::Absolutize;
@@ -27,8 +28,7 @@ use crate::object::{self, path_ensure_dir, path_is_dir, path_join};
 use crate::pool::{TypedPool, TypedPoolGuard};
 use crate::prelude::*;
 use crate::storage::FileInfo;
-use crate::utils::{BufGuard, Path, PathBuf};
-use crate::xl_storage::format_v2::{get_file_info, is_xl2_v1_format, XlMetaV2};
+use crate::utils::{BufGuard, DateTimeExt, Path, PathBuf};
 use crate::{config, fs, globals, storage, utils};
 
 const NULL_VERSION_ID: &str = "null";
@@ -115,7 +115,7 @@ impl XlStorage {
     }
 
     pub fn last_conn(&self) -> utils::DateTime {
-        utils::MIN_DATETIME
+        utils::DateTime::zero()
     }
 
     pub fn is_local(&self) -> bool {
@@ -335,7 +335,7 @@ impl XlStorage {
                 }
                 Some(storage::VolInfo {
                     name: entry,
-                    created: utils::MIN_DATETIME,
+                    created: utils::DateTime::zero(),
                 })
             })
             .collect())

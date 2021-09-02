@@ -847,8 +847,7 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 [[package]]
 name = "chrono"
 version = "0.4.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "670ad68c9088c2a963aaa298cb369688cf3f9465ce5e2d4ca10e6e0098a1ce73"
+source = "git+https://github.com/01intelligence/chrono?branch=v0.4.19#82e820f5db9709e7baf8a52a8f0cbf10cb2911df"
 dependencies = [
  "libc",
  "num-integer",

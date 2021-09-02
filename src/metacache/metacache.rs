@@ -1,4 +1,4 @@
-use crate::utils::Duration;
+use crate::utils::{self, DateTimeExt, Duration};
 
 pub(super) enum ScanStatus {
     None,
@@ -18,3 +18,27 @@ pub const METACACHE_BLOCK_SIZE: usize = 5000;
 // Enabling this will make cache sharing more likely and cause less IO,
 // but may cause additional latency to some calls.
 pub const METACACHE_SHARE_PREFIX: bool = false;
+
+pub struct Metacache {
+    id: String,
+    bucket: String,
+    root: String,
+    recursive: bool,
+    filter: String,
+    status: ScanStatus,
+    file_not_found: bool,
+    error: Option<String>,
+    started: utils::DateTime,
+    ended: utils::DateTime,
+    last_update: utils::DateTime,
+    last_handout: utils::DateTime,
+    started_cycle: u64,
+    ended_cycle: u64,
+    data_version: u8,
+}
+
+impl Metacache {
+    fn finished(&self) -> bool {
+        !self.ended.is_zero()
+    }
+}

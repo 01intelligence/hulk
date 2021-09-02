@@ -16,6 +16,7 @@
 #![feature(io_error_uncategorized)]
 #![feature(async_closure)]
 #![feature(box_into_pin)]
+#![feature(is_sorted)]
 
 pub mod admin;
 pub mod auth;

@@ -108,7 +108,7 @@ pub(super) fn new_string_equals_func(
     Ok(Box::new(StringEqualsFunc { key, values: set }))
 }
 
-pub(super) fn new_string_not_equals_func(
+pub(in super::super) fn new_string_not_equals_func(
     key: Key,
     values: ValueSet,
 ) -> anyhow::Result<Box<dyn Function + '_>> {

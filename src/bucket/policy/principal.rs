@@ -99,7 +99,7 @@ impl<'de> Deserialize<'de> for Principal {
 #[macro_export]
 macro_rules! principal {
     ($($e:expr),*) => {{
-        use crate::string_set;
+        use crate::strset::StringSet;
         let mut set = StringSet::default();
         $(
             set.add($e);

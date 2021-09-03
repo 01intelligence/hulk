@@ -445,6 +445,12 @@ impl<'a> ActionSet<'a> {
     }
 }
 
+impl<'a> Default for ActionSet<'a> {
+    fn default() -> Self {
+        Self(HashSet::new())
+    }
+}
+
 impl<'a> super::ToVec<Action<'a>> for ActionSet<'a> {
     fn to_vec(&self) -> Vec<Action<'a>> {
         self.0.iter().cloned().collect()
@@ -534,7 +540,8 @@ impl<'de, 'a> Deserialize<'de> for ActionSet<'a> {
 #[macro_export]
 macro_rules! actionset {
     ($($e:expr),*) => {{
-        let mut set = ActionSet(HashSet::new());
+        use crate::bucket::policy::ActionSet;
+        let mut set = ActionSet::default();
         $(
             set.insert($e);
         )*

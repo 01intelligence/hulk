@@ -65,7 +65,7 @@ pnet = "0.28.0"
 # uom = { version = "0.31.1", features = ["usize", "u8", "u16", "u32", "u64", "u128", "isize", "i8", "i16", "i32", "i64", "i128"] }
 path-absolutize = "3.0.10"
 actix-rt = "2.2.0"
-actix-server = "1.0.4"
+actix-server = "2.0.0-beta.5"
 const_format = "0.2.14"
 trust-dns-resolver = "0.20.3"
 reqwest = { version = "0.11.4", default-features = false, features = ["rustls-tls"] }
@@ -115,6 +115,8 @@ num-traits = "0.2.14"
 scopeguard = "1.1.0"
 itertools = "0.10.1"
 digest = "0.9.0"
+arcstr = "1.1.1"
+snap = "1.0.5"
 
 [dependencies.actix-cors]
 git = 'https://github.com/actix/actix-extras'
@@ -130,6 +132,7 @@ mime = { git = 'https://github.com/01intelligence/mime', branch = '0.3.x' }
 camino = { git = 'https://github.com/01intelligence/camino', branch = 'master' }
 slog-term = { git = 'https://github.com/01intelligence/term', branch = 'master' }
 chrono = { git = 'https://github.com/01intelligence/chrono', branch = 'v0.4.19' }
+rmp = { git = 'https://github.com/01intelligence/msgpack-rust', branch = 'rmp/v0.8.10' }
 
 [target.'cfg(unix)'.dependencies]
 pprof = "0.4.3"

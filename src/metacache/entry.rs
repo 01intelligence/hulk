@@ -6,13 +6,21 @@ use crate::storage::{FileInfo, FileInfoVersions};
 use crate::xl_storage::{VersionType, XlMetaV2};
 
 pub struct MetaCacheEntry {
-    name: String,
+    pub name: String,
     // Use `Arc` to avoid copy overhead.
-    metadata: Arc<Vec<u8>>,
+    pub metadata: Arc<Vec<u8>>,
     cached: RefCell<Option<FileInfo>>,
 }
 
 impl MetaCacheEntry {
+    pub fn new(name: String, metadata: Arc<Vec<u8>>) -> Self {
+        Self {
+            name,
+            metadata,
+            cached: RefCell::new(None),
+        }
+    }
+
     fn is_dir(&self) -> bool {
         self.metadata.is_empty()
     }

@@ -1,6 +1,7 @@
+use super::*;
 use crate::utils::{self, DateTimeExt, Duration};
 
-pub(super) enum ScanStatus {
+pub enum ScanStatus {
     None,
     Started,
     Success,
@@ -19,26 +20,47 @@ pub const METACACHE_BLOCK_SIZE: usize = 5000;
 // but may cause additional latency to some calls.
 pub const METACACHE_SHARE_PREFIX: bool = false;
 
-pub struct Metacache {
-    id: String,
-    bucket: String,
-    root: String,
-    recursive: bool,
-    filter: String,
-    status: ScanStatus,
-    file_not_found: bool,
-    error: Option<String>,
-    started: utils::DateTime,
-    ended: utils::DateTime,
-    last_update: utils::DateTime,
-    last_handout: utils::DateTime,
-    started_cycle: u64,
-    ended_cycle: u64,
-    data_version: u8,
+/// Represents a tracked cache entry.
+pub struct MetaCache {
+    pub id: String,
+    pub bucket: String,
+    pub root: String,
+    pub recursive: bool,
+    pub filter: String,
+    pub status: ScanStatus,
+    pub file_not_found: bool,
+    pub error: Option<String>,
+    pub started: utils::DateTime,
+    pub ended: utils::DateTime,
+    pub last_update: utils::DateTime,
+    pub last_handout: utils::DateTime,
+    pub started_cycle: u64,
+    pub ended_cycle: u64,
+    pub data_version: u8,
 }
 
-impl Metacache {
+impl MetaCache {
     fn finished(&self) -> bool {
         !self.ended.is_zero()
+    }
+
+    fn matches(&self, options: &ListPathOptions, extend: Duration) -> bool {
+        todo!()
+    }
+
+    fn worth_keeping(&self, current_cycle: u64) -> bool {
+        todo!()
+    }
+
+    fn can_be_replaced_by(&self, other: &MetaCache) -> bool {
+        todo!()
+    }
+
+    fn update(&mut self, update: &MetaCache) {
+        todo!()
+    }
+
+    async fn delete(&mut self) {
+        todo!()
     }
 }

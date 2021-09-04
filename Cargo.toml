@@ -117,6 +117,7 @@ itertools = "0.10.1"
 digest = "0.9.0"
 arcstr = "1.1.1"
 snap = "1.0.5"
+num-bigint = "0.4.2"
 
 [dependencies.actix-cors]
 git = 'https://github.com/actix/actix-extras'

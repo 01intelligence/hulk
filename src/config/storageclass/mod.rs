@@ -297,8 +297,8 @@ mod tests {
             ("", false),
             ("INVALID", false),
             ("123", false),
-            ("MINIO_STORAGE_CLASS_RRS", false),
-            ("MINIO_STORAGE_CLASS_STANDARD", false),
+            ("HULK_STORAGE_CLASS_RRS", false),
+            ("HULK_STORAGE_CLASS_STANDARD", false),
         ];
         for (sc, want) in cases.iter() {
             let result = is_valid(sc);

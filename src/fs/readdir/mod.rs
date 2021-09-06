@@ -111,6 +111,13 @@ pub async fn read_dir_entries_n(
     Ok(entries)
 }
 
+pub async fn is_dir_empty(dir_path: impl AsRef<Path>) -> bool {
+    match read_dir_entries_n(dir_path, 1).await {
+        Ok(entries) => entries.len() == 1,
+        Err(_) => false,
+    }
+}
+
 pub async fn asyncify<F, T>(f: F) -> io::Result<T>
 where
     F: FnOnce() -> io::Result<T> + Send + 'static,

@@ -105,8 +105,14 @@ impl StorageApi {
             StorageApi::XlStorage(inner) => inner.delete_volume(volume, force_delete).await,
         }
     }
-    pub async fn walk_dir(&self) -> anyhow::Result<()> {
-        todo!()
+    pub async fn walk_dir<W: AsyncWrite + Unpin + Send + 'static>(
+        &self,
+        opts: crate::metacache::WalkDirOptions,
+        w: W,
+    ) -> anyhow::Result<()> {
+        match self {
+            StorageApi::XlStorage(inner) => inner.walk_dir(opts, w).await,
+        }
     }
     pub async fn delete_version(
         &self,

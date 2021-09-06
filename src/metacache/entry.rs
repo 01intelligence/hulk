@@ -5,6 +5,7 @@ use crate::object::ObjectInfo;
 use crate::storage::{FileInfo, FileInfoVersions};
 use crate::xl_storage::{VersionType, XlMetaV2};
 
+#[derive(Debug)]
 pub struct MetaCacheEntry {
     pub name: String,
     // Use `Arc` to avoid copy overhead.

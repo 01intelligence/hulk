@@ -947,7 +947,7 @@ impl XlMetaV2 {
         tokio::task::spawn_blocking(move || Self::load_from_reader(&mut reader)).await?
     }
 
-    fn load_from_reader<R: std::io::BufRead>(reader: &mut R) -> anyhow::Result<XlMetaV2> {
+    fn load_from_reader<R: std::io::Read>(reader: &mut R) -> anyhow::Result<XlMetaV2> {
         let mut buf = [0u8; 8];
         reader.read_exact(&mut buf)?;
         let (_, major, minor) = check_xl2_v1(&buf)?;

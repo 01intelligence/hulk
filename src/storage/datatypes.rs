@@ -53,7 +53,7 @@ pub struct FileInfoVersions {
     pub versions: Vec<FileInfo>,
 }
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Debug)]
 pub struct FileInfo {
     pub volume: String,
     pub name: String,
@@ -104,7 +104,7 @@ pub struct FileInfo {
 pub const VERSION_PURGE_STATUS_KEY: &str = "purgestatus";
 
 // Represents status of a versioned delete or permanent delete w.r.t bucket replication.
-#[derive(Serialize, Deserialize, Clone, Copy, Display, EnumString, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Display, EnumString, PartialEq)]
 pub enum VersionPurgeStatus {
     #[serde(rename = "PENDING")]
     #[strum(serialize = "PENDING")]

@@ -2,6 +2,7 @@ mod format_utils;
 mod format_v2;
 mod types;
 mod with_check;
+use std::fs::Metadata;
 use std::io::{Error, ErrorKind, SeekFrom};
 
 pub use format_utils::*;
@@ -24,6 +25,7 @@ use crate::fs::{
 };
 use crate::globals::Guard;
 use crate::io::{AsyncReadAt, AsyncReadFull};
+use crate::metacache::MetaCacheEntry;
 use crate::object::{self, path_ensure_dir, path_is_dir, path_join};
 use crate::pool::{TypedPool, TypedPoolGuard};
 use crate::prelude::*;
@@ -1416,6 +1418,240 @@ impl XlStorage {
         // Just add a small 64k buffer.
         let reader = tokio::io::BufReader::with_capacity(64 << 10, reader);
         Ok(Box::new(reader))
+    }
+
+    pub async fn walk_dir<W: AsyncWrite + Unpin + Send + 'static>(
+        &self,
+        opts: crate::metacache::WalkDirOptions,
+        w: W,
+    ) -> anyhow::Result<()> {
+        let volume_dir = self.get_volume_dir(&opts.bucket)?;
+
+        if let Err(err) = fs::access(&volume_dir).await {
+            return if err_not_found(&err) {
+                Err(StorageError::VolumeNotFound.into())
+            } else if err_io(&err) {
+                Err(StorageError::FaultyDisk.into())
+            } else {
+                Err(err.into())
+            };
+        }
+
+        let mut w = crate::metacache::MetaCacheWriter::new(crate::io::AsyncWriteStdWriter::new(w));
+        let (handle, tx) = w.write_sender()?;
+
+        let closure = async move || {
+            if let Some(base_dir) = opts.base_dir.strip_suffix(globals::SLASH_SEPARATOR) {
+                match XlMetaV2::load_from_file(&path_join(&[
+                    &volume_dir,
+                    &(base_dir.to_owned() + globals::GLOBAL_DIR_SUFFIX),
+                    XL_STORAGE_FORMAT_FILE,
+                ]))
+                .await
+                {
+                    Ok(xl_meta) => {
+                        let xl_meta = xl_meta.dump()?; // TODO
+                        let permit = tx.reserve().await?;
+                        permit.send(MetaCacheEntry::new(
+                            opts.base_dir.clone(),
+                            Arc::new(xl_meta),
+                        ));
+                    }
+                    Err(_) => {
+                        match fs::metadata(&path_join(&[
+                            &volume_dir,
+                            &opts.base_dir,
+                            XL_STORAGE_FORMAT_FILE,
+                        ]))
+                        .await
+                        {
+                            Ok(meta) => {
+                                if meta.is_file() {
+                                    return Err(StorageError::FileNotFound.into());
+                                }
+                            }
+                            Err(_) => {}
+                        }
+                    }
+                }
+            }
+
+            let forward = &opts.forward_to as &str;
+            let cur_dir = Cow::Borrowed(&opts.base_dir as &str);
+
+            self.walk_dir_inner(&opts, &volume_dir, &tx, forward, cur_dir)
+                .await
+        };
+
+        closure().await?;
+        let mut w = handle.await??;
+        w.close()
+    }
+
+    fn walk_dir_inner<'a, 'b: 'a, 'c: 'a, 'd: 'a, 'e: 'a, 'f: 'a, 'g: 'a>(
+        &'b self,
+        opts: &'c crate::metacache::WalkDirOptions,
+        volume_dir: &'d str,
+        tx: &'e tokio::sync::mpsc::Sender<MetaCacheEntry>,
+        forward: &'f str,
+        cur_dir: Cow<'g, str>,
+    ) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send + Sync + 'a>>
+where {
+        Box::pin(async move {
+            let mut entries = match self.list_dir(&opts.bucket, cur_dir.as_ref(), 0).await {
+                Err(err) => {
+                    if opts.report_not_found && cur_dir.as_ref() == &opts.base_dir {
+                        if err.is_error(&StorageError::FileNotFound) {
+                            return Err(StorageError::FileNotFound.into());
+                        }
+                    }
+                    return Ok(());
+                }
+                Ok(entries) => entries,
+            };
+            let mut dir_objects = HashSet::new();
+            for entry in entries.iter_mut() {
+                if !opts.filter_prefix.is_empty() && !entry.starts_with(&opts.filter_prefix) {
+                    continue;
+                }
+                if !forward.is_empty() && (entry as &str) < forward {
+                    continue;
+                }
+                if entry.ends_with(globals::SLASH_SEPARATOR) {
+                    if entry.ends_with(globals::GLOBAL_DIR_SUFFIX_WITH_SLASH) {
+                        *entry = entry
+                            .strip_suffix(globals::GLOBAL_DIR_SUFFIX_WITH_SLASH)
+                            .unwrap()
+                            .to_owned()
+                            + globals::SLASH_SEPARATOR;
+                        // Safety: immutable borrow.
+                        dir_objects
+                            .insert(unsafe { (entry as *const String).as_ref().unwrap() } as &str);
+                        continue;
+                    }
+                    entry.remove(entry.len() - 1); // remove slash suffix
+                    continue;
+                }
+                entry.clear();
+                if entry.ends_with(XL_STORAGE_FORMAT_FILE) {
+                    match XlMetaV2::load_from_file(&path_join(&[
+                        volume_dir,
+                        cur_dir.as_ref(),
+                        entry,
+                    ]))
+                    .await
+                    {
+                        Err(_) => {
+                            continue;
+                        }
+                        Ok(xl_meta) => {
+                            let xl_meta = xl_meta.dump()?; // TODO
+                            let name = entry
+                                .strip_suffix(XL_STORAGE_FORMAT_FILE)
+                                .unwrap()
+                                .strip_suffix(globals::SLASH_SEPARATOR)
+                                .unwrap();
+                            let name = path_join(&[cur_dir.as_ref(), name]);
+                            let name = crate::object::decode_dir_object(&name);
+                            let permit = tx.reserve().await?;
+                            permit.send(MetaCacheEntry::new(name.into_owned(), Arc::new(xl_meta)));
+                            return Ok(());
+                        }
+                    }
+                }
+            }
+
+            entries.sort_unstable();
+            let mut dir_stack = Vec::<String>::with_capacity(5);
+            for entry in entries.iter() {
+                if entry.is_empty() {
+                    continue;
+                }
+                let mut name = path_join(&[cur_dir.as_ref(), entry]);
+                while !dir_stack.is_empty() && dir_stack.last().unwrap() < &name {
+                    let pop = dir_stack.pop().unwrap();
+                    let permit = tx.reserve().await?;
+                    permit.send(MetaCacheEntry::new(pop.clone(), Arc::new(Vec::new())));
+                    if opts.recursive {
+                        let forward =
+                            if !opts.forward_to.is_empty() && opts.forward_to.starts_with(&pop) {
+                                opts.forward_to.strip_prefix(&pop).unwrap()
+                            } else {
+                                ""
+                            };
+                        let cur_dir = Cow::Owned(pop);
+                        self.walk_dir_inner(&opts, volume_dir, tx, forward, cur_dir)
+                            .await; // scan next
+                    }
+                }
+
+                let is_dir_obj = dir_objects.contains(&(entry as &str));
+                if is_dir_obj {
+                    name.replace_range(
+                        name.len() - 1..name.len(),
+                        globals::GLOBAL_DIR_SUFFIX_WITH_SLASH,
+                    );
+                }
+
+                match XlMetaV2::load_from_file(&path_join(&[
+                    volume_dir,
+                    &name,
+                    XL_STORAGE_FORMAT_FILE,
+                ]))
+                .await
+                {
+                    Ok(xl_meta) => {
+                        let xl_meta = xl_meta.dump()?; // TODO
+                        if is_dir_obj {
+                            name.replace_range(
+                                name.rfind(globals::GLOBAL_DIR_SUFFIX_WITH_SLASH).unwrap()
+                                    ..globals::GLOBAL_DIR_SUFFIX_WITH_SLASH.len(),
+                                globals::SLASH_SEPARATOR,
+                            );
+                        }
+                        let permit = tx.reserve().await?;
+                        permit.send(MetaCacheEntry::new(name, Arc::new(xl_meta)));
+                    }
+                    Err(err) => {
+                        let mut skip = false;
+                        if let Some(err) = err.as_error::<std::io::Error>() {
+                            if err_not_found(&err) {
+                                if !is_dir_obj {
+                                    let name = name + globals::SLASH_SEPARATOR;
+                                    if !fs::is_dir_empty(&path_join(&[volume_dir, &name])).await {
+                                        dir_stack.push(name);
+                                    }
+                                }
+                                skip = true;
+                            } else if err_not_dir(&err) {
+                                skip = true;
+                            }
+                        }
+                        if !skip {
+                            // TODO: log
+                        }
+                    }
+                }
+            }
+
+            if !dir_stack.is_empty() {
+                let pop = dir_stack.pop().unwrap();
+                let permit = tx.reserve().await?;
+                permit.send(MetaCacheEntry::new(pop.clone(), Arc::new(Vec::new())));
+                if opts.recursive {
+                    let forward =
+                        if !opts.forward_to.is_empty() && opts.forward_to.starts_with(&pop) {
+                            opts.forward_to.strip_prefix(&pop).unwrap()
+                        } else {
+                            ""
+                        };
+                    let cur_dir = Cow::Owned(pop);
+                    self.walk_dir_inner(&opts, volume_dir, tx, forward, cur_dir)
+                        .await; // scan next
+                }
+            }
+            Ok(())
+        })
     }
 
     fn get_volume_dir(&self, volume: &str) -> anyhow::Result<String> {

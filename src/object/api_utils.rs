@@ -3,6 +3,7 @@ use relative_path::{RelativePath, RelativePathBuf};
 use tokio::io::AsyncRead;
 
 use super::*;
+use crate::globals;
 use crate::prelude::*;
 use crate::utils::Path;
 
@@ -72,6 +73,22 @@ fn path_join_inner(elements: &[&str], retain_dir: bool) -> String {
         s.push_str(SLASH_SEPARATOR);
     }
     return s;
+}
+
+pub fn encode_dir_object(object: &str) -> Cow<str> {
+    if let Some(object) = object.strip_suffix(SLASH_SEPARATOR) {
+        Cow::Owned(object.to_owned() + globals::GLOBAL_DIR_SUFFIX)
+    } else {
+        Cow::Borrowed(object)
+    }
+}
+
+pub fn decode_dir_object(object: &str) -> Cow<str> {
+    if let Some(object) = object.strip_suffix(globals::GLOBAL_DIR_SUFFIX) {
+        Cow::Owned(object.to_owned() + SLASH_SEPARATOR)
+    } else {
+        Cow::Borrowed(object)
+    }
 }
 
 pub struct GetObjectReader {

@@ -8,12 +8,14 @@ mod openoptions;
 mod openoptions_ext;
 mod openoptions_std;
 mod path;
+mod permissions;
 mod read_file;
 mod readdir;
 mod reliable;
 mod root_disk;
 mod same_file;
 
+pub use std::env::temp_dir;
 pub use std::fs::Metadata;
 
 pub use aligned_reader::*;
@@ -26,9 +28,10 @@ pub use openoptions::*;
 pub use openoptions_ext::*;
 pub use openoptions_std::*;
 pub use path::*;
+pub use permissions::*;
 pub use read_file::*;
 pub use readdir::*;
 pub use reliable::*;
 pub use root_disk::*;
 pub use same_file::*;
-pub use tokio::fs::File;
+pub use tokio::fs::{create_dir, remove_dir_all, File};

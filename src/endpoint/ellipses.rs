@@ -269,3 +269,23 @@ pub fn create_server_endpoints(
 
     todo!()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_divisible_size() {
+        let cases = vec![
+            (&[24, 32, 16][..], 8),
+            (&[32, 8, 4], 4),
+            (&[8, 8, 8], 8),
+            (&[24], 24),
+        ];
+
+        for (i, (total_sizes, expected_gcd)) in cases.into_iter().enumerate() {
+            let gcd = get_divisible_size(total_sizes);
+            assert_eq!(gcd, expected_gcd, "test {}", i + 1)
+        }
+    }
+}

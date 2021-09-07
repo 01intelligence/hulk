@@ -135,11 +135,14 @@ pub fn get_api_endpoints() -> Vec<String> {
         .collect()
 }
 
-pub fn is_host_ip(ip_addr: &str) -> bool {
-    let host = split_host_port(ip_addr)
-        .map(|(host, _)| host)
-        .unwrap_or_else(|_| ip_addr.to_owned());
-    host.parse::<IpAddr>().is_ok()
+pub fn is_host_ip(arg: &str) -> bool {
+    match arg.split("/").next().unwrap().parse::<http::Uri>() {
+        Err(_) => false,
+        Ok(uri) => match uri.host() {
+            None => false,
+            Some(host) => host.parse::<IpAddr>().is_ok(),
+        },
+    }
 }
 
 pub async fn check_port_availability(host: &str, port: &str) -> anyhow::Result<()> {

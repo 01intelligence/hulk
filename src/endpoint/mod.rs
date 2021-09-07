@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fmt;
 
-use anyhow::ensure;
+use anyhow::{anyhow, ensure};
 
 use crate::errors::UiError;
 use crate::globals::*;
@@ -33,6 +33,7 @@ pub enum Endpoint {
     Url(url::Url, bool),
 }
 
+#[derive(Debug)]
 pub struct Endpoints(Vec<Endpoint>);
 
 pub struct PoolEndpoints {
@@ -545,126 +546,108 @@ mod tests {
 
     #[test]
     fn test_endpoint_new() {
-        let u2 = url::Url::parse("https://example.org/path").unwrap();
-        let u4 = url::Url::parse("http://192.168.253.200/path").unwrap();
-        let u12 = url::Url::parse("http://server/path").unwrap();
-        let u_any = u2.clone();
         let cases = vec![
+            // Test 1
             (
                 "/foo",
-                Endpoint::Path(Path::new("/foo").absolutize().unwrap().clean()),
-                EndpointType::Path,
-                false,
+                Ok(Endpoint::Path(
+                    Path::new("/foo").absolutize().unwrap().clean(),
+                )),
             ),
+            // Test 2
             (
                 "https://example.org/path",
-                Endpoint::Url(u2, false),
-                EndpointType::Url,
-                false,
+                Ok(Endpoint::Url(
+                    url::Url::parse("https://example.org/path").unwrap(),
+                    false,
+                )),
             ),
+            // Test 3
             (
                 "http://192.168.253.200/path",
-                Endpoint::Url(u4, false),
-                EndpointType::Url,
-                false,
+                Ok(Endpoint::Url(
+                    url::Url::parse("http://192.168.253.200/path").unwrap(),
+                    false,
+                )),
             ),
-            (
-                "",
-                Endpoint::Url(u_any.clone(), false),
-                EndpointType::Url,
-                true,
-            ),
+            // Test 4
+            ("", Err(anyhow!("empty or root endpoint is not supported"))),
+            // Test 5
             (
                 SLASH_SEPARATOR,
-                Endpoint::Url(u_any.clone(), false),
-                EndpointType::Url,
-                true,
+                Err(anyhow!("empty or root endpoint is not supported")),
             ),
+            // Test 6
             (
                 "\\",
-                Endpoint::Url(u_any.clone(), false),
-                EndpointType::Url,
-                true,
+                Err(anyhow!("empty or root endpoint is not supported")),
             ),
-            (
-                "c://foo",
-                Endpoint::Url(u_any.clone(), false),
-                EndpointType::Url,
-                true,
-            ),
-            (
-                "ftp://foo",
-                Endpoint::Url(u_any.clone(), false),
-                EndpointType::Url,
-                true,
-            ),
+            // Test 7
+            ("c://foo", Err(anyhow!("invalid URL endpoint format"))),
+            // Test 8
+            ("ftp://foo", Err(anyhow!("invalid URL endpoint format"))),
+            // Test 9
             (
                 "http://server/path?location",
-                Endpoint::Url(u_any.clone(), false),
-                EndpointType::Url,
-                true,
+                Err(anyhow!("invalid URL endpoint format")),
             ),
-            (
-                "http://:/path",
-                Endpoint::Url(u_any.clone(), false),
-                EndpointType::Url,
-                true,
-            ),
+            // Test 10
+            ("http://:/path", Err(anyhow!(url::ParseError::EmptyHost))),
+            // Test 11
             (
                 "http://:8080/path",
-                Endpoint::Url(u_any.clone(), false),
-                EndpointType::Url,
-                true,
+                Err(anyhow!(url::ParseError::EmptyHost)),
             ),
+            // Test 12
             (
                 "http://server:/path",
-                Endpoint::Url(u12, false),
-                EndpointType::Url,
-                false,
+                Ok(Endpoint::Url(
+                    url::Url::parse("http://server:80/path").unwrap(),
+                    false,
+                )),
             ),
+            // Test 13
             (
                 "https://93.184.216.34:808080/path",
-                Endpoint::Url(u_any.clone(), false),
-                EndpointType::Url,
-                true,
+                Err(anyhow!(url::ParseError::InvalidPort)),
             ),
+            // Test 14
             (
                 "http://server:8080//",
-                Endpoint::Url(u_any.clone(), false),
-                EndpointType::Url,
-                true,
+                Err(anyhow!(
+                    "empty or root path is not supported in URL endpoint"
+                )),
             ),
+            // Test 15
             (
                 "http://server:8080/",
-                Endpoint::Url(u_any.clone(), false),
-                EndpointType::Url,
-                true,
+                Err(anyhow!(
+                    "empty or root path is not supported in URL endpoint"
+                )),
             ),
+            // Test 16
             (
                 "192.168.1.210:9000",
-                Endpoint::Url(u_any.clone(), false),
-                EndpointType::Url,
-                true,
+                Err(anyhow!(
+                    "invalid URL endpoint format: missing scheme http or https"
+                )),
             ),
         ];
-        for (i, (arg, expected_endpoint, expected_type, expected_err)) in
-            cases.into_iter().enumerate()
-        {
-            // println!("Case {}", i);
-            let endpoint = Endpoint::new(arg).map(|mut endpoint| {
+
+        for (i, (arg, expected_res)) in cases.into_iter().enumerate() {
+            let res = Endpoint::new(arg).map(|mut endpoint| {
                 endpoint.update_is_local();
                 endpoint
             });
-            match endpoint {
-                Err(err) => {
-                    assert!(expected_err, err.to_string());
-                }
-                Ok(endpoint) => {
-                    assert!(!expected_err, endpoint.to_string());
-                    assert_eq!(endpoint.to_string(), expected_endpoint.to_string());
-                    assert_eq!(endpoint, expected_endpoint);
-                    assert_eq!(endpoint.typ(), expected_type);
-                }
+
+            match res {
+                Err(err) => assert_eq!(
+                    err.to_string(),
+                    expected_res.unwrap_err().to_string(),
+                    "test {}",
+                    i + 1
+                ),
+                Ok(endpoint) => assert_eq!(endpoint, expected_res.unwrap(), "test {}", i + 1),
             }
         }
     }
@@ -672,102 +655,132 @@ mod tests {
     #[test]
     fn test_endpoints_new() {
         let cases = vec![
-            (&["/d1", "/d2", "/d3", "/d4"][..], false),
+            // Test 1
+            (&["/d1", "/d2", "/d3", "/d4"][..], None),
+            // Test 2
             (
                 &[
                     "http://localhost/d1",
                     "http://localhost/d2",
                     "http://localhost/d3",
                     "http://localhost/d4",
-                ][..],
-                false,
+                ],
+                None,
             ),
+            // Test 3
             (
                 &[
                     "http://example.org/d1",
                     "http://example.com/d1",
                     "http://example.net/d1",
                     "http://example.edu/d1",
-                ][..],
-                false,
+                ],
+                None,
             ),
+            // Test 4
             (
                 &[
                     "http://localhost/d1",
                     "http://localhost/d2",
                     "http://example.org/d1",
                     "http://example.org/d2",
-                ][..],
-                false,
+                ],
+                None,
             ),
+            // Test 5
             (
                 &[
                     "https://localhost:9000/d1",
                     "https://localhost:9001/d2",
                     "https://localhost:9002/d3",
                     "https://localhost:9003/d4",
-                ][..],
-                false,
+                ],
+                None,
             ),
+            // Test 6
             (
                 &[
                     "https://127.0.0.1:9000/d1",
                     "https://127.0.0.1:9001/d1",
                     "https://127.0.0.1:9002/d1",
                     "https://127.0.0.1:9003/d1",
-                ][..],
-                false,
+                ],
+                None,
             ),
-            (&["d1", "d2", "d3", "d1"][..], true),
-            (&["d1", "d2", "d3", "./d1"][..], true),
+            // Test 7
+            (
+                &["d1", "d2", "d3", "d1"],
+                Some(anyhow!("duplicate endpoints found")),
+            ),
+            // Test 8
+            (
+                &["d1", "d2", "d3", "./d1"],
+                Some(anyhow!("duplicate endpoints found")),
+            ),
+            // Test 9
             (
                 &[
                     "http://localhost/d1",
                     "http://localhost/d2",
                     "http://localhost/d1",
                     "http://localhost/d4",
-                ][..],
-                true,
+                ],
+                Some(anyhow!("duplicate endpoints found")),
             ),
+            // Test 10
             (
                 &[
                     "ftp://server/d1",
                     "http://server/d2",
                     "http://server/d3",
                     "http://server/d4",
-                ][..],
-                true,
+                ],
+                Some(anyhow!("invalid URL endpoint format")),
             ),
-            (&["d1", "http://localhost/d2", "d3", "d4"][..], true),
+            // Test 11
+            (
+                &["d1", "http://localhost/d2", "d3", "d4"],
+                Some(anyhow!("mixed style endpoints are not supported")),
+            ),
+            // Test 12
             (
                 &[
                     "http://example.org/d1",
                     "https://example.com/d1",
                     "http://example.net/d1",
                     "https://example.edut/d1",
-                ][..],
-                true,
+                ],
+                Some(anyhow!("mixed scheme is not supported")),
             ),
+            // Test 13
             (
                 &[
                     "192.168.1.210:9000/tmp/dir0",
                     "192.168.1.210:9000/tmp/dir1",
                     "192.168.1.210:9000/tmp/dir2",
                     "192.168.110:9000/tmp/dir3",
-                ][..],
-                false,
+                ],
+                Some(anyhow!(
+                    "invalid URL endpoint format: missing scheme http or https"
+                )),
             ),
         ];
-        for (args, expected_err) in cases.into_iter() {
-            let endpoints = Endpoints::new(args);
-            match endpoints {
-                Err(err) => assert!(
-                    expected_err,
-                    "unexpected err: {}, {:?}",
+
+        for (i, (args, expected_err)) in cases.into_iter().enumerate() {
+            match Endpoints::new(args) {
+                Err(err) => assert_eq!(
                     err.to_string(),
-                    args
+                    expected_err.unwrap().to_string(),
+                    "test {}",
+                    i + 1
                 ),
-                Ok(_) => assert!(!expected_err, "expected err but none occurred: {:?}", args),
+                Ok(endpoints) => assert!(
+                    expected_err.is_none(),
+                    "test {} expected: {}, got: {:?}",
+                    i + 1,
+                    expected_err.unwrap(),
+                    endpoints,
+                ),
             }
         }
     }

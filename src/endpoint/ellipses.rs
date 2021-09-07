@@ -273,7 +273,6 @@ pub fn create_server_endpoints(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ellipses;
 
     #[test]
     fn test_get_divisible_size() {

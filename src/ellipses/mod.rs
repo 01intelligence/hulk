@@ -17,6 +17,7 @@ const ELLIPSES: &str = "...";
 
 // Ellipses pattern, describes the range and also the
 // associated prefix and suffixes.
+#[derive(Debug, Eq, PartialEq)]
 pub struct Pattern {
     pub prefix: String,
     pub suffix: String,
@@ -24,7 +25,8 @@ pub struct Pattern {
 }
 
 // A list of patterns provided in the input.
-pub struct ArgPattern(Vec<Pattern>);
+#[derive(Debug, Eq, PartialEq)]
+pub struct ArgPattern(pub Vec<Pattern>);
 
 impl ArgPattern {
     // Expands all the ellipses patterns in the given argument.

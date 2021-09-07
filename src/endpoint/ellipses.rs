@@ -158,7 +158,7 @@ fn get_total_sizes(arg_patterns: &[ellipses::ArgPattern]) -> Vec<usize> {
         .collect()
 }
 
-#[derive(Default)]
+#[derive(Default, Debug, Eq, PartialEq)]
 struct EndpointSet {
     arg_patterns: Vec<ellipses::ArgPattern>,
     endpoints: Vec<String>,
@@ -273,6 +273,7 @@ pub fn create_server_endpoints(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ellipses;
 
     #[test]
     fn test_get_divisible_size() {
@@ -287,5 +288,273 @@ mod tests {
             let gcd = get_divisible_size(total_sizes);
             assert_eq!(gcd, expected_gcd, "test {}", i + 1)
         }
+    }
+
+    #[test]
+    fn test_parse_endpoint_set() {
+        let cases = vec![
+            // Test 1: Invalid inputs.
+            ("", EndpointSet::default(), false),
+            // Test 2: No range specified.
+            ("{...}", EndpointSet::default(), false),
+            // Test 3: Invalid range.
+            (
+                "http://hulk{2...3}/export/set{1...0}",
+                EndpointSet::default(),
+                false,
+            ),
+            // Test 4: Range cannot be smaller than 4 minimum.
+            ("/export{1..2}", EndpointSet::default(), false),
+            // Test 5: Unsupported characters.
+            ("/export/test{1...2O}", EndpointSet::default(), false),
+            // Test 6: Valid inputs.
+            (
+                "{1...27}",
+                EndpointSet {
+                    arg_patterns: vec![ellipses::ArgPattern(vec![ellipses::Pattern {
+                        prefix: "".to_string(),
+                        suffix: "".to_string(),
+                        seq: get_sequences(1, 27, 0),
+                    }])],
+                    endpoints: vec![],
+                    set_indexes: vec![vec![9, 9, 9]],
+                },
+                true,
+            ),
+            // Test 7: Valid inputs.
+            (
+                "/export/set{1...64}",
+                EndpointSet {
+                    arg_patterns: vec![ellipses::ArgPattern(vec![ellipses::Pattern {
+                        prefix: "/export/set".to_string(),
+                        suffix: "".to_string(),
+                        seq: get_sequences(1, 64, 0),
+                    }])],
+                    endpoints: vec![],
+                    set_indexes: vec![vec![16, 16, 16, 16]],
+                },
+                true,
+            ),
+            // Test 8: Valid input for distributed setup.
+            (
+                "http://hulk{2...3}/export/set{1...64}",
+                EndpointSet {
+                    arg_patterns: vec![ellipses::ArgPattern(vec![
+                        ellipses::Pattern {
+                            prefix: "".to_string(),
+                            suffix: "".to_string(),
+                            seq: get_sequences(1, 64, 0),
+                        },
+                        ellipses::Pattern {
+                            prefix: "http://hulk".to_string(),
+                            suffix: "/export/set".to_string(),
+                            seq: get_sequences(2, 3, 0),
+                        },
+                    ])],
+                    endpoints: vec![],
+                    set_indexes: vec![vec![16, 16, 16, 16, 16, 16, 16, 16]],
+                },
+                true,
+            ),
+            // Test 9: Supporting some advanced cases.
+            (
+                "http://hulk{1...64}.mydomain.net/data",
+                EndpointSet {
+                    arg_patterns: vec![ellipses::ArgPattern(vec![ellipses::Pattern {
+                        prefix: "http://hulk".to_string(),
+                        suffix: ".mydomain.net/data".to_string(),
+                        seq: get_sequences(1, 64, 0),
+                    }])],
+                    endpoints: vec![],
+                    set_indexes: vec![vec![16, 16, 16, 16]],
+                },
+                true,
+            ),
+            // Test 10: Supporting some advanced cases.
+            (
+                "http://rack{1...4}.mydomain.hulk{1...16}/data",
+                EndpointSet {
+                    arg_patterns: vec![ellipses::ArgPattern(vec![
+                        ellipses::Pattern {
+                            prefix: "".to_string(),
+                            suffix: "/data".to_string(),
+                            seq: get_sequences(1, 16, 0),
+                        },
+                        ellipses::Pattern {
+                            prefix: "http://rack".to_string(),
+                            suffix: ".mydomain.hulk".to_string(),
+                            seq: get_sequences(1, 4, 0),
+                        },
+                    ])],
+                    endpoints: vec![],
+                    set_indexes: vec![vec![16, 16, 16, 16]],
+                },
+                true,
+            ),
+            // Test 11: Supporting kubernetes cases.
+            (
+                "http://hulk{0...15}.mydomain.net/data{0...1}",
+                EndpointSet {
+                    arg_patterns: vec![ellipses::ArgPattern(vec![
+                        ellipses::Pattern {
+                            prefix: "".to_string(),
+                            suffix: "".to_string(),
+                            seq: get_sequences(0, 1, 0),
+                        },
+                        ellipses::Pattern {
+                            prefix: "http://hulk".to_string(),
+                            suffix: ".mydomain.net/data".to_string(),
+                            seq: get_sequences(0, 15, 0),
+                        },
+                    ])],
+                    endpoints: vec![],
+                    set_indexes: vec![vec![16, 16]],
+                },
+                true,
+            ),
+            // Test 12: No host regex, just disks.
+            (
+                "http://server1/data{1...32}",
+                EndpointSet {
+                    arg_patterns: vec![ellipses::ArgPattern(vec![ellipses::Pattern {
+                        prefix: "http://server1/data".to_string(),
+                        suffix: "".to_string(),
+                        seq: get_sequences(1, 32, 0),
+                    }])],
+                    endpoints: vec![],
+                    set_indexes: vec![vec![16, 16]],
+                },
+                true,
+            ),
+            // Test 13: No host regex, just disks with two position numerics.
+            (
+                "http://server1/data{01...32}",
+                EndpointSet {
+                    arg_patterns: vec![ellipses::ArgPattern(vec![ellipses::Pattern {
+                        prefix: "http://server1/data".to_string(),
+                        suffix: "".to_string(),
+                        seq: get_sequences(1, 32, 2),
+                    }])],
+                    endpoints: vec![],
+                    set_indexes: vec![vec![16, 16]],
+                },
+                true,
+            ),
+            //  Test 14: More than 2 ellipses are supported as well.
+            (
+                "http://hulk{2...3}/export/set{1...64}/test{1...2}",
+                EndpointSet {
+                    arg_patterns: vec![ellipses::ArgPattern(vec![
+                        ellipses::Pattern {
+                            prefix: "".to_string(),
+                            suffix: "".to_string(),
+                            seq: get_sequences(1, 2, 0),
+                        },
+                        ellipses::Pattern {
+                            prefix: "".to_string(),
+                            suffix: "/test".to_string(),
+                            seq: get_sequences(1, 64, 0),
+                        },
+                        ellipses::Pattern {
+                            prefix: "http://hulk".to_string(),
+                            suffix: "/export/set".to_string(),
+                            seq: get_sequences(2, 3, 0),
+                        },
+                    ])],
+                    endpoints: vec![],
+                    set_indexes: vec![vec![
+                        16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                    ]],
+                },
+                true,
+            ),
+            // Test 15: More than 1 ellipses per argument for standalone setup.
+            (
+                "/export{1...10}/disk{1...10}",
+                EndpointSet {
+                    arg_patterns: vec![ellipses::ArgPattern(vec![
+                        ellipses::Pattern {
+                            prefix: "".to_string(),
+                            suffix: "".to_string(),
+                            seq: get_sequences(1, 10, 0),
+                        },
+                        ellipses::Pattern {
+                            prefix: "/export".to_string(),
+                            suffix: "/disk".to_string(),
+                            seq: get_sequences(1, 10, 0),
+                        },
+                    ])],
+                    endpoints: vec![],
+                    set_indexes: vec![vec![10, 10, 10, 10, 10, 10, 10, 10, 10, 10]],
+                },
+                true,
+            ),
+            // Test 16: IPv6 ellipses with hexadecimal expansion
+            (
+                "http://[2001:3984:3989::{1...a}]/disk{1...10}",
+                EndpointSet {
+                    arg_patterns: vec![ellipses::ArgPattern(vec![
+                        ellipses::Pattern {
+                            prefix: "".to_string(),
+                            suffix: "".to_string(),
+                            seq: get_sequences(1, 10, 0),
+                        },
+                        ellipses::Pattern {
+                            prefix: "http://[2001:3984:3989::".to_string(),
+                            suffix: "]/disk".to_string(),
+                            seq: get_hex_sequences(1, 10, 0),
+                        },
+                    ])],
+                    endpoints: vec![],
+                    set_indexes: vec![vec![10, 10, 10, 10, 10, 10, 10, 10, 10, 10]],
+                },
+                true,
+            ),
+            // Test 17: IPv6 ellipses with hexadecimal expansion with 3 position numerics.
+            (
+                "http://[2001:3984:3989::{001...00a}]/disk{1...10}",
+                EndpointSet {
+                    arg_patterns: vec![ellipses::ArgPattern(vec![
+                        ellipses::Pattern {
+                            prefix: "".to_string(),
+                            suffix: "".to_string(),
+                            seq: get_sequences(1, 10, 0),
+                        },
+                        ellipses::Pattern {
+                            prefix: "http://[2001:3984:3989::".to_string(),
+                            suffix: "]/disk".to_string(),
+                            seq: get_hex_sequences(1, 10, 3),
+                        },
+                    ])],
+                    endpoints: vec![],
+                    set_indexes: vec![vec![10, 10, 10, 10, 10, 10, 10, 10, 10, 10]],
+                },
+                true,
+            ),
+        ];
+
+        for (i, (arg, expected_es, expected_success)) in cases.into_iter().enumerate() {
+            match parse_endpoint_set(0, &[arg][..]) {
+                Err(err) => assert!(
+                    !expected_success,
+                    "test {}: expected success but failed instead: {}",
+                    i + 1,
+                    err.to_string(),
+                ),
+                Ok(es) => assert_eq!(es, expected_es, "test {}", i + 1),
+            }
+        }
+    }
+
+    fn get_sequences(start: isize, number: isize, paddinglen: usize) -> Vec<String> {
+        (start..=number)
+            .map(|i| format!("{:01$}", i, paddinglen))
+            .collect()
+    }
+
+    fn get_hex_sequences(start: isize, number: isize, paddinglen: usize) -> Vec<String> {
+        (start..=number)
+            .map(|i| format!("{:01$x}", i, paddinglen))
+            .collect()
     }
 }

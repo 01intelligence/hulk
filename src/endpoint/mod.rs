@@ -27,7 +27,7 @@ pub enum EndpointType {
     Url,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub enum Endpoint {
     Path(PathBuf),
     Url(url::Url, bool),
@@ -37,9 +37,9 @@ pub enum Endpoint {
 pub struct Endpoints(Vec<Endpoint>);
 
 pub struct PoolEndpoints {
-    set_count: usize,
-    drives_per_set: usize,
-    endpoints: Endpoints,
+    pub set_count: usize,
+    pub drives_per_set: usize,
+    pub endpoints: Endpoints,
 }
 
 pub struct EndpointServerPools(Vec<PoolEndpoints>);
@@ -185,6 +185,10 @@ impl fmt::Display for Endpoint {
 }
 
 impl Endpoints {
+    pub fn iter(&self) -> std::slice::Iter<'_, Endpoint> {
+        self.0.iter()
+    }
+
     pub fn new(args: &[&str]) -> anyhow::Result<Endpoints> {
         let mut endpoint_type = None;
         let mut scheme = None;
@@ -244,6 +248,10 @@ impl Endpoints {
 }
 
 impl EndpointServerPools {
+    pub fn iter(&self) -> std::slice::Iter<'_, PoolEndpoints> {
+        self.0.iter()
+    }
+
     pub fn get_local_pool_idx(&self, endpoint: &Endpoint) -> isize {
         for (i, p) in self.0.iter().enumerate() {
             for e in &p.endpoints.0 {

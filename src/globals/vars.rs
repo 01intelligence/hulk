@@ -65,6 +65,8 @@ pub struct Globals {
 
     pub local_node_name: Arc<Mutex<String>>,
 
+    pub active_cred: Arc<Mutex<crate::auth::Credentials>>,
+
     // Root domains for virtual host style requests.
     pub domain_names: Arc<Mutex<Vec<String>>>,
     // Root domain IP addresses.

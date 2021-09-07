@@ -158,7 +158,7 @@ impl XlStorage {
         self.disk_index = disk_idx;
     }
 
-    pub fn healing(&self) -> Option<crate::storage::HealingTracker> {
+    pub async fn healing(&self) -> Option<crate::storage::HealingTracker> {
         todo!()
     }
 
@@ -182,7 +182,7 @@ impl XlStorage {
                         healing = true;
                     } else {
                         // Check if the disk is being healed .
-                        healing = this.healing().is_some();
+                        healing = this.healing().await.is_some();
                     }
                 }
             };
@@ -1652,6 +1652,10 @@ where {
             }
             Ok(())
         })
+    }
+
+    pub async fn namespace_scanner(&self) -> anyhow::Result<()> {
+        todo!()
     }
 
     fn get_volume_dir(&self, volume: &str) -> anyhow::Result<String> {

@@ -13,17 +13,15 @@ pub fn parse_with_standard_claims(token: &str, key: &[u8]) -> anyhow::Result<Sta
     let claims = decode::<StandardClaims>(token, &DecodingKey::from_secret(key), &validation)?;
     let claims = claims.claims;
 
-    if claims.access_key.is_none() && claims.subject.is_none() {
-        return Err(JwtError::Other("accessKey/sub missing".into()).into());
-    }
+    claims.validate()?;
 
     Ok(claims)
 }
 
-pub fn parse_with_claims<F: FnOnce(&MapClaims) -> DecodingKey>(
-    token: &str,
-    key_fn: F,
-) -> anyhow::Result<MapClaims> {
+pub fn parse_with_claims<F>(token: &str, key_fn: F) -> anyhow::Result<MapClaims>
+where
+    F: FnOnce(&MapClaims) -> DecodingKey,
+{
     let validation = Validation {
         algorithms: ALGORITHMS.into(),
         validate_exp: true,
@@ -32,7 +30,7 @@ pub fn parse_with_claims<F: FnOnce(&MapClaims) -> DecodingKey>(
         ..Default::default()
     };
 
-    let claims = decode_with_key_fn::<MapClaims, _>(token, key_fn, &validation)?;
+    let claims = decode_with_key_fn::<MapClaims, F>(token, key_fn, &validation)?;
     let claims = claims.claims;
 
     if claims.lookup("accessKey").is_null() && claims.lookup("sub").is_null() {

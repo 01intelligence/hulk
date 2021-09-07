@@ -54,6 +54,7 @@ pub mod prelude;
 pub mod proto;
 pub mod pubsub;
 pub mod router;
+pub mod rpc;
 pub mod s3select;
 pub mod s3utils;
 pub mod serde;

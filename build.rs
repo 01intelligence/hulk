@@ -7,7 +7,11 @@ fn main() {
     tonic_build::configure()
         .out_dir("src/proto")
         .compile(
-            &["proto/common.proto", "proto/peer_service.proto"],
+            &[
+                "proto/common.proto",
+                "proto/peer.proto",
+                "proto/storage.proto",
+            ],
             &["proto"],
         )
         .unwrap();

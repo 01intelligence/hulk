@@ -26,8 +26,8 @@ pub enum JwtError {
 
 #[derive(Serialize, Deserialize, Default, Debug)]
 pub struct StandardClaims {
-    #[serde(rename = "accessKey", skip_serializing_if = "Option::is_none")]
-    pub access_key: Option<String>,
+    #[serde(rename = "accessKey")]
+    pub access_key: String,
 
     #[serde(rename = "aud", skip_serializing_if = "Option::is_none")]
     pub audience: Option<String>, // Audience
@@ -41,8 +41,8 @@ pub struct StandardClaims {
     pub issuer: Option<String>, // Issuer
     #[serde(rename = "nbf", skip_serializing_if = "Option::is_none")]
     pub not_before: Option<usize>, // Not Before (as UTC timestamp)
-    #[serde(rename = "sub", skip_serializing_if = "Option::is_none")]
-    pub subject: Option<String>, // Subject (whom token refers to)
+    #[serde(rename = "sub")]
+    pub subject: String, // Subject (whom token refers to)
 }
 
 #[derive(Serialize, Deserialize, Default, Debug)]
@@ -65,12 +65,12 @@ impl StandardClaims {
         self.expires_at.insert(expiry.timestamp() as usize);
     }
 
-    pub fn set_access_key(&mut self, access_key: &str) {
-        self.subject.insert(access_key.into());
-        self.access_key.insert(access_key.into());
+    pub fn set_access_key(&mut self, access_key: String) {
+        self.subject = access_key.clone();
+        self.access_key = access_key;
     }
 
-    pub fn valid(&self) -> Result<(), JwtError> {
+    pub fn validate(&self) -> Result<(), JwtError> {
         let mut verr = Vec::new();
         let now = utils::now().timestamp() as usize;
         if !verify_exp(&self.expires_at, now, false) {
@@ -86,8 +86,8 @@ impl StandardClaims {
             return Err(JwtError::Aggregated(verr));
         }
 
-        if self.access_key.is_none() && self.subject.is_none() {
-            return Err(JwtError::Other("accessKey/sub missing".into()));
+        if self.access_key.is_empty() && self.subject.is_empty() {
+            return Err(JwtError::Other("accessKey/subject missing".into()));
         }
 
         Ok(())

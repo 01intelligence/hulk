@@ -1,6 +1,9 @@
 mod common;
-mod peer_service;
+pub mod peer;
+pub mod storage;
 
 pub use common::*;
-pub use peer_service::peer_service_client::*;
-pub use peer_service::peer_service_server::*;
+pub use peer::peer_service_client::*;
+pub use peer::peer_service_server::*;
+pub use storage::storage_service_client::*;
+pub use storage::storage_service_server::*;

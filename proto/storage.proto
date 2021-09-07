@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package storage;
+
+import "common.proto";
+
+service StorageService {
+  rpc version(common.Empty) returns (common.Version) {}
+  rpc health(HealthReq) returns (common.Empty) {}
+}
+
+message ReqCommon {
+  string disk_id = 1;
+}
+
+message HealthReq {
+  ReqCommon common = 1;
+}

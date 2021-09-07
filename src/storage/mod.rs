@@ -61,13 +61,10 @@ impl StorageApi {
         }
     }
 
-    pub fn healing(&self) -> Option<HealingTracker> {
-        /*
+    pub async fn healing(&self) -> Option<HealingTracker> {
         match self {
-            StorageApi::XlStorage(inner) => inner.healing()
+            StorageApi::XlStorage(inner) => inner.healing().await,
         }
-        */
-        todo!()
     }
 
     pub async fn disk_info(&self) -> anyhow::Result<DiskInfo> {
@@ -77,7 +74,9 @@ impl StorageApi {
     }
 
     pub async fn namespace_scanner(&self) -> anyhow::Result<()> {
-        todo!()
+        match self {
+            StorageApi::XlStorage(inner) => inner.namespace_scanner().await,
+        }
     }
 
     pub async fn make_volume(&self, volume: &str) -> anyhow::Result<()> {

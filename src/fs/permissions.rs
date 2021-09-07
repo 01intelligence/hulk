@@ -1,9 +1,7 @@
 use std::fs::Permissions as StdPermissions;
-use std::io;
-pub use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
 
 use crate::feature;
+use crate::utils::Path;
 
 #[derive(Clone, Debug)]
 pub struct Permissions(StdPermissions);
@@ -21,7 +19,7 @@ impl Permissions {
 feature! {
     #![unix]
 
-    // use std::os::unix::fs::PermissionsExt;
+    pub use std::os::unix::fs::PermissionsExt;
 
     impl PermissionsExt for Permissions {
         fn mode(&self) -> u32 {
@@ -38,6 +36,6 @@ feature! {
     }
 }
 
-pub async fn set_permissions(path: impl AsRef<Path>, perm: Permissions) -> io::Result<()> {
-    tokio::fs::set_permissions(path, perm.0).await
+pub async fn set_permissions(path: impl AsRef<Path>, perm: Permissions) -> std::io::Result<()> {
+    tokio::fs::set_permissions(path.as_ref().as_std_path(), perm.0).await
 }

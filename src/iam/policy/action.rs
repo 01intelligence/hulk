@@ -518,6 +518,12 @@ impl<'a> crate::bucket::policy::ToVec<Action<'a>> for ActionSet<'a> {
     }
 }
 
+impl<'a> Default for ActionSet<'a> {
+    fn default() -> Self {
+        ActionSet(HashSet::new())
+    }
+}
+
 impl<'a> fmt::Display for ActionSet<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut actions: Vec<&Action> = self.0.iter().collect();
@@ -564,6 +570,18 @@ impl<'de, 'a> Deserialize<'de> for ActionSet<'a> {
                 formatter.write_str("an action array")
             }
 
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                let action = SUPPORTED_ACTIONS
+                    .iter()
+                    .find(|&a| a.0 == v)
+                    .cloned()
+                    .ok_or(E::custom(format!("invalid action '{}'", v)))?;
+                Ok(ActionSet(HashSet::from([action])))
+            }
+
             fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
             where
                 A: SeqAccess<'de>,
@@ -571,10 +589,9 @@ impl<'de, 'a> Deserialize<'de> for ActionSet<'a> {
                 use serde::de::Error;
                 let mut set = ActionSet(HashSet::new());
                 while let Some(v) = seq.next_element()? {
-                    if set.is_match(&v) {
-                        return Err(A::Error::custom(format!("duplicate value found '{}'", v.0)));
+                    if !set.contains(&v) {
+                        set.insert(v);
                     }
-                    set.insert(v);
                 }
                 if set.is_empty() {
                     return Err(A::Error::custom("empty actions"));
@@ -583,17 +600,235 @@ impl<'de, 'a> Deserialize<'de> for ActionSet<'a> {
             }
         }
 
-        deserializer.deserialize_seq(ActionSetVisitor)
+        deserializer.deserialize_any(ActionSetVisitor)
     }
 }
 
 #[macro_export]
 macro_rules! iam_actionset {
     ($($e:expr),*) => {{
-        let mut set = ActionSet(HashSet::new());
+        use crate::iam::policy::ActionSet;
+        let mut set = ActionSet::default();
         $(
             set.insert($e);
         )*
         set
     }};
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bucket::policy::ToVec;
+    use crate::utils::assert::*;
+
+    #[test]
+    fn test_action_is_object_action() {
+        let cases = [
+            (ABORT_MULTIPART_UPLOAD_ACTION, true),
+            (DELETE_OBJECT_ACTION, true),
+            (GET_OBJECT_ACTION, true),
+            (LIST_MULTIPART_UPLOAD_PARTS_ACTION, true),
+            (PUT_OBJECT_ACTION, true),
+            (CREATE_BUCKET_ACTION, false),
+        ];
+
+        for (action, expected_result) in cases {
+            let result = action.is_object_action();
+
+            assert_eq!(
+                result, expected_result,
+                "action: {}, expected: {}, got: {}",
+                action, expected_result, result
+            );
+        }
+    }
+
+    #[test]
+    fn test_action_is_valid() {
+        let cases = [
+            (PUT_OBJECT_ACTION, true),
+            (ABORT_MULTIPART_UPLOAD_ACTION, true),
+            (Action("foo"), false),
+        ];
+
+        for (action, expected_result) in cases {
+            let result = action.is_valid();
+
+            assert_eq!(
+                result, expected_result,
+                "action: {}, expected: {}, got: {}",
+                action, expected_result, result
+            );
+        }
+    }
+
+    #[test]
+    fn test_action_set_add() {
+        let cases = [
+            (
+                iam_actionset!(),
+                PUT_OBJECT_ACTION,
+                iam_actionset!(PUT_OBJECT_ACTION),
+            ),
+            (
+                iam_actionset!(PUT_OBJECT_ACTION),
+                PUT_OBJECT_ACTION,
+                iam_actionset!(PUT_OBJECT_ACTION),
+            ),
+        ];
+
+        for (mut set, action_to_add, expected_result) in cases {
+            let _result = set.insert(action_to_add);
+
+            assert_eq!(
+                set, expected_result,
+                "set: {}, expected: {}, got: {}",
+                set, expected_result, set
+            );
+        }
+    }
+
+    #[test]
+    fn test_action_set_matches() {
+        let cases = [
+            (
+                iam_actionset!(ALL_ACTIONS),
+                ABORT_MULTIPART_UPLOAD_ACTION,
+                true,
+            ),
+            (iam_actionset!(PUT_OBJECT_ACTION), PUT_OBJECT_ACTION, true),
+            (
+                iam_actionset!(PUT_OBJECT_ACTION, GET_OBJECT_ACTION),
+                PUT_OBJECT_ACTION,
+                true,
+            ),
+            (
+                iam_actionset!(PUT_OBJECT_ACTION, GET_OBJECT_ACTION),
+                ABORT_MULTIPART_UPLOAD_ACTION,
+                false,
+            ),
+        ];
+
+        for (set, action, expected_result) in cases {
+            let result = set.is_match(&action);
+
+            assert_eq!(
+                result, expected_result,
+                "set: {}, expected: {}, got: {}",
+                set, expected_result, result
+            );
+        }
+    }
+
+    #[test]
+    fn test_action_set_intersection() {
+        let cases = [
+            (
+                iam_actionset!(),
+                iam_actionset!(PUT_OBJECT_ACTION),
+                iam_actionset!(),
+            ),
+            (
+                iam_actionset!(PUT_OBJECT_ACTION),
+                iam_actionset!(),
+                iam_actionset!(),
+            ),
+            (
+                iam_actionset!(PUT_OBJECT_ACTION),
+                iam_actionset!(PUT_OBJECT_ACTION, GET_OBJECT_ACTION),
+                iam_actionset!(PUT_OBJECT_ACTION),
+            ),
+        ];
+
+        for (set, set_to_intersect, expected_result) in cases {
+            let result = ActionSet(set.intersection(&set_to_intersect).cloned().collect());
+
+            assert_eq!(result, expected_result);
+        }
+    }
+
+    #[test]
+    fn test_action_set_serialize_json() {
+        let cases = [
+            (
+                iam_actionset!(PUT_OBJECT_ACTION),
+                r#"["s3:PutObject"]"#,
+                false,
+            ),
+            (iam_actionset!(), "", true),
+        ];
+
+        for (set, expected_result, expect_err) in cases {
+            let result = serde_json::to_string(&set);
+
+            match result {
+                Ok(result) => assert_eq!(result, expected_result),
+                Err(_) => assert!(expect_err),
+            }
+        }
+    }
+
+    #[test]
+    fn test_action_set_deserialize_json() {
+        let cases = [
+            (
+                r#""s3:PutObject""#,
+                iam_actionset!(PUT_OBJECT_ACTION),
+                false,
+                false,
+            ),
+            (
+                r#"["s3:PutObject"]"#,
+                iam_actionset!(PUT_OBJECT_ACTION),
+                false,
+                false,
+            ),
+            (
+                r#"["s3:PutObject", "s3:GetObject"]"#,
+                iam_actionset!(PUT_OBJECT_ACTION, GET_OBJECT_ACTION),
+                false,
+                false,
+            ),
+            (
+                r#"["s3:PutObject", "s3:GetObject", "s3:PutObject"]"#,
+                iam_actionset!(PUT_OBJECT_ACTION, GET_OBJECT_ACTION),
+                false,
+                false,
+            ),
+            (r#"[]"#, iam_actionset!(), true, false),
+            (r#""foo""#, iam_actionset!(), true, false),
+            (r#"["s3:PutObject", "foo"]"#, iam_actionset!(), true, false),
+        ];
+
+        for (data, expected_result, expect_deserialize_err, expect_validate_err) in cases {
+            let result = serde_json::from_str::<ActionSet>(data);
+
+            match result {
+                Ok(result) => {
+                    if expect_validate_err {
+                        assert_err!(result.validate());
+                    } else {
+                        assert_ok!(result.validate());
+                    }
+                    assert_eq!(result, expected_result);
+                }
+                Err(_) => assert!(expect_deserialize_err),
+            }
+        }
+    }
+
+    #[test]
+    fn test_set_to_vec() {
+        let cases = [
+            (iam_actionset!(PUT_OBJECT_ACTION), vec![PUT_OBJECT_ACTION]),
+            (iam_actionset!(), vec![]),
+        ];
+
+        for (set, expected_result) in cases {
+            let result = set.to_vec();
+
+            assert_eq!(result, expected_result);
+        }
+    }
 }

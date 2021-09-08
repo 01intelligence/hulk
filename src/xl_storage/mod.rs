@@ -11,6 +11,7 @@ use futures_util::{ready, FutureExt};
 use lazy_static::lazy_static;
 use path_absolutize::Absolutize;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeekExt, AsyncWrite, AsyncWriteExt};
+use tokio::sync::RwLock;
 pub use types::*;
 pub use with_check::*;
 
@@ -21,7 +22,7 @@ use crate::errors::{AsError, StorageError, TypedError};
 use crate::fs::{
     check_path_length, err_dir_not_empty, err_invalid_arg, err_io, err_is_dir, err_not_dir,
     err_not_found, err_permission, err_too_many_files, err_too_many_symlinks, AlignedWriter, File,
-    OpenOptionsDirectIo, OpenOptionsNoAtime, OpenOptionsSync,
+    OpenOptionsDirectIo, OpenOptionsNoAtime, OpenOptionsSync, SameFile,
 };
 use crate::globals::Guard;
 use crate::io::{AsyncReadAt, AsyncReadFull};
@@ -96,16 +97,20 @@ pub struct XlStorage {
 
     root_disk: bool,
 
-    disk_id: String,
-
     // Indexes, will be -1 until assigned a set.
     pool_index: isize,
     set_index: isize,
     disk_index: isize,
 
-    format_last_check: Option<utils::DateTime>,
+    meta_cache: RwLock<Option<XlStorageMeta>>,
 
     disk_info_cache: Option<Box<dyn utils::TimedValueGetter<crate::storage::DiskInfo>>>,
+}
+
+struct XlStorageMeta {
+    disk_id: String,
+    format_meta: fs::Metadata,
+    format_last_check: utils::DateTime,
 }
 
 unsafe impl Send for XlStorage {}
@@ -136,18 +141,94 @@ impl XlStorage {
         Ok(())
     }
 
-    pub fn get_disk_id(&self) -> anyhow::Result<&str> {
-        todo!()
+    pub async fn get_disk_id(&self) -> anyhow::Result<String> {
+        // Read lock.
+        let meta_cache = self.meta_cache.read().await;
+        let mut last_check = None;
+        if let Some(meta) = &*meta_cache {
+            // If cached `disk_id` is less than 1s old.
+            if meta.format_last_check.elapsed() <= utils::seconds(1) {
+                return Ok(meta.disk_id.clone());
+            }
+            last_check = Some(meta.format_last_check);
+        }
+        drop(meta_cache);
+
+        // Write lock.
+        let mut meta_cache = self.meta_cache.write().await;
+
+        // If somebody else has updated `disk_id`.
+        if let Some(meta) = &*meta_cache {
+            if let Some(last_check) = last_check {
+                if meta.format_last_check > last_check {
+                    return Ok(meta.disk_id.clone());
+                }
+            }
+        }
+
+        let format_file = path_join(&[
+            &self.disk_path,
+            object::SYSTEM_META_BUCKET,
+            crate::format::FORMAT_CONFIG_FILE,
+        ]);
+
+        let meta = match fs::metadata(&format_file).await {
+            Ok(meta) => meta,
+            Err(err) => {
+                return if err_not_found(&err) {
+                    match fs::access(&self.disk_path).await {
+                        Ok(_) => Err(StorageError::UnformattedDisk.into()),
+                        Err(err) => {
+                            if err_not_found(&err) {
+                                Err(StorageError::DiskNotFound.into())
+                            } else if err_permission(&err) {
+                                Err(StorageError::DiskAccessDenied.into())
+                            } else {
+                                Err(StorageError::CorruptedFormat.into())
+                            }
+                        }
+                    }
+                } else if err_permission(&err) {
+                    Err(StorageError::DiskAccessDenied.into())
+                } else {
+                    Err(StorageError::CorruptedFormat.into())
+                };
+            }
+        };
+
+        // If the format file has not changed, just return the cached `disk_id`.
+        if let Some(meta_cache) = &mut *meta_cache {
+            if meta.is_same_file(&meta_cache.format_meta) {
+                meta_cache.format_last_check = utils::now(); // cache check time
+                return Ok(meta_cache.disk_id.clone());
+            }
+        }
+
+        let content = fs::read_file(&format_file).await?;
+        let format: crate::format::FormatErasureV3 = serde_json::from_slice(&content)?;
+        let disk_id = format.erasure.this;
+
+        // Cache it anyhow.
+        meta_cache.insert(XlStorageMeta {
+            disk_id: disk_id.clone(),
+            format_meta: meta,
+            format_last_check: utils::now(),
+        });
+
+        Ok(disk_id)
     }
 
     pub fn set_disk_id(&mut self, _id: String) {
         // Nothing to do.
     }
 
-    pub fn get_disk_location(&self) -> (isize, isize, isize) {
+    pub async fn get_disk_location(&self) -> (isize, isize, isize) {
         if self.pool_index < 0 || self.set_index < 0 || self.disk_index < 0 {
             // If unset, see if we can locate it.
-            return get_xl_disk_loc(&self.disk_id);
+            let meta_cache = self.meta_cache.read().await;
+            if let Some(meta) = &*meta_cache {
+                return get_xl_disk_loc(&meta.disk_id);
+            }
         }
         (self.pool_index, self.set_index, self.disk_index)
     }
@@ -171,9 +252,9 @@ impl XlStorage {
 
             let mut disk_id = None;
             let mut healing = false;
-            match this.get_disk_id() {
+            match this.get_disk_id().await {
                 Ok(id) => {
-                    disk_id = Some(id.to_owned());
+                    disk_id = Some(id);
                 }
                 Err(err) => {
                     if err.is_error(&StorageError::UnformattedDisk) {
@@ -242,11 +323,10 @@ impl XlStorage {
                 .map_or_else(|_| config::ENABLE_ON, |s| s.as_str())
                 == config::ENABLE_ON,
             root_disk,
-            disk_id: "".to_string(),
             pool_index: -1,
             set_index: -1,
             disk_index: -1,
-            format_last_check: None,
+            meta_cache: RwLock::new(None),
             disk_info_cache: None,
         };
 

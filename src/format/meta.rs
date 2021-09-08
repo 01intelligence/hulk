@@ -1,5 +1,7 @@
+use serde::{Deserialize, Serialize};
+
 // Format config file carries backend format specific details.
-const FORMAT_CONFIG_FILE: &str = "format.json";
+pub const FORMAT_CONFIG_FILE: &str = "format.json";
 
 // Version of the FormatMetaV1
 const FORMAT_META_VERSION_V1: &str = "1";
@@ -18,7 +20,8 @@ const FORMAT_META_VERSION_V1: &str = "1";
 
 // Ideally we will never have a situation where we will have to change the
 // fields of this struct and deal with related migration.
-struct FormatMetaV1 {
+#[derive(Serialize, Deserialize)]
+pub struct FormatMetaV1 {
     version: String, // Version of the format config.
     format: String,  // The backend format type, supports two values 'xl' and 'fs'.
     id: String,      // The identifier for the deployment.

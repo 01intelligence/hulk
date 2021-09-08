@@ -9,7 +9,3 @@ pub use api_errors::*;
 pub use api_layer::*;
 pub use api_response::*;
 pub use api_utils::*;
-
-pub fn new_object_layer() -> anyhow::Result<ObjectLayer> {
-    todo!()
-}

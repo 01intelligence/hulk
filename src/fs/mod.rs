@@ -12,6 +12,9 @@ mod read_file;
 mod readdir;
 mod reliable;
 mod root_disk;
+mod same_file;
+
+pub use std::fs::Metadata;
 
 pub use aligned_reader::*;
 pub use aligned_writer::*;
@@ -27,4 +30,5 @@ pub use read_file::*;
 pub use readdir::*;
 pub use reliable::*;
 pub use root_disk::*;
+pub use same_file::*;
 pub use tokio::fs::File;

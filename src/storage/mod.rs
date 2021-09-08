@@ -49,9 +49,9 @@ impl StorageApi {
         }
     }
 
-    pub fn get_disk_id(&self) -> anyhow::Result<&str> {
+    pub async fn get_disk_id(&self) -> anyhow::Result<String> {
         match self {
-            StorageApi::XlStorage(inner) => inner.get_disk_id(),
+            StorageApi::XlStorage(inner) => inner.get_disk_id().await,
         }
     }
 
@@ -285,9 +285,9 @@ impl StorageApi {
             StorageApi::XlStorage(inner) => inner.read_all(volume, path).await,
         }
     }
-    pub fn get_disk_location(&self) -> (isize, isize, isize) {
+    pub async fn get_disk_location(&self) -> (isize, isize, isize) {
         match self {
-            StorageApi::XlStorage(inner) => inner.get_disk_location(),
+            StorageApi::XlStorage(inner) => inner.get_disk_location().await,
         }
     }
     pub fn set_disk_location(&mut self, pool_idx: isize, set_idx: isize, disk_idx: isize) {

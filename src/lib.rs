@@ -17,7 +17,7 @@
 #![feature(async_closure)]
 #![feature(box_into_pin)]
 #![feature(is_sorted)]
-#![feature(windows_by_handle)]
+#![cfg_attr(windows, feature(windows_by_handle))]
 
 pub mod admin;
 pub mod auth;

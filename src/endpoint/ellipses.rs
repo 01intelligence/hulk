@@ -540,4 +540,173 @@ mod tests {
             .map(|i| format!("{:01$x}", i, paddinglen))
             .collect()
     }
+
+    #[test]
+    fn test_get_set_indexes() {
+        let cases = vec![
+            // Invalid inputs.
+            // Test 1
+            (&["data{1...3}"][..], &[3][..], None),
+            // Test 2
+            (
+                &["data/controller1/export{1...2}, data/controller2/export{1...4}, data/controller3/export{1...8}"],
+                &[2, 4, 8],
+                None,
+            ),
+            // Test 3
+            (&["data{1...17}/export{1...52}"], &[14144], None),
+            // Valid inputs.
+            // Test 4
+            (&["data{1...27}"], &[27], Some(vec![vec![9, 9, 9]])),
+            // Test 5
+            (
+                &["http://host{1...3}/data{1...180}"],
+                &[540],
+                Some(vec![vec![15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15,
+                               15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15,
+                               15, 15]]),
+            ),
+            // Test 6
+            (
+                &["http://host{1...2}.rack{1...4}/data{1...180}"],
+                &[1440],
+                Some(vec![vec![16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                               16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                               16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                               16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                               16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                               16, 16, 16, 16, 16]]),
+            ),
+            // Test 7
+            (
+                &["http://host{1...2}/data{1...180}"],
+                &[360],
+                Some(vec![vec![12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12,
+                               12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12]]),
+            ),
+            // Test 8
+            (
+                &["data/controller1/export{1...4}, data/controller2/export{1...8}, data/controller3/export{1...12}"],
+                &[4, 8, 12],
+                Some(vec![vec![4], vec![4, 4], vec![4, 4, 4]]),
+            ),
+            // Test 9
+            (
+                &["data{1...64}"],
+                &[64],
+                Some(vec![vec![16, 16, 16, 16]]),
+            ),
+            // Test 10
+            (
+                &["data{1...24}"],
+                &[24],
+                Some(vec![vec![12, 12]]),
+            ),
+            // Test 11
+            (
+                &["data/controller{1...11}/export{1...8}"],
+                &[88],
+                Some(vec![vec![11, 11, 11, 11, 11, 11, 11, 11]]),
+            ),
+            // Test 12
+            (
+                &["data{1...4}"],
+                &[4],
+                Some(vec![vec![4]]),
+            ),
+            // Test 13
+            (
+                &["data/controller1/export{1...10}, data/controller2/export{1...10}, data/controller3/export{1...10}"],
+                &[10, 10, 10],
+                Some(vec![vec![10], vec![10], vec![10]]),
+            ),
+            // Test 14
+            (
+                &["data{1...16}/export{1...52}"],
+                &[832],
+                Some(vec![vec![16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                               16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                               16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16,
+                               16]]),
+            ),
+        ];
+
+        for (i, (args, total_sizes, expected_indexes)) in cases.into_iter().enumerate() {
+            let arg_patterns: Vec<ellipses::ArgPattern> = args
+                .iter()
+                .map(|arg| ellipses::find_ellipses_patterns(arg).unwrap())
+                .collect();
+            match get_set_indexes(args, total_sizes, 0, &arg_patterns) {
+                Err(err) => assert!(expected_indexes.is_none(), "test {}", i + 1),
+                Ok(indexes) => assert_eq!(indexes, expected_indexes.unwrap(), "test {}", i + 1),
+            }
+        }
+    }
+
+    #[test]
+    fn test_get_set_indexes_env_override() {
+        let cases = vec![
+            // Test 1
+            (
+                &["data{1...64}"][..],
+                &[64][..],
+                8,
+                Some(vec![vec![8, 8, 8, 8, 8, 8, 8, 8]]),
+            ),
+            // Test 2
+            (
+                &["http://host{1...2}/data{1...180}"],
+                &[360],
+                15,
+                Some(vec![vec![
+                    15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15,
+                    15, 15, 15, 15,
+                ]]),
+            ),
+            // Test 3
+            (
+                &["http://host{1...12}/data{1...12}"],
+                &[144],
+                12,
+                Some(vec![vec![12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12]]),
+            ),
+            // Test 4
+            (
+                &["http://host{0...5}/data{1...28}"],
+                &[168],
+                12,
+                Some(vec![vec![
+                    12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12,
+                ]]),
+            ),
+            // Test 5
+            (
+                &["http://host{1...11}/data{1...11}"],
+                &[121],
+                11,
+                Some(vec![vec![11, 11, 11, 11, 11, 11, 11, 11, 11, 11, 11]]),
+            ),
+            // Test 6
+            (&["http://host{0...5}/data{1...28}"], &[168], 10, None),
+            // Test 7
+            (&["data{1...60}"], &[], 8, None),
+            // Test 8
+            (&["data{1...64}"], &[], 64, None),
+            // Test 9
+            (&["data{1...64}"], &[], 2, None),
+        ];
+
+        for (i, (args, total_sizes, env_override, expected_indexes)) in
+            cases.into_iter().enumerate()
+        {
+            let arg_patterns: Vec<ellipses::ArgPattern> = args
+                .iter()
+                .map(|arg| ellipses::find_ellipses_patterns(arg).unwrap())
+                .collect();
+            match get_set_indexes(args, total_sizes, env_override, &arg_patterns) {
+                Err(err) => assert!(expected_indexes.is_none(), "test {}", i + 1),
+                Ok(indexes) => assert_eq!(indexes, expected_indexes.unwrap(), "test {}", i + 1),
+            }
+        }
+    }
 }

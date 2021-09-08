@@ -7,7 +7,7 @@ use std::io::{Error, ErrorKind, SeekFrom};
 
 pub use format_utils::*;
 pub use format_v2::*;
-use futures_util::{ready, FutureExt};
+use futures_util::{ready, FutureExt, StreamExt};
 use lazy_static::lazy_static;
 use path_absolutize::Absolutize;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncSeekExt, AsyncWrite, AsyncWriteExt};
@@ -31,7 +31,7 @@ use crate::object::{self, path_ensure_dir, path_is_dir, path_join};
 use crate::pool::{TypedPool, TypedPoolGuard};
 use crate::prelude::*;
 use crate::storage::FileInfo;
-use crate::utils::{BufGuard, DateTimeExt, Path, PathBuf};
+use crate::utils::{BufGuard, DateTimeExt, Path, PathBuf, TimedValueUpdateFnResult};
 use crate::{config, fs, globals, storage, utils};
 
 const NULL_VERSION_ID: &str = "null";
@@ -104,7 +104,7 @@ pub struct XlStorage {
 
     meta_cache: RwLock<Option<XlStorageMeta>>,
 
-    disk_info_cache: Option<Box<dyn utils::TimedValueGetter<crate::storage::DiskInfo>>>,
+    disk_info_cache: Option<utils::TimedValue<crate::storage::DiskInfo>>,
 }
 
 struct XlStorageMeta {
@@ -245,46 +245,49 @@ impl XlStorage {
 
     fn build_disk_info_cache(&mut self) {
         let this = utils::SendRawPtr::new(self as *mut Self);
-        let disk_info_cache = move || async move {
-            // Safety: lifetime is bounded by `self`.
-            let this = unsafe { this.to().as_mut().unwrap() };
-            let info = fs::get_disk_info(&this.disk_path).await?;
+        let disk_info_cache = move || {
+            let fut = async move {
+                // Safety: lifetime is bounded by `self`.
+                let this = unsafe { this.to().as_mut().unwrap() };
+                let info = fs::get_disk_info(&this.disk_path).await?;
 
-            let mut disk_id = None;
-            let mut healing = false;
-            match this.get_disk_id().await {
-                Ok(id) => {
-                    disk_id = Some(id);
-                }
-                Err(err) => {
-                    if err.is_error(&StorageError::UnformattedDisk) {
-                        // If we found an unformatted disk then
-                        // healing is automatically true.
-                        healing = true;
-                    } else {
-                        // Check if the disk is being healed .
-                        healing = this.healing().await.is_some();
+                let mut disk_id = None;
+                let mut healing = false;
+                match this.get_disk_id().await {
+                    Ok(id) => {
+                        disk_id = Some(id);
                     }
-                }
-            };
+                    Err(err) => {
+                        if err.is_error(&StorageError::UnformattedDisk) {
+                            // If we found an unformatted disk then
+                            // healing is automatically true.
+                            healing = true;
+                        } else {
+                            // Check if the disk is being healed .
+                            healing = this.healing().await.is_some();
+                        }
+                    }
+                };
 
-            Ok(crate::storage::DiskInfo {
-                total: info.total,
-                free: info.free,
-                used: info.used,
-                used_inodes: info.files - info.ffree,
-                free_inodes: info.ffree,
-                fs_type: info.fs_type,
-                root_disk: this.root_disk,
-                healing,
-                endpoint: this.endpoint.to_string(),
-                mount_path: this.disk_path.to_owned(),
-                id: disk_id.unwrap_or_default(),
-                metrics: None,
-                error: None,
-            })
+                Ok(crate::storage::DiskInfo {
+                    total: info.total,
+                    free: info.free,
+                    used: info.used,
+                    used_inodes: info.files - info.ffree,
+                    free_inodes: info.ffree,
+                    fs_type: info.fs_type,
+                    root_disk: this.root_disk,
+                    healing,
+                    endpoint: this.endpoint.to_string(),
+                    mount_path: this.disk_path.to_owned(),
+                    id: disk_id.unwrap_or_default(),
+                    metrics: None,
+                    error: None,
+                })
+            };
+            Box::pin(fut) as TimedValueUpdateFnResult<crate::storage::DiskInfo>
         };
-        self.disk_info_cache = Some(Box::new(utils::TimedValue::new(None, disk_info_cache)));
+        self.disk_info_cache = Some(utils::TimedValue::new(None, Box::new(disk_info_cache)));
     }
 
     pub async fn disk_info(&self) -> anyhow::Result<crate::storage::DiskInfo> {

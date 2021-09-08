@@ -1,12 +1,7 @@
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ReqCommon {
-    #[prost(string, tag = "1")]
-    pub disk_id: ::prost::alloc::string::String,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct HealthReq {
-    #[prost(message, optional, tag = "1")]
-    pub common: ::core::option::Option<ReqCommon>,
+pub struct DiskInfo {
+    #[prost(bytes = "vec", tag = "1")]
+    pub encoded: ::prost::alloc::vec::Vec<u8>,
 }
 #[doc = r" Generated client implementations."]
 pub mod storage_service_client {
@@ -84,7 +79,7 @@ pub mod storage_service_client {
         }
         pub async fn health(
             &mut self,
-            request: impl tonic::IntoRequest<super::HealthReq>,
+            request: impl tonic::IntoRequest<super::super::common::Empty>,
         ) -> Result<tonic::Response<super::super::common::Empty>, tonic::Status> {
             self.inner.ready().await.map_err(|e| {
                 tonic::Status::new(
@@ -94,6 +89,20 @@ pub mod storage_service_client {
             })?;
             let codec = tonic::codec::ProstCodec::default();
             let path = http::uri::PathAndQuery::from_static("/storage.StorageService/health");
+            self.inner.unary(request.into_request(), path, codec).await
+        }
+        pub async fn disk_info(
+            &mut self,
+            request: impl tonic::IntoRequest<super::super::common::Empty>,
+        ) -> Result<tonic::Response<super::DiskInfo>, tonic::Status> {
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::new(
+                    tonic::Code::Unknown,
+                    format!("Service was not ready: {}", e.into()),
+                )
+            })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static("/storage.StorageService/disk_info");
             self.inner.unary(request.into_request(), path, codec).await
         }
     }
@@ -111,8 +120,12 @@ pub mod storage_service_server {
         ) -> Result<tonic::Response<super::super::common::Version>, tonic::Status>;
         async fn health(
             &self,
-            request: tonic::Request<super::HealthReq>,
+            request: tonic::Request<super::super::common::Empty>,
         ) -> Result<tonic::Response<super::super::common::Empty>, tonic::Status>;
+        async fn disk_info(
+            &self,
+            request: tonic::Request<super::super::common::Empty>,
+        ) -> Result<tonic::Response<super::DiskInfo>, tonic::Status>;
     }
     #[derive(Debug)]
     pub struct StorageServiceServer<T: StorageService> {
@@ -187,12 +200,12 @@ pub mod storage_service_server {
                 "/storage.StorageService/health" => {
                     #[allow(non_camel_case_types)]
                     struct healthSvc<T: StorageService>(pub Arc<T>);
-                    impl<T: StorageService> tonic::server::UnaryService<super::HealthReq> for healthSvc<T> {
+                    impl<T: StorageService> tonic::server::UnaryService<super::super::common::Empty> for healthSvc<T> {
                         type Response = super::super::common::Empty;
                         type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
                         fn call(
                             &mut self,
-                            request: tonic::Request<super::HealthReq>,
+                            request: tonic::Request<super::super::common::Empty>,
                         ) -> Self::Future {
                             let inner = self.0.clone();
                             let fut = async move { (*inner).health(request).await };
@@ -205,6 +218,39 @@ pub mod storage_service_server {
                     let fut = async move {
                         let inner = inner.0;
                         let method = healthSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec).apply_compression_config(
+                            accept_compression_encodings,
+                            send_compression_encodings,
+                        );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/storage.StorageService/disk_info" => {
+                    #[allow(non_camel_case_types)]
+                    struct disk_infoSvc<T: StorageService>(pub Arc<T>);
+                    impl<T: StorageService> tonic::server::UnaryService<super::super::common::Empty>
+                        for disk_infoSvc<T>
+                    {
+                        type Response = super::DiskInfo;
+                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::super::common::Empty>,
+                        ) -> Self::Future {
+                            let inner = self.0.clone();
+                            let fut = async move { (*inner).disk_info(request).await };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let inner = inner.0;
+                        let method = disk_infoSvc(inner);
                         let codec = tonic::codec::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec).apply_compression_config(
                             accept_compression_encodings,

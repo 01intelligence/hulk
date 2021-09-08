@@ -61,7 +61,7 @@ impl StandardClaims {
         self.audience.insert(audience.into());
     }
 
-    pub fn set_expiry(&mut self, expiry: &utils::DateTime) {
+    pub fn set_expiry(&mut self, expiry: utils::DateTime) {
         self.expires_at.insert(expiry.timestamp() as usize);
     }
 

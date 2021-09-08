@@ -1,25 +1,17 @@
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::RwLock;
 
-use futures_util::FutureExt;
+use tokio::sync::RwLock;
 
 use super::{Duration, Instant};
 
-pub trait TimedValueGetter<T> {
-    fn get(&self) -> Pin<Box<dyn Future<Output = anyhow::Result<T>> + '_>>;
-}
+pub type TimedValueUpdateFnResult<T> =
+    Pin<Box<dyn Future<Output = anyhow::Result<T>> + Send + Sync>>;
 
-impl<T: Clone, R: Future<Output = anyhow::Result<T>> + Send + Sync, F: Fn() -> R>
-    TimedValueGetter<T> for TimedValue<T, R, F>
-{
-    fn get(&self) -> Pin<Box<dyn Future<Output = anyhow::Result<T>> + '_>> {
-        Box::pin(self.get())
-    }
-}
+pub type TimedValueUpdateFn<T> = Box<dyn Fn() -> TimedValueUpdateFnResult<T> + Send + Sync>;
 
-pub struct TimedValue<T, R: Future<Output = anyhow::Result<T>> + Send + Sync, F: Fn() -> R> {
-    update: F,
+pub struct TimedValue<T> {
+    update: TimedValueUpdateFn<T>,
     ttl: Duration,
     inner: RwLock<Inner<T>>,
 }
@@ -29,10 +21,10 @@ struct Inner<T> {
     value: Option<T>,
 }
 
-impl<T: Clone, R: Future<Output = anyhow::Result<T>> + Send + Sync, F: Fn() -> R>
-    TimedValue<T, R, F>
-{
-    pub fn new(ttl: Option<Duration>, update: F) -> Self {
+unsafe impl<T: Clone> Sync for TimedValue<T> {}
+
+impl<T: Clone> TimedValue<T> {
+    pub fn new(ttl: Option<Duration>, update: TimedValueUpdateFn<T>) -> Self {
         Self {
             update,
             ttl: ttl.unwrap_or_else(|| Duration::from_secs(1)),
@@ -44,7 +36,7 @@ impl<T: Clone, R: Future<Output = anyhow::Result<T>> + Send + Sync, F: Fn() -> R
     }
 
     pub async fn get(&self) -> anyhow::Result<T> {
-        let inner = self.inner.read().unwrap();
+        let inner = self.inner.read().await;
         if inner.last_update.elapsed() < self.ttl {
             if let Some(value) = &inner.value {
                 return Ok(value.clone());
@@ -52,8 +44,8 @@ impl<T: Clone, R: Future<Output = anyhow::Result<T>> + Send + Sync, F: Fn() -> R
         }
         drop(inner);
 
-        let value = (self.update)().boxed_local().await?;
-        let mut inner = self.inner.write().unwrap();
+        let value = (self.update)().await?;
+        let mut inner = self.inner.write().await;
         inner.value = Some(value);
         inner.last_update = Instant::now();
         Ok(inner.value.as_ref().unwrap().clone())

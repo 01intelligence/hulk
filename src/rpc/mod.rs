@@ -1,5 +1,9 @@
+mod client;
+mod storage_client;
 mod storage_server;
 
+pub use client::*;
+pub use storage_client::*;
 pub use storage_server::*;
 use tonic::{Request, Status};
 
@@ -10,12 +14,21 @@ const DEFAULT_SKEW_TIME: utils::Duration = utils::minutes(15);
 
 const NO_AUTH_TOKEN: &str = "JWT token missing";
 
+pub trait MetadataMapExt {
+    fn get_str(&self, key: &str) -> Option<&str>;
+}
+
+impl MetadataMapExt for tonic::metadata::MetadataMap {
+    fn get_str(&self, key: &str) -> Option<&str> {
+        self.get(key).and_then(|val| val.to_str().ok())
+    }
+}
+
 pub fn validate_request(req: Request<()>) -> Result<Request<()>, Status> {
     let meta = req.metadata();
 
     let get_str = |key: &str| {
-        meta.get(key)
-            .and_then(|val| val.to_str().ok())
+        meta.get_str(key)
             .ok_or_else(|| Status::unauthenticated(NO_AUTH_TOKEN))
     };
 

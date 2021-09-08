@@ -6,13 +6,10 @@ import "common.proto";
 
 service StorageService {
   rpc version(common.Empty) returns (common.Version) {}
-  rpc health(HealthReq) returns (common.Empty) {}
+  rpc health(common.Empty) returns (common.Empty) {}
+  rpc disk_info(common.Empty) returns (DiskInfo) {}
 }
 
-message ReqCommon {
-  string disk_id = 1;
-}
-
-message HealthReq {
-  ReqCommon common = 1;
+message DiskInfo {
+  bytes encoded = 1;
 }

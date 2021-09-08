@@ -11,6 +11,7 @@ pub use api_errors::*;
 pub use encryption::*;
 pub use reducible_errors::*;
 pub use storage_errors::*;
+pub use thiserror::private::AsDynError;
 pub use typed_errors::*;
 pub use ui_errors::*;
 
@@ -26,7 +27,7 @@ pub trait AsError {
     }
 }
 
-impl AsError for anyhow::Error {
+/*impl AsError for anyhow::Error {
     fn as_error<E: std::error::Error + 'static>(&self) -> Option<&E> {
         for cause in self.chain() {
             if let Some(err) = cause.downcast_ref::<E>() {
@@ -35,12 +36,23 @@ impl AsError for anyhow::Error {
         }
         None
     }
-}
+}*/
 
-impl AsError for std::io::Error {
+/*impl AsError for std::io::Error {
     fn as_error<E: std::error::Error + 'static>(&self) -> Option<&E> {
         if let Some(err) = self.get_ref() {
             if let Some(err) = err.as_error::<E>() {
+                return Some(err);
+            }
+        }
+        None
+    }
+}*/
+
+impl<T: std::error::Error + 'static> AsError for T {
+    fn as_error<E: Error + 'static>(&self) -> Option<&E> {
+        for cause in self.as_dyn_error().chain() {
+            if let Some(err) = cause.downcast_ref::<E>() {
                 return Some(err);
             }
         }

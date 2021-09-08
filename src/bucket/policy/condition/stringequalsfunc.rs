@@ -98,7 +98,7 @@ impl<'a> Function for StringNotEqualsFunc<'a> {
     }
 }
 
-pub(super) fn new_string_equals_func(
+pub(crate) fn new_string_equals_func(
     key: Key,
     values: ValueSet,
 ) -> anyhow::Result<Box<dyn Function + '_>> {

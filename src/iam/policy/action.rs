@@ -17,6 +17,21 @@ use crate::bucket::policy::{condition, Valid};
 #[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Clone, Debug)]
 pub struct Action<'a>(pub(super) Cow<'a, str>);
 
+impl<'a> std::convert::From<AdminAction<'a>> for Action<'a> {
+    fn from(a: AdminAction<'a>) -> Self {
+        match a.0 {
+            Cow::Borrowed(s) => s.into(),
+            Cow::Owned(s) => s.into(),
+        }
+    }
+}
+
+impl<'a> std::convert::From<&'a AdminAction<'a>> for Action<'a> {
+    fn from(a: &'a AdminAction<'a>) -> Self {
+        Action((&**a).into())
+    }
+}
+
 // ABORT_MULTIPART_UPLOAD_ACTION - AbortMultipartUpload Rest API action.
 pub const ABORT_MULTIPART_UPLOAD_ACTION: &str = "s3:AbortMultipartUpload";
 
@@ -472,7 +487,7 @@ impl<'de, 'a> Deserialize<'de> for Action<'a> {
 
 // Set of actions.
 #[derive(Eq, PartialEq, Clone, Debug)]
-pub struct ActionSet<'a>(HashSet<Action<'a>>);
+pub struct ActionSet<'a>(pub(super) HashSet<Action<'a>>);
 
 impl<'a> ActionSet<'a> {
     pub fn intersection(

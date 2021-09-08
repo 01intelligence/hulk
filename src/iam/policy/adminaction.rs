@@ -9,7 +9,7 @@ use crate::bucket::policy::{condition, Valid};
 
 // Admin policy action.
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
-pub struct AdminAction<'a>(Cow<'a, str>);
+pub struct AdminAction<'a>(pub(super) Cow<'a, str>);
 
 impl<'a> Deref for AdminAction<'a> {
     type Target = str;

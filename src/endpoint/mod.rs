@@ -547,12 +547,12 @@ pub async fn update_domain_ips(endpoints: &StringSet) {
     }
 
     *GLOBALS.domain_ips.guard() = ip_list.match_fn(|ip| {
-        let mut ip = ip;
-        let host;
-        if let Ok((h, _)) = split_host_port(ip) {
-            host = h;
-            ip = &host;
-        }
+        let host_port = split_host_port(ip);
+        let ip = if let Ok((ref host, _)) = host_port {
+            host
+        } else {
+            ip
+        };
         let ip_res = ip.parse::<IpAddr>();
         ip_res.is_ok() && !ip_res.unwrap().is_loopback() && ip != "localhost"
     });

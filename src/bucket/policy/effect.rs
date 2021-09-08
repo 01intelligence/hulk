@@ -7,7 +7,7 @@ use super::Valid;
 
 // Policy statement effect Allow or Deny.
 #[derive(Eq, PartialEq, Clone)]
-pub struct Effect<'a>(&'a str);
+pub struct Effect<'a>(pub(crate) &'a str);
 
 pub const ALLOW: Effect = Effect("Allow"); // allow effect
 pub const DENY: Effect = Effect("Deny"); // deny effect

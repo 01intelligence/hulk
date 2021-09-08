@@ -7,7 +7,7 @@ use crate::bucket::policy::{condition, Valid};
 
 // Admin policy action.
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
-pub struct AdminAction<'a>(&'a str);
+pub struct AdminAction<'a>(pub(super) &'a str);
 
 impl<'a> std::convert::From<Action<'a>> for AdminAction<'a> {
     fn from(a: Action<'a>) -> Self {

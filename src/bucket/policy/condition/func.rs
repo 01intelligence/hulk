@@ -110,9 +110,10 @@ impl<'de> Deserialize<'de> for Functions {
                 while let Some((k, v)) = map.next_entry()? {
                     nm.insert(k, v);
                 }
-                if nm.is_empty() {
-                    return Err(A::Error::custom("condition must not be empty"));
-                }
+                // TODO
+                // if nm.is_empty() {
+                //     return Err(A::Error::custom("condition must not be empty"));
+                // }
                 let mut funcs = Functions::new(vec![]);
                 for (name, args) in nm {
                     if !name.is_valid() {

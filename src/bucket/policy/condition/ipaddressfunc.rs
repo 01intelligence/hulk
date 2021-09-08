@@ -114,7 +114,7 @@ impl<'a> Function for NotIpaddressFunc<'a> {
     }
 }
 
-pub(in super::super) fn new_ip_address_func(
+pub(crate) fn new_ip_address_func(
     key: Key,
     values: ValueSet,
 ) -> anyhow::Result<Box<dyn Function + '_>> {

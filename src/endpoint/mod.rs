@@ -530,22 +530,32 @@ pub(self) async fn create_endpoints(
 pub async fn update_domain_ips(endpoints: &StringSet) {
     let mut ip_list = StringSet::new();
     for e in endpoints.iter() {
-        let host_port = split_host_port(e);
-        if host_port.is_err() {
-            continue;
-        }
-        let (host, _) = host_port.unwrap();
-        if host.parse::<IpAddr>().is_err() {
-            if let Ok(ips) = get_host_ip(&host).await {
-                ip_list = ip_list.union(&ips);
+        if let Ok((host, mut port)) = split_host_port(e) {
+            if port.is_empty() {
+                port = GLOBALS.port.guard().clone();
+            };
+            match host.parse::<IpAddr>() {
+                Ok(_) => ip_list.add(join_host_port(&host, &port)),
+                Err(_) => {
+                    if let Ok(ips) = get_host_ip(&host).await {
+                        let ips_with_port = ips.apply_fn(|ip| join_host_port(ip, &port));
+                        ip_list = ip_list.union(&ips_with_port);
+                    }
+                }
             }
-        } else {
-            ip_list.add(host);
         }
     }
 
-    *GLOBALS.domain_ips.guard() =
-        ip_list.match_fn(|ip| ip.parse::<IpAddr>().unwrap().is_loopback() && ip != "localhost");
+    *GLOBALS.domain_ips.guard() = ip_list.match_fn(|ip| {
+        let mut ip = ip;
+        let host;
+        if let Ok((h, _)) = split_host_port(ip) {
+            host = h;
+            ip = &host;
+        }
+        let ip_res = ip.parse::<IpAddr>();
+        ip_res.is_ok() && !ip_res.unwrap().is_loopback() && ip != "localhost"
+    });
 }
 
 #[cfg(test)]
@@ -791,5 +801,73 @@ mod tests {
                 ),
             }
         }
+    }
+
+    #[tokio::test]
+    async fn test_update_domain_ips() {
+        let temp_global_port = GLOBALS.port.guard().clone();
+        *GLOBALS.port.guard() = "9000".to_string();
+        let temp_global_domain_ips = GLOBALS.domain_ips.guard().clone();
+
+        let cases = vec![
+            // Test 1
+            (StringSet::new(), StringSet::new()),
+            // Test 2
+            (StringSet::from_slice(&["localhost"]), StringSet::new()),
+            // Test 3
+            (
+                StringSet::from_slice(&["localhost", "10.0.0.1"]),
+                StringSet::from_slice(&["10.0.0.1:9000"]),
+            ),
+            // Test 4
+            (
+                StringSet::from_slice(&["localhost:9001", "10.0.0.1"]),
+                StringSet::from_slice(&["10.0.0.1:9000"]),
+            ),
+            // Test 5
+            (
+                StringSet::from_slice(&["localhost", "10.0.0.1:9001"]),
+                StringSet::from_slice(&["10.0.0.1:9001"]),
+            ),
+            // Test 6
+            (
+                StringSet::from_slice(&["localhost:9000", "10.0.0.1:9001"]),
+                StringSet::from_slice(&["10.0.0.1:9001"]),
+            ),
+            // Test 7
+            (
+                StringSet::from_slice(&["10.0.0.1", "10.0.0.2"]),
+                StringSet::from_slice(&["10.0.0.1:9000", "10.0.0.2:9000"]),
+            ),
+            // Test 8
+            (
+                StringSet::from_slice(&["10.0.0.1:9001", "10.0.0.2"]),
+                StringSet::from_slice(&["10.0.0.1:9001", "10.0.0.2:9000"]),
+            ),
+            // Test 9
+            (
+                StringSet::from_slice(&["10.0.0.1", "10.0.0.2:9002"]),
+                StringSet::from_slice(&["10.0.0.1:9000", "10.0.0.2:9002"]),
+            ),
+            // Test 10
+            (
+                StringSet::from_slice(&["10.0.0.1:9001", "10.0.0.2:9002"]),
+                StringSet::from_slice(&["10.0.0.1:9001", "10.0.0.2:9002"]),
+            ),
+        ];
+
+        for (i, (endpoints, expected_results)) in cases.into_iter().enumerate() {
+            *GLOBALS.domain_ips.guard() = StringSet::new();
+            update_domain_ips(&endpoints).await;
+            assert_eq!(
+                *GLOBALS.domain_ips.guard(),
+                expected_results,
+                "test {}",
+                i + 1
+            )
+        }
+
+        *GLOBALS.port.guard() = temp_global_port;
+        *GLOBALS.domain_ips.guard() = temp_global_domain_ips;
     }
 }

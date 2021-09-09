@@ -6,8 +6,7 @@ use tonic::{Request, Response, Status};
 use super::*;
 use crate::endpoint::EndpointServerPools;
 use crate::proto;
-use crate::proto::storage::DiskInfo;
-use crate::proto::{Empty, Version};
+use crate::proto::{DiskInfo, Empty, Version};
 use crate::xl_storage::XlStorage;
 
 const STATUS_DISK_STALE: &str = "disk stale";

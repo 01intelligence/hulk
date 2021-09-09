@@ -119,6 +119,10 @@ arcstr = "1.1.1"
 snap = "1.0.5"
 num-bigint = "0.4.2"
 tower = "0.4.8"
+smallvec = "1.6.1"
+arrayvec = "0.7.1"
+smartstring = "0.2.9"
+remove_dir_all = "0.7.0"
 
 [dependencies.actix-cors]
 git = 'https://github.com/actix/actix-extras'

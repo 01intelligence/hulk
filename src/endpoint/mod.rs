@@ -103,6 +103,14 @@ impl Endpoint {
         }
     }
 
+    pub fn url(&self) -> &str {
+        if let Endpoint::Url(url, _) = self {
+            url.as_str()
+        } else {
+            ""
+        }
+    }
+
     pub fn scheme(&self) -> &str {
         if let Endpoint::Url(url, _) = self {
             url.scheme()

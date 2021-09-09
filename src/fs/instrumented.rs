@@ -30,7 +30,8 @@ pub async fn remove(path: impl AsRef<Path>) -> std::io::Result<()> {
 pub async fn remove_all(path: impl AsRef<Path>) -> std::io::Result<()> {
     let meta = fs::metadata(path.as_ref()).await?;
     if meta.is_dir() {
-        fs::remove_dir_all(path.as_ref()).await
+        let path = path.as_ref().to_owned();
+        super::asyncify(move || remove_dir_all::remove_dir_all(path)).await
     } else {
         fs::remove_file(path.as_ref()).await
     }

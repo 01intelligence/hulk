@@ -189,3 +189,44 @@ lazy_static! {
         0x53464846 => "wslfs",
     };
 }
+
+#[cfg(test)]
+mod tests {
+    use tempfile::tempdir_in;
+
+    use super::*;
+    use crate::errors::StorageError;
+    use crate::fs::mkdir_all;
+    use crate::utils::assert::assert_ok;
+    use crate::utils::PathBuf;
+
+    #[tokio::test]
+    async fn test_xl_storage_get_disk_info() {
+        let tmp_dir = tempdir_in(".").unwrap();
+        let mut tmp_path =
+            PathBuf::from_path_buf(tmp_dir.path().to_path_buf()).expect("utils.PathBuf");
+
+        let path = tmp_path.to_str().unwrap();
+        assert_ok!(
+            mkdir_all(tmp_path.as_path(), 0o755).await,
+            "Unable to create temporary directory. {}",
+            path
+        );
+
+        let cases: [(&str, bool, Option<StorageError>); 2] = [
+            (path, false, None),
+            ("/nonexistent-dir", true, Some(StorageError::DiskNotFound)),
+        ];
+        for (disk_path, is_err, expected_err) in cases.iter() {
+            let result = get_disk_info(disk_path).await;
+            match result {
+                Ok(info) => assert!(!is_err),
+                Err(err) => {
+                    assert!(is_err);
+                    // TODO: error wrap
+                    // assert_eq!(err.to_string(), expected_err.as_ref().unwrap().to_string());
+                }
+            }
+        }
+    }
+}

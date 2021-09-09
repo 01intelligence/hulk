@@ -69,7 +69,7 @@ pub fn get_policies_from_claims(claims: &MapClaims, policy_claim_name: &str) -> 
     Some(set)
 }
 
-// Bucket policy.
+// IAM policy.
 pub struct Policy<'a, 'b> {
     pub id: bpolicy::ID,
     pub version: String,
@@ -170,6 +170,14 @@ impl<'a, 'b> Policy<'a, 'b> {
     }
 }
 
+impl<'a, 'b> PartialEq for Policy<'a, 'b> {
+    fn eq(&self, other: &Self) -> bool {
+        self.version == other.version && self.statements == other.statements
+    }
+}
+
+impl<'a, 'b> Eq for Policy<'a, 'b> {}
+
 impl<'a, 'b> Serialize for Policy<'a, 'b> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -225,7 +233,7 @@ impl<'de, 'a, 'b> Deserialize<'de> for Policy<'a, 'b> {
                     }
                 }
                 let mut policy = Policy {
-                    id: id.ok_or_else(|| A::Error::missing_field("ID"))?,
+                    id: id.unwrap_or("".to_owned()),
                     version: version.ok_or_else(|| A::Error::missing_field("Version"))?,
                     statements: statements.ok_or_else(|| A::Error::missing_field("Statement"))?,
                 };
@@ -238,5 +246,1333 @@ impl<'de, 'a, 'b> Deserialize<'de> for Policy<'a, 'b> {
         }
 
         deserializer.deserialize_map(PolicyVisitor)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bucket::policy::{ALLOW, DENY};
+    use crate::iam_actionset;
+    use crate::utils::assert::*;
+    use crate::utils::{self, DateTime};
+
+    #[test]
+    fn test_get_policies_from_claims() {
+        let attrs = r#"{
+            "exp": 1594690452,
+            "iat": 1594689552,
+            "auth_time": 1594689552,
+            "jti": "18ed05c9-2c69-45d5-a33f-8c94aca99ad5",
+            "iss": "http://localhost:8080/auth/realms/minio",
+            "aud": "account",
+            "sub": "7e5e2f30-1c97-4616-8623-2eae14dee9b1",
+            "typ": "ID",
+            "azp": "account",
+            "nonce": "66ZoLzwJbjdkiedI",
+            "session_state": "3df7b526-5310-4038-9f35-50ecd295a31d",
+            "acr": "1",
+            "upn": "harsha",
+            "address": {},
+            "email_verified": false,
+            "groups": [
+                "offline_access"
+            ],
+            "preferred_username": "harsha",
+            "policy": [
+                "readwrite",
+                "readwrite,readonly",
+                "readonly",
+                ""
+            ]
+        }"#;
+
+        let claims = assert_ok!(serde_json::from_str::<MapClaims>(attrs));
+
+        let set = get_policies_from_claims(&claims, "policy").unwrap();
+
+        assert!(!set.is_empty(), "no policies were found in policy claim");
+    }
+
+    #[test]
+    fn test_policy_is_allowed() -> anyhow::Result<()> {
+        let policy1 = Policy {
+            id: "".to_string(),
+            version: DEFAULT_VERSION.to_string(),
+            statements: vec![Statement {
+                sid: "".to_string(),
+                effect: ALLOW,
+                actions: iam_actionset!(GET_BUCKET_LOCATION_ACTION, PUT_OBJECT_ACTION),
+                resources: ResourceSet::new(vec![Resource::new("*".to_string(), "".to_string())]),
+                conditions: condition::Functions::default(),
+            }],
+        };
+
+        let policy2 = Policy {
+            id: "".to_string(),
+            version: DEFAULT_VERSION.to_string(),
+            statements: vec![Statement {
+                sid: "".to_string(),
+                effect: ALLOW,
+                actions: iam_actionset!(GET_OBJECT_ACTION, PUT_OBJECT_ACTION),
+                resources: ResourceSet::new(vec![Resource::new(
+                    "mybucket".to_string(),
+                    "/myobject*".to_string(),
+                )]),
+                conditions: condition::Functions::default(),
+            }],
+        };
+
+        let func1 = condition::new_ip_address_func(
+            condition::AWS_SOURCE_IP,
+            condition::ValueSet::new(vec![condition::Value::String("192.168.1.0/24".to_string())]),
+        )?;
+
+        let policy3 = Policy {
+            id: "".to_string(),
+            version: DEFAULT_VERSION.to_string(),
+            statements: vec![Statement {
+                sid: "".to_string(),
+                effect: ALLOW,
+                actions: iam_actionset!(GET_OBJECT_ACTION, PUT_OBJECT_ACTION),
+                resources: ResourceSet::new(vec![Resource::new(
+                    "mybucket".to_string(),
+                    "/myobject*".to_string(),
+                )]),
+                conditions: condition::Functions::new(vec![func1.clone()]),
+            }],
+        };
+
+        let policy4 = Policy {
+            id: "".to_string(),
+            version: DEFAULT_VERSION.to_string(),
+            statements: vec![Statement {
+                sid: "".to_string(),
+                effect: DENY,
+                actions: iam_actionset!(GET_OBJECT_ACTION, PUT_OBJECT_ACTION),
+                resources: ResourceSet::new(vec![Resource::new(
+                    "mybucket".to_string(),
+                    "/myobject*".to_string(),
+                )]),
+                conditions: condition::Functions::new(vec![func1.clone()]),
+            }],
+        };
+
+        let anon_get_bucket_location_args = Args {
+            account_name: "Q3AM3UQ867SPQQA43P2F".to_string(),
+            groups: vec![],
+            action: GET_BUCKET_LOCATION_ACTION,
+            bucket_name: "mybucket".to_string(),
+            condition_values: HashMap::default(),
+            is_owner: false,
+            object_name: "".to_string(),
+            claims: MapClaims::default(),
+            deny_only: false,
+        };
+
+        let anon_put_object_action_args = Args {
+            account_name: "Q3AM3UQ867SPQQA43P2F".to_string(),
+            groups: vec![],
+            action: PUT_OBJECT_ACTION,
+            bucket_name: "mybucket".to_string(),
+            condition_values: HashMap::from([
+                (
+                    "x-amz-copy-source".to_string(),
+                    vec!["mybucket/myobject".to_string()],
+                ),
+                ("SourceIp".to_string(), vec!["192.168.1.10".to_string()]),
+            ]),
+            is_owner: false,
+            object_name: "myobject".to_string(),
+            claims: MapClaims::default(),
+            deny_only: false,
+        };
+
+        let anon_get_object_action_args = Args {
+            account_name: "Q3AM3UQ867SPQQA43P2F".to_string(),
+            groups: vec![],
+            action: GET_OBJECT_ACTION,
+            bucket_name: "mybucket".to_string(),
+            condition_values: HashMap::default(),
+            is_owner: false,
+            object_name: "myobject".to_string(),
+            claims: MapClaims::default(),
+            deny_only: false,
+        };
+
+        let get_bucket_location_args = Args {
+            account_name: "Q3AM3UQ867SPQQA43P2F".to_string(),
+            groups: vec![],
+            action: GET_BUCKET_LOCATION_ACTION,
+            bucket_name: "mybucket".to_string(),
+            condition_values: HashMap::default(),
+            is_owner: false,
+            object_name: "".to_string(),
+            claims: MapClaims::default(),
+            deny_only: false,
+        };
+
+        let put_object_action_args = Args {
+            account_name: "Q3AM3UQ867SPQQA43P2F".to_string(),
+            groups: vec![],
+            action: PUT_OBJECT_ACTION,
+            bucket_name: "mybucket".to_string(),
+            condition_values: HashMap::from([
+                (
+                    "x-amz-copy-source".to_string(),
+                    vec!["mybucket/myobject".to_string()],
+                ),
+                ("SourceIp".to_string(), vec!["192.168.1.10".to_string()]),
+            ]),
+            is_owner: false,
+            object_name: "myobject".to_string(),
+            claims: MapClaims::default(),
+            deny_only: false,
+        };
+
+        let get_object_action_args = Args {
+            account_name: "Q3AM3UQ867SPQQA43P2F".to_string(),
+            groups: vec![],
+            action: GET_OBJECT_ACTION,
+            bucket_name: "mybucket".to_string(),
+            condition_values: HashMap::default(),
+            is_owner: false,
+            object_name: "myobject".to_string(),
+            claims: MapClaims::default(),
+            deny_only: false,
+        };
+
+        let cases = [
+            (&policy1, &anon_get_bucket_location_args, true),
+            (&policy1, &anon_put_object_action_args, true),
+            (&policy1, &anon_get_object_action_args, false),
+            (&policy1, &get_bucket_location_args, true),
+            (&policy1, &put_object_action_args, true),
+            (&policy1, &get_object_action_args, false),
+            (&policy2, &anon_get_bucket_location_args, false),
+            (&policy2, &anon_put_object_action_args, true),
+            (&policy2, &anon_get_object_action_args, true),
+            (&policy2, &get_bucket_location_args, false),
+            (&policy2, &put_object_action_args, true),
+            (&policy2, &get_object_action_args, true),
+            (&policy3, &anon_get_bucket_location_args, false),
+            (&policy3, &anon_put_object_action_args, true),
+            (&policy3, &anon_get_object_action_args, false),
+            (&policy3, &get_bucket_location_args, false),
+            (&policy3, &put_object_action_args, true),
+            (&policy3, &get_object_action_args, false),
+            (&policy4, &anon_get_bucket_location_args, false),
+            (&policy4, &anon_put_object_action_args, false),
+            (&policy4, &anon_get_object_action_args, false),
+            (&policy4, &get_bucket_location_args, false),
+            (&policy4, &put_object_action_args, false),
+            (&policy4, &get_object_action_args, false),
+        ];
+
+        for (index, (policy, args, expected_result)) in cases.into_iter().enumerate() {
+            let result = policy.is_allowed(args);
+
+            assert_eq!(
+                result,
+                *expected_result,
+                "case: {}, expected: {}, got: {}",
+                index + 1,
+                expected_result,
+                result
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_policy_is_empty() {
+        let policy1 = Policy {
+            id: "".to_string(),
+            version: DEFAULT_VERSION.to_string(),
+            statements: vec![Statement {
+                sid: "".to_string(),
+                effect: ALLOW,
+                actions: iam_actionset!(PUT_OBJECT_ACTION),
+                resources: ResourceSet::new(vec![Resource::new(
+                    "mybucket".to_string(),
+                    "/myobject*".to_string(),
+                )]),
+                conditions: condition::Functions::default(),
+            }],
+        };
+
+        let policy2 = Policy {
+            id: "MyPolicyForMyBucket".to_string(),
+            version: DEFAULT_VERSION.to_string(),
+            statements: vec![],
+        };
+
+        let cases = [(policy1, false), (policy2, true)];
+
+        for (index, (policy, expected_result)) in cases.iter().enumerate() {
+            let result = policy.is_empty();
+
+            assert_eq!(
+                result,
+                *expected_result,
+                "case: {}, expected: {}, got: {}",
+                index + 1,
+                expected_result,
+                result
+            );
+        }
+    }
+
+    #[test]
+    fn test_policy_is_valid() -> anyhow::Result<()> {
+        let policy1 = Policy {
+            id: "".to_string(),
+            version: DEFAULT_VERSION.to_string(),
+            statements: vec![Statement {
+                sid: "".to_string(),
+                effect: ALLOW,
+                actions: iam_actionset!(PUT_OBJECT_ACTION),
+                resources: ResourceSet::new(vec![Resource::new(
+                    "mybucket".to_string(),
+                    "/myobject*".to_string(),
+                )]),
+                conditions: condition::Functions::default(),
+            }],
+        };
+
+        let policy2 = Policy {
+            id: "".to_string(),
+            version: DEFAULT_VERSION.to_string(),
+            statements: vec![
+                Statement {
+                    sid: "".to_string(),
+                    effect: ALLOW,
+                    actions: iam_actionset!(PUT_OBJECT_ACTION),
+                    resources: ResourceSet::new(vec![Resource::new(
+                        "mybucket".to_string(),
+                        "/myobject*".to_string(),
+                    )]),
+                    conditions: condition::Functions::default(),
+                },
+                Statement {
+                    sid: "".to_string(),
+                    effect: DENY,
+                    actions: iam_actionset!(GET_OBJECT_ACTION),
+                    resources: ResourceSet::new(vec![Resource::new(
+                        "mybucket".to_string(),
+                        "/myobject*".to_string(),
+                    )]),
+                    conditions: condition::Functions::default(),
+                },
+            ],
+        };
+
+        let policy3 = Policy {
+            id: "".to_string(),
+            version: DEFAULT_VERSION.to_string(),
+            statements: vec![
+                Statement {
+                    sid: "".to_string(),
+                    effect: ALLOW,
+                    actions: iam_actionset!(PUT_OBJECT_ACTION),
+                    resources: ResourceSet::new(vec![Resource::new(
+                        "mybucket".to_string(),
+                        "/myobject*".to_string(),
+                    )]),
+                    conditions: condition::Functions::default(),
+                },
+                Statement {
+                    sid: "".to_string(),
+                    effect: DENY,
+                    actions: iam_actionset!(GET_OBJECT_ACTION),
+                    resources: ResourceSet::new(vec![Resource::new(
+                        "mybucket".to_string(),
+                        "/yourobject*".to_string(),
+                    )]),
+                    conditions: condition::Functions::default(),
+                },
+            ],
+        };
+
+        let func1 = condition::new_null_func(
+            condition::S3X_AMZ_COPY_SOURCE,
+            condition::ValueSet::new(vec![condition::Value::Bool(true)]),
+        )?;
+
+        let func2 = condition::new_null_func(
+            condition::S3X_AMZ_SERVER_SIDE_ENCRYPTION,
+            condition::ValueSet::new(vec![condition::Value::Bool(false)]),
+        )?;
+
+        let policy4 = Policy {
+            id: "".to_string(),
+            version: DEFAULT_VERSION.to_string(),
+            statements: vec![
+                Statement {
+                    sid: "".to_string(),
+                    effect: ALLOW,
+                    actions: iam_actionset!(PUT_OBJECT_ACTION),
+                    resources: ResourceSet::new(vec![Resource::new(
+                        "mybucket".to_string(),
+                        "/myobject*".to_string(),
+                    )]),
+                    conditions: condition::Functions::new(vec![func1.clone()]),
+                },
+                Statement {
+                    sid: "".to_string(),
+                    effect: DENY,
+                    actions: iam_actionset!(PUT_OBJECT_ACTION),
+                    resources: ResourceSet::new(vec![Resource::new(
+                        "mybucket".to_string(),
+                        "/myobject*".to_string(),
+                    )]),
+                    conditions: condition::Functions::new(vec![func2.clone()]),
+                },
+            ],
+        };
+
+        let policy5 = Policy {
+            id: "".to_string(),
+            version: "17-10-2012".to_string(),
+            statements: vec![Statement {
+                sid: "".to_string(),
+                effect: ALLOW,
+                actions: iam_actionset!(PUT_OBJECT_ACTION),
+                resources: ResourceSet::new(vec![Resource::new(
+                    "mybucket".to_string(),
+                    "/myobject*".to_string(),
+                )]),
+                conditions: condition::Functions::default(),
+            }],
+        };
+
+        let policy6 = Policy {
+            id: "MyPolicyForMyBucket1".to_string(),
+            version: DEFAULT_VERSION.to_string(),
+            statements: vec![Statement {
+                sid: "".to_string(),
+                effect: ALLOW,
+                actions: iam_actionset!(GET_OBJECT_ACTION, PUT_OBJECT_ACTION),
+                resources: ResourceSet::new(vec![Resource::new(
+                    "mybucket".to_string(),
+                    "myobject*".to_string(),
+                )]),
+                conditions: condition::Functions::new(vec![func1, func2]),
+            }],
+        };
+
+        let policy7 = Policy {
+            id: "".to_string(),
+            version: DEFAULT_VERSION.to_string(),
+            statements: vec![
+                Statement {
+                    sid: "".to_string(),
+                    effect: ALLOW,
+                    actions: iam_actionset!(PUT_OBJECT_ACTION),
+                    resources: ResourceSet::new(vec![Resource::new(
+                        "mybucket".to_string(),
+                        "/myobject*".to_string(),
+                    )]),
+                    conditions: condition::Functions::default(),
+                },
+                Statement {
+                    sid: "".to_string(),
+                    effect: DENY,
+                    actions: iam_actionset!(PUT_OBJECT_ACTION),
+                    resources: ResourceSet::new(vec![Resource::new(
+                        "mybucket".to_string(),
+                        "/myobject*".to_string(),
+                    )]),
+                    conditions: condition::Functions::default(),
+                },
+            ],
+        };
+
+        let policy8 = Policy {
+            id: "".to_string(),
+            version: DEFAULT_VERSION.to_string(),
+            statements: vec![
+                Statement {
+                    sid: "".to_string(),
+                    effect: ALLOW,
+                    actions: iam_actionset!(PUT_OBJECT_ACTION),
+                    resources: ResourceSet::new(vec![Resource::new(
+                        "mybucket".to_string(),
+                        "/myobject*".to_string(),
+                    )]),
+                    conditions: condition::Functions::default(),
+                },
+                Statement {
+                    sid: "".to_string(),
+                    effect: ALLOW,
+                    actions: iam_actionset!(PUT_OBJECT_ACTION),
+                    resources: ResourceSet::new(vec![Resource::new(
+                        "mybucket".to_string(),
+                        "/myobject*".to_string(),
+                    )]),
+                    conditions: condition::Functions::default(),
+                },
+            ],
+        };
+
+        let cases = [
+            (policy1, false),
+            // Allowed duplicate principal.
+            (policy2, false),
+            // Allowed duplicate principal.
+            (policy3, false),
+            // Allowed duplicate principal, action and resource.
+            (policy4, false),
+            // Invalid version error.
+            (policy5, true),
+            // Invalid statement error.
+            (policy6, true),
+            // Duplicate statement different Effects.
+            (policy7, false),
+            // Duplicate statement same Effects, duplicate effect will be removed.
+            (policy8, false),
+        ];
+
+        for (policy, expect_err) in cases {
+            if !expect_err {
+                assert_ok!(policy.is_valid());
+            } else {
+                assert_err!(policy.is_valid());
+            }
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_policy_parse_config() {
+        let policy1_location_constraint = r#"{
+            "Version":"2012-10-17",
+            "Statement":[
+                {
+                    "Sid":"statement1",
+                    "Effect":"Allow",
+                    "Action": "s3:CreateBucket",
+                    "Resource": "arn:aws:s3:::*",
+                    "Condition": {
+                        "StringLike": {
+                            "s3:LocationConstraint": "us-east-1"
+                        }
+                    }
+                },
+                {
+                    "Sid":"statement2",
+                    "Effect":"Deny",
+                    "Action": "s3:CreateBucket",
+                    "Resource": "arn:aws:s3:::*",
+                    "Condition": {
+                        "StringNotLike": {
+                            "s3:LocationConstraint": "us-east-1"
+                        }
+                    }
+                }
+            ]
+        }"#;
+
+        let policy2_condition = r#"{
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "statement1",
+                    "Effect": "Allow",
+                    "Action": "s3:GetObjectVersion",
+                    "Resource": "arn:aws:s3:::test/HappyFace.jpg"
+                },
+                {
+                    "Sid": "statement2",
+                    "Effect": "Deny",
+                    "Action": "s3:GetObjectVersion",
+                    "Resource": "arn:aws:s3:::test/HappyFace.jpg",
+                    "Condition": {
+                        "StringNotEquals": {
+                            "s3:versionid": "AaaHbAQitwiL_h47_44lRO2DDfLlBO5e"
+                        }
+                    }
+                }
+            ]
+        }"#;
+
+        let policy3_condition_action_regex = r#"{
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "statement2",
+                    "Effect": "Allow",
+                    "Action": "s3:Get*",
+                    "Resource": "arn:aws:s3:::test/HappyFace.jpg",
+                    "Condition": {
+                        "StringEquals": {
+                            "s3:versionid": "AaaHbAQitwiL_h47_44lRO2DDfLlBO5e"
+                        }
+                    }
+                }
+            ]
+        }"#;
+
+        let policy4_condition_action = r#"{
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "statement2",
+                    "Effect": "Allow",
+                    "Action": "s3:GetObject",
+                    "Resource": "arn:aws:s3:::test/HappyFace.jpg",
+                    "Condition": {
+                        "StringEquals": {
+                            "s3:versionid": "AaaHbAQitwiL_h47_44lRO2DDfLlBO5e"
+                        }
+                    }
+                }
+            ]
+        }"#;
+
+        let policy5_condition_current_time = r#"{
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "s3:Get*",
+                        "s3:Put*"
+                    ],
+                    "Resource": [
+                        "arn:aws:s3:::test/*"
+                    ],
+                    "Condition": {
+                        "DateGreaterThan": {
+                            "aws:CurrentTime": [
+                                "2017-02-28T00:00:00Z"
+                            ]
+                        }
+                    }
+                }
+            ]
+        }"#;
+
+        let policy5_condition_current_time_lesser = r#"{
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "s3:Get*",
+                        "s3:Put*"
+                    ],
+                    "Resource": [
+                        "arn:aws:s3:::test/*"
+                    ],
+                    "Condition": {
+                        "DateLessThan": {
+                            "aws:CurrentTime": [
+                                "2017-02-28T00:00:00Z"
+                            ]
+                        }
+                    }
+                }
+            ]
+        }"#;
+
+        let cases = [
+            (
+                policy1_location_constraint,
+                true,
+                Args {
+                    account_name: "allowed".to_string(),
+                    groups: vec![],
+                    action: CREATE_BUCKET_ACTION,
+                    bucket_name: "test".to_string(),
+                    condition_values: HashMap::from([(
+                        "LocationConstraint".to_string(),
+                        vec!["us-east-1".to_string()],
+                    )]),
+                    is_owner: false,
+                    object_name: "".to_string(),
+                    claims: MapClaims::default(),
+                    deny_only: false,
+                },
+            ),
+            (
+                policy1_location_constraint,
+                false,
+                Args {
+                    account_name: "disallowed".to_string(),
+                    groups: vec![],
+                    action: CREATE_BUCKET_ACTION,
+                    bucket_name: "test".to_string(),
+                    condition_values: HashMap::from([(
+                        "LocationConstraint".to_string(),
+                        vec!["us-east-2".to_string()],
+                    )]),
+                    is_owner: false,
+                    object_name: "".to_string(),
+                    claims: MapClaims::default(),
+                    deny_only: false,
+                },
+            ),
+            (
+                policy2_condition,
+                true,
+                Args {
+                    account_name: "allowed".to_string(),
+                    groups: vec![],
+                    action: GET_OBJECT_ACTION,
+                    bucket_name: "test".to_string(),
+                    condition_values: HashMap::from([(
+                        "versionid".to_string(),
+                        vec!["AaaHbAQitwiL_h47_44lRO2DDfLlBO5e".to_string()],
+                    )]),
+                    is_owner: false,
+                    object_name: "HappyFace.jpg".to_string(),
+                    claims: MapClaims::default(),
+                    deny_only: false,
+                },
+            ),
+            (
+                policy2_condition,
+                false,
+                Args {
+                    account_name: "disallowed".to_string(),
+                    groups: vec![],
+                    action: GET_OBJECT_ACTION,
+                    bucket_name: "test".to_string(),
+                    condition_values: HashMap::from([(
+                        "versionid".to_string(),
+                        vec!["AaaHbAQitwiL_h47_44lRO2DDfLlBO5f".to_string()],
+                    )]),
+                    is_owner: false,
+                    object_name: "HappyFace.jpg".to_string(),
+                    claims: MapClaims::default(),
+                    deny_only: false,
+                },
+            ),
+            (
+                policy3_condition_action_regex,
+                true,
+                Args {
+                    account_name: "allowed".to_string(),
+                    groups: vec![],
+                    action: GET_OBJECT_ACTION,
+                    bucket_name: "test".to_string(),
+                    condition_values: HashMap::from([(
+                        "versionid".to_string(),
+                        vec!["AaaHbAQitwiL_h47_44lRO2DDfLlBO5e".to_string()],
+                    )]),
+                    is_owner: false,
+                    object_name: "HappyFace.jpg".to_string(),
+                    claims: MapClaims::default(),
+                    deny_only: false,
+                },
+            ),
+            (
+                policy3_condition_action_regex,
+                false,
+                Args {
+                    account_name: "disallowed".to_string(),
+                    groups: vec![],
+                    action: GET_OBJECT_ACTION,
+                    bucket_name: "test".to_string(),
+                    condition_values: HashMap::from([(
+                        "versionid".to_string(),
+                        vec!["AaaHbAQitwiL_h47_44lRO2DDfLlBO5f".to_string()],
+                    )]),
+                    is_owner: false,
+                    object_name: "HappyFace.jpg".to_string(),
+                    claims: MapClaims::default(),
+                    deny_only: false,
+                },
+            ),
+            (
+                policy4_condition_action,
+                true,
+                Args {
+                    account_name: "allowed".to_string(),
+                    groups: vec![],
+                    action: GET_OBJECT_ACTION,
+                    bucket_name: "test".to_string(),
+                    condition_values: HashMap::from([(
+                        "versionid".to_string(),
+                        vec!["AaaHbAQitwiL_h47_44lRO2DDfLlBO5e".to_string()],
+                    )]),
+                    is_owner: false,
+                    object_name: "HappyFace.jpg".to_string(),
+                    claims: MapClaims::default(),
+                    deny_only: false,
+                },
+            ),
+            (
+                policy5_condition_current_time,
+                true,
+                Args {
+                    account_name: "allowed".to_string(),
+                    groups: vec![],
+                    action: GET_OBJECT_ACTION,
+                    bucket_name: "test".to_string(),
+                    condition_values: HashMap::from([(
+                        "CurrentTime".to_string(),
+                        vec![utils::now().to_rfc3339()],
+                    )]),
+                    is_owner: false,
+                    object_name: "HappyFace.jpg".to_string(),
+                    claims: MapClaims::default(),
+                    deny_only: false,
+                },
+            ),
+            (
+                policy5_condition_current_time_lesser,
+                false,
+                Args {
+                    account_name: "disallowed".to_string(),
+                    groups: vec![],
+                    action: GET_OBJECT_ACTION,
+                    bucket_name: "test".to_string(),
+                    condition_values: HashMap::from([(
+                        "CurrentTime".to_string(),
+                        vec![utils::now().to_rfc3339()],
+                    )]),
+                    is_owner: false,
+                    object_name: "HappyFace.jpg".to_string(),
+                    claims: MapClaims::default(),
+                    deny_only: false,
+                },
+            ),
+        ];
+
+        for (data, allowed, args) in cases {
+            let policy = assert_ok!(serde_json::from_str::<Policy>(data));
+
+            // TODO: Validate of Policy need one param
+            assert_ok!(policy.is_valid());
+
+            let result = policy.is_allowed(&args);
+            assert_eq!(result, allowed);
+        }
+    }
+
+    #[test]
+    fn test_policy_deserialize_json_and_validate() -> anyhow::Result<()> {
+        let data1 = r#"{
+            "ID": "MyPolicyForMyBucket1",
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "SomeId1",
+                    "Effect": "Allow",
+                    "Action": "s3:PutObject",
+                    "Resource": "arn:aws:s3:::mybucket/myobject*"
+                }
+            ]
+        }"#;
+
+        let policy1 = Policy {
+            id: "MyPolicyForMyBucket1".to_string(),
+            version: DEFAULT_VERSION.to_string(),
+            statements: vec![Statement {
+                sid: "SomeId1".to_string(),
+                effect: ALLOW,
+                actions: iam_actionset!(PUT_OBJECT_ACTION),
+                resources: ResourceSet::new(vec![Resource::new(
+                    "mybucket".to_string(),
+                    "/myobject*".to_string(),
+                )]),
+                conditions: condition::Functions::default(),
+            }],
+        };
+
+        let data2 = r#"{
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": "s3:PutObject",
+                    "Resource": "arn:aws:s3:::mybucket/myobject*"
+                },
+                {
+                    "Effect": "Deny",
+                    "Action": "s3:GetObject",
+                    "Resource": "arn:aws:s3:::mybucket/yourobject*",
+                    "Condition": {
+                        "IpAddress": {
+                            "aws:SourceIp": "192.168.1.0/24"
+                        }
+                    }
+                }
+            ]
+        }"#;
+
+        let func1 = condition::new_ip_address_func(
+            condition::AWS_SOURCE_IP,
+            condition::ValueSet::new(vec![condition::Value::String("192.168.1.0/24".to_string())]),
+        )?;
+
+        let policy2 = Policy {
+            id: "".to_string(),
+            version: DEFAULT_VERSION.to_string(),
+            statements: vec![
+                Statement {
+                    sid: "".to_string(),
+                    effect: ALLOW,
+                    actions: iam_actionset!(PUT_OBJECT_ACTION),
+                    resources: ResourceSet::new(vec![Resource::new(
+                        "mybucket".to_string(),
+                        "/myobject*".to_string(),
+                    )]),
+                    conditions: condition::Functions::default(),
+                },
+                Statement {
+                    sid: "".to_string(),
+                    effect: DENY,
+                    actions: iam_actionset!(GET_OBJECT_ACTION),
+                    resources: ResourceSet::new(vec![Resource::new(
+                        "mybucket".to_string(),
+                        "/yourobject*".to_string(),
+                    )]),
+                    conditions: condition::Functions::new(vec![func1.clone()]),
+                },
+            ],
+        };
+
+        let data3 = r#"{
+            "ID": "MyPolicyForMyBucket1",
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": "s3:GetObject",
+                    "Resource": "arn:aws:s3:::mybucket/myobject*"
+                },
+                {
+                    "Effect": "Allow",
+                    "Action": "s3:PutObject",
+                    "Resource": "arn:aws:s3:::mybucket/myobject*"
+                }
+            ]
+        }"#;
+
+        let policy3 = Policy {
+            id: "MyPolicyForMyBucket1".to_string(),
+            version: DEFAULT_VERSION.to_string(),
+            statements: vec![
+                Statement {
+                    sid: "".to_string(),
+                    effect: ALLOW,
+                    actions: iam_actionset!(GET_OBJECT_ACTION),
+                    resources: ResourceSet::new(vec![Resource::new(
+                        "mybucket".to_string(),
+                        "/myobject*".to_string(),
+                    )]),
+                    conditions: condition::Functions::default(),
+                },
+                Statement {
+                    sid: "".to_string(),
+                    effect: ALLOW,
+                    actions: iam_actionset!(PUT_OBJECT_ACTION),
+                    resources: ResourceSet::new(vec![Resource::new(
+                        "mybucket".to_string(),
+                        "/myobject*".to_string(),
+                    )]),
+                    conditions: condition::Functions::default(),
+                },
+            ],
+        };
+
+        let data4 = r#"{
+            "ID": "MyPolicyForMyBucket1",
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": "s3:PutObject",
+                    "Resource": "arn:aws:s3:::mybucket/myobject*"
+                },
+                {
+                    "Effect": "Allow",
+                    "Action": "s3:GetObject",
+                    "Resource": "arn:aws:s3:::mybucket/myobject*"
+                }
+            ]
+        }"#;
+
+        let policy4 = Policy {
+            id: "MyPolicyForMyBucket1".to_string(),
+            version: DEFAULT_VERSION.to_string(),
+            statements: vec![
+                Statement {
+                    sid: "".to_string(),
+                    effect: ALLOW,
+                    actions: iam_actionset!(PUT_OBJECT_ACTION),
+                    resources: ResourceSet::new(vec![Resource::new(
+                        "mybucket".to_string(),
+                        "/myobject*".to_string(),
+                    )]),
+                    conditions: condition::Functions::default(),
+                },
+                Statement {
+                    sid: "".to_string(),
+                    effect: ALLOW,
+                    actions: iam_actionset!(GET_OBJECT_ACTION),
+                    resources: ResourceSet::new(vec![Resource::new(
+                        "mybucket".to_string(),
+                        "/myobject*".to_string(),
+                    )]),
+                    conditions: condition::Functions::default(),
+                },
+            ],
+        };
+
+        let data5 = r#"{
+            "ID": "MyPolicyForMyBucket1",
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": "s3:PutObject",
+                    "Resource": "arn:aws:s3:::mybucket/myobject*"
+                },
+                {
+                    "Effect": "Allow",
+                    "Action": "s3:PutObject",
+                    "Resource": "arn:aws:s3:::mybucket/yourobject*"
+                }
+            ]
+        }"#;
+
+        let policy5 = Policy {
+            id: "MyPolicyForMyBucket1".to_string(),
+            version: DEFAULT_VERSION.to_string(),
+            statements: vec![
+                Statement {
+                    sid: "".to_string(),
+                    effect: ALLOW,
+                    actions: iam_actionset!(PUT_OBJECT_ACTION),
+                    resources: ResourceSet::new(vec![Resource::new(
+                        "mybucket".to_string(),
+                        "/myobject*".to_string(),
+                    )]),
+                    conditions: condition::Functions::default(),
+                },
+                Statement {
+                    sid: "".to_string(),
+                    effect: ALLOW,
+                    actions: iam_actionset!(PUT_OBJECT_ACTION),
+                    resources: ResourceSet::new(vec![Resource::new(
+                        "mybucket".to_string(),
+                        "/yourobject*".to_string(),
+                    )]),
+                    conditions: condition::Functions::default(),
+                },
+            ],
+        };
+
+        let data6 = r#"{
+            "ID": "MyPolicyForMyBucket1",
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": "s3:PutObject",
+                    "Resource": "arn:aws:s3:::mybucket/myobject*",
+                    "Condition": {
+                        "IpAddress": {
+                            "aws:SourceIp": "192.168.1.0/24"
+                        }
+                    }
+                },
+                {
+                    "Effect": "Allow",
+                    "Action": "s3:PutObject",
+                    "Resource": "arn:aws:s3:::mybucket/myobject*",
+                    "Condition": {
+                        "IpAddress": {
+                            "aws:SourceIp": "192.168.2.0/24"
+                        }
+                    }
+                }
+            ]
+        }"#;
+
+        let func2 = condition::new_ip_address_func(
+            condition::AWS_SOURCE_IP,
+            condition::ValueSet::new(vec![condition::Value::String("192.168.2.0/24".to_string())]),
+        )?;
+
+        let policy6 = Policy {
+            id: "MyPolicyForMyBucket1".to_string(),
+            version: DEFAULT_VERSION.to_string(),
+            statements: vec![
+                Statement {
+                    sid: "".to_string(),
+                    effect: ALLOW,
+                    actions: iam_actionset!(PUT_OBJECT_ACTION),
+                    resources: ResourceSet::new(vec![Resource::new(
+                        "mybucket".to_string(),
+                        "/myobject*".to_string(),
+                    )]),
+                    conditions: condition::Functions::new(vec![func1]),
+                },
+                Statement {
+                    sid: "".to_string(),
+                    effect: ALLOW,
+                    actions: iam_actionset!(PUT_OBJECT_ACTION),
+                    resources: ResourceSet::new(vec![Resource::new(
+                        "mybucket".to_string(),
+                        "/myobject*".to_string(),
+                    )]),
+                    conditions: condition::Functions::new(vec![func2]),
+                },
+            ],
+        };
+
+        let data7 = r#"{
+            "ID": "MyPolicyForMyBucket1",
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": "s3:GetBucketLocation",
+                    "Resource": "arn:aws:s3:::mybucket"
+                }
+            ]
+        }"#;
+
+        let policy7 = Policy {
+            id: "MyPolicyForMyBucket1".to_string(),
+            version: DEFAULT_VERSION.to_string(),
+            statements: vec![Statement {
+                sid: "".to_string(),
+                effect: ALLOW,
+                actions: iam_actionset!(GET_BUCKET_LOCATION_ACTION),
+                resources: ResourceSet::new(vec![Resource::new(
+                    "mybucket".to_string(),
+                    "".to_string(),
+                )]),
+                conditions: condition::Functions::default(),
+            }],
+        };
+
+        let data8 = r#"{
+            "ID": "MyPolicyForMyBucket1",
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": "s3:GetBucketLocation",
+                    "Resource": "arn:aws:s3:::*"
+                }
+            ]
+        }"#;
+
+        let policy8 = Policy {
+            id: "MyPolicyForMyBucket1".to_string(),
+            version: DEFAULT_VERSION.to_string(),
+            statements: vec![Statement {
+                sid: "".to_string(),
+                effect: ALLOW,
+                actions: iam_actionset!(GET_BUCKET_LOCATION_ACTION),
+                resources: ResourceSet::new(vec![Resource::new("*".to_string(), "".to_string())]),
+                conditions: condition::Functions::default(),
+            }],
+        };
+
+        let data9 = r#"{
+            "ID": "MyPolicyForMyBucket1",
+            "Version": "17-10-2012",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": "s3:PutObject",
+                    "Resource": "arn:aws:s3:::mybucket/myobject*"
+                }
+            ]
+        }"#;
+
+        let data10 = r#"{
+            "ID": "MyPolicyForMyBucket1",
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": "s3:PutObject",
+                    "Resource": "arn:aws:s3:::mybucket/myobject*"
+                },
+                {
+                    "Effect": "Allow",
+                    "Action": "s3:PutObject",
+                    "Resource": "arn:aws:s3:::mybucket/myobject*"
+                }
+            ]
+        }"#;
+
+        let policy10 = Policy {
+            id: "MyPolicyForMyBucket1".to_string(),
+            version: DEFAULT_VERSION.to_string(),
+            statements: vec![Statement {
+                sid: "".to_string(),
+                effect: ALLOW,
+                actions: iam_actionset!(PUT_OBJECT_ACTION),
+                resources: ResourceSet::new(vec![Resource::new(
+                    "mybucket".to_string(),
+                    "myobject*".to_string(),
+                )]),
+                conditions: condition::Functions::default(),
+            }],
+        };
+
+        let data11 = r#"{
+            "ID": "MyPolicyForMyBucket1",
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": "s3:PutObject",
+                    "Resource": "arn:aws:s3:::mybucket/myobject*"
+                },
+                {
+                    "Effect": "Deny",
+                    "Action": "s3:PutObject",
+                    "Resource": "arn:aws:s3:::mybucket/myobject*"
+                }
+            ]
+        }"#;
+
+        let policy11 = Policy {
+            id: "MyPolicyForMyBucket1".to_string(),
+            version: DEFAULT_VERSION.to_string(),
+            statements: vec![
+                Statement {
+                    sid: "".to_string(),
+                    effect: ALLOW,
+                    actions: iam_actionset!(PUT_OBJECT_ACTION),
+                    resources: ResourceSet::new(vec![Resource::new(
+                        "mybucket".to_string(),
+                        "myobject*".to_string(),
+                    )]),
+                    conditions: condition::Functions::default(),
+                },
+                Statement {
+                    sid: "".to_string(),
+                    effect: DENY,
+                    actions: iam_actionset!(PUT_OBJECT_ACTION),
+                    resources: ResourceSet::new(vec![Resource::new(
+                        "mybucket".to_string(),
+                        "myobject*".to_string(),
+                    )]),
+                    conditions: condition::Functions::default(),
+                },
+            ],
+        };
+
+        let cases = [
+            (data1, Some(policy1), false, false),
+            (data2, Some(policy2), false, false),
+            (data3, Some(policy3), false, false),
+            (data4, Some(policy4), false, false),
+            (data5, Some(policy5), false, false),
+            (data6, Some(policy6), false, false),
+            (data7, Some(policy7), false, false),
+            (data8, Some(policy8), false, false),
+            // Invalid version error.
+            (data9, None, true, false),
+            // Duplicate statement success, duplicate statement is removed.
+            (data10, Some(policy10), false, false),
+            // Duplicate statement success (Effect differs).
+            (data11, Some(policy11), false, false),
+        ];
+
+        for (data, expected_result, expect_deserialize_err, expect_validation_err) in cases {
+            let result = serde_json::from_str::<Policy>(data);
+
+            match result {
+                Ok(result) => {
+                    if let Some(expected_result) = expected_result {
+                        assert!(result == expected_result);
+
+                        if !expect_validation_err {
+                            // TODO
+                            assert_ok!(result.is_valid());
+                        } else {
+                            // TODO
+                            assert_err!(result.is_valid());
+                        }
+                    }
+                }
+                Err(_) => assert!(expect_deserialize_err),
+            }
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_policy_validate() -> anyhow::Result<()> {
+        let policy1 = Policy {
+            id: "".to_string(),
+            version: DEFAULT_VERSION.to_string(),
+            statements: vec![Statement {
+                sid: "".to_string(),
+                effect: ALLOW,
+                actions: iam_actionset!(PUT_OBJECT_ACTION),
+                resources: ResourceSet::new(vec![Resource::new("".to_string(), "".to_string())]),
+                conditions: condition::Functions::default(),
+            }],
+        };
+
+        let func1 = condition::new_null_func(
+            condition::S3X_AMZ_COPY_SOURCE,
+            condition::ValueSet::new(vec![condition::Value::Bool(true)]),
+        )?;
+        let func2 = condition::new_null_func(
+            condition::S3X_AMZ_SERVER_SIDE_ENCRYPTION,
+            condition::ValueSet::new(vec![condition::Value::Bool(false)]),
+        )?;
+
+        let policy2 = Policy {
+            id: "MyPolicyForMyBucket1".to_string(),
+            version: DEFAULT_VERSION.to_string(),
+            statements: vec![Statement {
+                sid: "".to_string(),
+                effect: ALLOW,
+                actions: iam_actionset!(GET_OBJECT_ACTION, PUT_OBJECT_ACTION),
+                resources: ResourceSet::new(vec![Resource::new(
+                    "mybucket".to_string(),
+                    "myobject*".to_string(),
+                )]),
+                conditions: condition::Functions::new(vec![func1, func2]),
+            }],
+        };
+
+        let policy3 = Policy {
+            id: "MyPolicyForMyBucket1".to_string(),
+            version: DEFAULT_VERSION.to_string(),
+            statements: vec![Statement {
+                sid: "".to_string(),
+                effect: ALLOW,
+                actions: iam_actionset!(GET_OBJECT_ACTION, PUT_OBJECT_ACTION),
+                resources: ResourceSet::new(vec![Resource::new(
+                    "mybucket".to_string(),
+                    "myobject*".to_string(),
+                )]),
+                conditions: condition::Functions::default(),
+            }],
+        };
+
+        let cases = [(policy1, true), (policy2, true), (policy3, false)];
+
+        for (policy, expect_err) in cases {
+            if !expect_err {
+                // TODO
+                assert_ok!(policy.is_valid());
+            } else {
+                // TODO
+                assert_err!(policy.is_valid());
+            }
+        }
+
+        Ok(())
     }
 }

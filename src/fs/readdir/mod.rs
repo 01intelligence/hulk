@@ -113,7 +113,7 @@ pub async fn read_dir_entries_n(
 
 pub async fn is_dir_empty(dir_path: impl AsRef<Path>) -> bool {
     match read_dir_entries_n(dir_path, 1).await {
-        Ok(entries) => entries.len() == 1,
+        Ok(entries) => entries.len() == 0,
         Err(_) => false,
     }
 }
@@ -133,4 +133,82 @@ where
 }
 
 #[cfg(test)]
-mod tests;
+mod tests {
+    use tempfile::tempdir_in;
+    use tokio::io::AsyncWriteExt;
+
+    use super::*;
+    use crate::fs::{mkdir_all, OpenOptions, OpenOptionsSync};
+    use crate::object::path_join;
+    use crate::utils::assert::assert_ok;
+    use crate::utils::PathBuf as UtilsPathBuf;
+
+    #[tokio::test]
+    async fn test_xl_storage_is_dir_empty() {
+        let tmp_dir = tempdir_in(".").unwrap();
+        let mut tmp_file =
+            UtilsPathBuf::from_path_buf(tmp_dir.path().to_path_buf()).expect("utils.PathBuf");
+
+        // Should give false on non-existent directory.
+        assert!(
+            !is_dir_empty(&path_join(&[
+                tmp_file.to_str().unwrap(),
+                "non-existent-directory"
+            ]))
+            .await,
+            "expected false for non-existent directory, got true"
+        );
+
+        // Should give false for not-a-directory.
+        tmp_file.push("file");
+        #[cfg(target_family = "unix")]
+        let mut object_file = assert_ok!(
+            OpenOptions::new()
+                .create(true)
+                .append(true)
+                .write(true)
+                .mode(0o777)
+                .sync()
+                .open(tmp_file.to_str().unwrap())
+                .await,
+            "Unable to create file. {:?}",
+            tmp_file
+        );
+        #[cfg(not(target_family = "unix"))]
+        let mut object_file = assert_ok!(
+            OpenOptions::new()
+                .create(true)
+                .append(true)
+                .write(true)
+                .sync()
+                .open(tmp_file.to_str().unwrap())
+                .await,
+            "Unable to create file. {:?}",
+            tmp_file
+        );
+        assert_ok!(
+            object_file.write_all(b"hello").await,
+            "Unable to write file. {:?}",
+            tmp_file
+        );
+
+        assert!(tmp_file.pop());
+        assert!(
+            !is_dir_empty(&path_join(&[tmp_file.to_str().unwrap(), "file"])).await,
+            "expected false for a file, got true"
+        );
+
+        // Should give true for a real empty directory.
+        tmp_file.push("empty");
+        assert_ok!(
+            mkdir_all(tmp_file.as_path(), 0o777).await,
+            "Unable to create temporary directory. {:?}",
+            tmp_file
+        );
+        assert!(tmp_file.pop());
+        assert!(
+            is_dir_empty(&path_join(&[tmp_file.to_str().unwrap(), "empty"])).await,
+            "expected true for empty dir, got false"
+        );
+    }
+}

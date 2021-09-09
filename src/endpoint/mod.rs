@@ -168,6 +168,22 @@ impl Endpoint {
         }
         Ok(())
     }
+
+    async fn host_resolve_to_localhost(&self) -> bool {
+        if let Ok(host_ips) = get_host_ip(self.host()).await {
+            let mut loopback = 0;
+            for host_ip in host_ips.as_slice() {
+                if let Ok(host_ip) = host_ip.parse::<IpAddr>() {
+                    if host_ip.is_loopback() {
+                        loopback += 1;
+                    }
+                }
+            }
+            return loopback == host_ips.len();
+        } else {
+            return false;
+        }
+    }
 }
 
 impl fmt::Display for Endpoint {
@@ -233,7 +249,7 @@ impl Endpoints {
         self.0.iter().map(|e| e.to_string()).collect()
     }
 
-    pub fn at_least_one_endpoiont_local(&self) -> bool {
+    fn at_least_one_endpoiont_local(&self) -> bool {
         for endpoint in self.iter() {
             if endpoint.is_local() {
                 return true;

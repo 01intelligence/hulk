@@ -22,7 +22,7 @@ pub struct Statement<'a, 'b> {
 impl<'a, 'b> Statement<'a, 'b> {
     pub fn is_allowed(&self, args: &Args) -> bool {
         let check = || {
-            if !self.actions.contains(&args.action) {
+            if !self.actions.is_match(&args.action) {
                 return false;
             }
             let mut resource = args.bucket_name.clone();

@@ -42,6 +42,7 @@ pub struct PoolEndpoints {
     pub endpoints: Endpoints,
 }
 
+#[derive(Default)]
 pub struct EndpointServerPools(Vec<PoolEndpoints>);
 
 impl Endpoint {
@@ -189,12 +190,12 @@ impl Endpoints {
         self.0.iter()
     }
 
-    pub fn new(args: &[&str]) -> anyhow::Result<Endpoints> {
+    pub fn new(args: &Vec<String>) -> anyhow::Result<Endpoints> {
         let mut endpoint_type = None;
         let mut scheme = None;
         let mut unique_args = StringSet::new();
         let mut endpoints = Vec::new();
-        for (i, &arg) in args.iter().enumerate() {
+        for (i, arg) in args.iter().enumerate() {
             let endpoint = Endpoint::new(arg)?;
             if i == 0 {
                 endpoint_type = Some(endpoint.typ());
@@ -230,6 +231,15 @@ impl Endpoints {
 
     pub fn get_all_strings(&self) -> Vec<String> {
         self.0.iter().map(|e| e.to_string()).collect()
+    }
+
+    pub fn at_least_one_endpoiont_local(&self) -> bool {
+        for endpoint in self.iter() {
+            if endpoint.is_local() {
+                return true;
+            }
+        }
+        return false;
     }
 
     async fn check_cross_device_mounts(&self) -> anyhow::Result<()> {
@@ -381,7 +391,7 @@ impl EndpointServerPools {
 pub(self) async fn create_endpoints(
     server_addr: &str,
     found_local: bool,
-    args_list: &[&[&str]],
+    args_list: &Vec<Vec<String>>,
 ) -> anyhow::Result<(Endpoints, SetupType)> {
     check_local_server_addr(server_addr).await?;
 
@@ -391,7 +401,7 @@ pub(self) async fn create_endpoints(
 
     // For single arg, return FS setup.
     if args_list.len() == 1 && args_list[0].len() == 1 {
-        let mut endpoint = Endpoint::new(args_list[0][0])?;
+        let mut endpoint = Endpoint::new(&args_list[0][0])?;
         endpoint.update_is_local().await?;
         ensure!(
             endpoint.typ() == EndpointType::Path,
@@ -408,7 +418,7 @@ pub(self) async fn create_endpoints(
         return Ok((endpoints, SetupType::Fs));
     }
 
-    for &args in args_list {
+    for args in args_list {
         let eps = Endpoints::new(args)
             .map_err(|e| UiError::InvalidErasureEndpoints.msg(e.to_string()))?;
         eps.check_cross_device_mounts()
@@ -674,109 +684,132 @@ mod tests {
     fn test_endpoints_new() {
         let cases = vec![
             // Test 1
-            (&["/d1", "/d2", "/d3", "/d4"][..], None),
+            (
+                vec![
+                    "/d1".to_string(),
+                    "/d2".to_string(),
+                    "/d3".to_string(),
+                    "/d4".to_string(),
+                ],
+                None,
+            ),
             // Test 2
             (
-                &[
-                    "http://localhost/d1",
-                    "http://localhost/d2",
-                    "http://localhost/d3",
-                    "http://localhost/d4",
+                vec![
+                    "http://localhost/d1".to_string(),
+                    "http://localhost/d2".to_string(),
+                    "http://localhost/d3".to_string(),
+                    "http://localhost/d4".to_string(),
                 ],
                 None,
             ),
             // Test 3
             (
-                &[
-                    "http://example.org/d1",
-                    "http://example.com/d1",
-                    "http://example.net/d1",
-                    "http://example.edu/d1",
+                vec![
+                    "http://example.org/d1".to_string(),
+                    "http://example.com/d1".to_string(),
+                    "http://example.net/d1".to_string(),
+                    "http://example.edu/d1".to_string(),
                 ],
                 None,
             ),
             // Test 4
             (
-                &[
-                    "http://localhost/d1",
-                    "http://localhost/d2",
-                    "http://example.org/d1",
-                    "http://example.org/d2",
+                vec![
+                    "http://localhost/d1".to_string(),
+                    "http://localhost/d2".to_string(),
+                    "http://example.org/d1".to_string(),
+                    "http://example.org/d2".to_string(),
                 ],
                 None,
             ),
             // Test 5
             (
-                &[
-                    "https://localhost:9000/d1",
-                    "https://localhost:9001/d2",
-                    "https://localhost:9002/d3",
-                    "https://localhost:9003/d4",
+                vec![
+                    "https://localhost:9000/d1".to_string(),
+                    "https://localhost:9001/d2".to_string(),
+                    "https://localhost:9002/d3".to_string(),
+                    "https://localhost:9003/d4".to_string(),
                 ],
                 None,
             ),
             // Test 6
             (
-                &[
-                    "https://127.0.0.1:9000/d1",
-                    "https://127.0.0.1:9001/d1",
-                    "https://127.0.0.1:9002/d1",
-                    "https://127.0.0.1:9003/d1",
+                vec![
+                    "https://127.0.0.1:9000/d1".to_string(),
+                    "https://127.0.0.1:9001/d1".to_string(),
+                    "https://127.0.0.1:9002/d1".to_string(),
+                    "https://127.0.0.1:9003/d1".to_string(),
                 ],
                 None,
             ),
             // Test 7
             (
-                &["d1", "d2", "d3", "d1"],
+                vec![
+                    "d1".to_string(),
+                    "d2".to_string(),
+                    "d3".to_string(),
+                    "d1".to_string(),
+                ],
                 Some(anyhow!("duplicate endpoints found")),
             ),
             // Test 8
             (
-                &["d1", "d2", "d3", "./d1"],
+                vec![
+                    "d1".to_string(),
+                    "d2".to_string(),
+                    "d3".to_string(),
+                    "./d1".to_string(),
+                ],
                 Some(anyhow!("duplicate endpoints found")),
             ),
             // Test 9
             (
-                &[
-                    "http://localhost/d1",
-                    "http://localhost/d2",
-                    "http://localhost/d1",
-                    "http://localhost/d4",
+                vec![
+                    "http://localhost/d1".to_string(),
+                    "http://localhost/d2".to_string(),
+                    "http://localhost/d1".to_string(),
+                    "http://localhost/d4".to_string(),
                 ],
                 Some(anyhow!("duplicate endpoints found")),
             ),
             // Test 10
             (
-                &[
-                    "ftp://server/d1",
-                    "http://server/d2",
-                    "http://server/d3",
-                    "http://server/d4",
+                vec![
+                    "ftp://server/d1".to_string(),
+                    "http://server/d2".to_string(),
+                    "http://server/d3".to_string(),
+                    "http://server/d4".to_string(),
                 ],
                 Some(anyhow!("invalid URL endpoint format")),
             ),
             // Test 11
             (
-                &["d1", "http://localhost/d2", "d3", "d4"],
+                vec![
+                    "d1".to_string(),
+                    "http://localhost/d2".to_string(),
+                    "d3".to_string(),
+                    "d4".to_string(),
+                ],
                 Some(anyhow!("mixed style endpoints are not supported")),
             ),
             // Test 12
             (
-                &[
-                    "http://example.org/d1",
-                    "https://example.com/d1",
-                    "http://example.net/d1",
-                    "https://example.edut/d1",
+                vec![
+                    "http://example.org/d1".to_string(),
+                    "https://example.com/d1".to_string(),
+                    "http://example.net/d1".to_string(),
+                    "https://example.edut/d1".to_string(),
                 ],
                 Some(anyhow!("mixed scheme is not supported")),
             ),
             // Test 13
             (
-                &[
-                    "192.168.1.210:9000/tmp/dir0",
-                    "192.168.1.210:9000/tmp/dir1",
-                    "192.168.1.210:9000/tmp/dir2",
-                    "192.168.110:9000/tmp/dir3",
+                vec![
+                    "192.168.1.210:9000/tmp/dir0".to_string(),
+                    "192.168.1.210:9000/tmp/dir1".to_string(),
+                    "192.168.1.210:9000/tmp/dir2".to_string(),
+                    "192.168.110:9000/tmp/dir3".to_string(),
                 ],
                 Some(anyhow!(
                     "invalid URL endpoint format: missing scheme http or https"
@@ -785,7 +818,7 @@ mod tests {
         ];
 
         for (i, (args, expected_err)) in cases.into_iter().enumerate() {
-            match Endpoints::new(args) {
+            match Endpoints::new(&args) {
                 Err(err) => assert_eq!(
                     err.to_string(),
                     expected_err.unwrap().to_string(),

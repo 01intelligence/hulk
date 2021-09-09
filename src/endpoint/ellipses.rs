@@ -257,17 +257,46 @@ fn get_all_sets(args: &[&str]) -> anyhow::Result<Vec<Vec<String>>> {
     Ok(set_args)
 }
 
-pub fn create_server_endpoints(
+pub async fn create_server_endpoints(
     server_addr: &str,
     args: &[&str],
 ) -> anyhow::Result<(EndpointServerPools, SetupType)> {
     ensure!(!args.is_empty(), TypedError::InvalidArgument);
 
+    let mut endpoint_server_pools = EndpointServerPools::default();
     if !ellipses::has_ellipses(args) {
         let set_args = get_all_sets(args)?;
+        let (endpoint_list, new_setup_type) =
+            create_endpoints(server_addr, false, &set_args).await?;
+        endpoint_server_pools.add(PoolEndpoints {
+            set_count: set_args.len(),
+            drives_per_set: set_args[0].len(),
+            endpoints: endpoint_list,
+        })?;
+        return Ok((endpoint_server_pools, new_setup_type));
     }
 
-    todo!()
+    let mut setup_type = SetupType::Unknown;
+    let mut found_prev_local = false;
+    for arg in args {
+        let set_args = get_all_sets(&[arg])?;
+        let (endpoint_list, got_setup_type) =
+            create_endpoints(server_addr, found_prev_local, &set_args).await?;
+        found_prev_local = endpoint_list.at_least_one_endpoiont_local();
+        endpoint_server_pools.add(PoolEndpoints {
+            set_count: set_args.len(),
+            drives_per_set: set_args[0].len(),
+            endpoints: endpoint_list,
+        })?;
+        if setup_type == SetupType::Unknown {
+            setup_type = got_setup_type
+        }
+        if setup_type == SetupType::Erasure && got_setup_type == SetupType::DistributedErasure {
+            setup_type = SetupType::DistributedErasure
+        }
+    }
+
+    Ok((endpoint_server_pools, setup_type))
 }
 
 #[cfg(test)]

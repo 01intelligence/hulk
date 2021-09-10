@@ -25,10 +25,14 @@ impl StorageClient {
 
         let client = Arc::new(RwLock::new(StorageServiceClient::new(channel)));
 
-        let mut c = client.clone();
+        let c = Arc::downgrade(&client);
         set_health_check(Box::new(move || {
-            let mut client = c.clone();
+            let client = c.clone();
             Box::pin(async move {
+                let mut client = match client.upgrade() {
+                    Some(c) => c,
+                    None => return false,
+                };
                 let mut client = client.write().await;
                 match client.health(proto::Empty {}).await {
                     Ok(_) => true,

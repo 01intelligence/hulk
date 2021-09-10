@@ -79,6 +79,7 @@ impl<G: BufGuardMut> AsyncRead for AlignedReader<G> {
                     let size = this.buf.len();
                     let rx = tokio::task::spawn_blocking(move || {
                         let mut std = &mut &*std;
+                        // Safety: validity of `buf` is guarantee by `buf_guard`.
                         let buf = unsafe { std::slice::from_raw_parts_mut(buf_ptr.to(), size) };
                         match uninterruptibly!(std.read(buf)) {
                             Ok(n) => Ok(n),

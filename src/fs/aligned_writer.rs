@@ -9,12 +9,16 @@ use tokio::io::AsyncWrite;
 use super::*;
 use crate::prelude::*;
 use crate::utils;
+use crate::utils::BufGuardMut;
 
-pub struct AlignedWriter<'a> {
+#[pin_project::pin_project(project = AlignedWriterProj)]
+pub struct AlignedWriter<G: BufGuardMut> {
     std: Arc<std::fs::File>,
     total_size: Option<u64>,
-    buffer: &'a mut [u8],
-    buffer_cursor: &'a mut [u8],
+    buffer: &'static mut [u8],
+    buffer_cursor: &'static mut [u8],
+    #[pin]
+    buf_guard: G,
     written: u64,
     state: State,
 }
@@ -25,20 +29,24 @@ enum State {
     Busy(usize, tokio::task::JoinHandle<std::io::Result<()>>),
 }
 
-impl<'a> AlignedWriter<'a> {
+impl<G: BufGuardMut> AlignedWriter<G> {
     /// Write using aligned buffer.
     ///
     /// If [`total_size`] is not [`None`], control total size to write.
     /// Note that [`aligned_buffer`] must be aligned to [`DIRECTIO_ALIGN_SIZE`] page boundaries.
     /// File [`f`] must be opened with DIRECT I/O enabled.
     /// Caller must call [`tokio::io::AsyncWriteExt::flush`] after all writes.
-    pub fn new(f: std::fs::File, aligned_buffer: &'a mut [u8], total_size: Option<u64>) -> Self {
-        assert_eq!(aligned_buffer.len() % DIRECTIO_ALIGN_SIZE, 0);
+    pub fn new(f: std::fs::File, mut aligned_buf_guard: G, total_size: Option<u64>) -> Self {
+        let buffer = aligned_buf_guard.buf_mut();
+        // Safety: lifetime of `buf` depends on `buf_guard`.
+        let buffer = unsafe { std::slice::from_raw_parts_mut(buffer.as_mut_ptr(), buffer.len()) };
+        assert_eq!(buffer.len() % DIRECTIO_ALIGN_SIZE, 0);
         AlignedWriter {
             std: Arc::new(f),
             total_size,
-            buffer: aligned_buffer,
+            buffer,
             buffer_cursor: &mut [],
+            buf_guard: aligned_buf_guard,
             written: 0,
             state: State::Idle,
         }
@@ -59,16 +67,16 @@ impl<'a> AlignedWriter<'a> {
     }
 
     fn write(
-        &mut self,
+        this: &AlignedWriterProj<'_, G>,
         size: usize,
     ) -> std::io::Result<tokio::task::JoinHandle<std::io::Result<()>>> {
-        if self.buffer.len() % DIRECTIO_ALIGN_SIZE != 0 {
-            self.std.disable_direct_io()?; // TODO: async
+        if this.buffer.len() % DIRECTIO_ALIGN_SIZE != 0 {
+            this.std.disable_direct_io()?; // TODO: async
         }
 
         // TODO: should we use std file blocking read or tokio-uring?
-        let mut std = self.std.clone();
-        let buf_ptr = utils::SendRawPtr::new(self.buffer.as_ptr());
+        let mut std = this.std.clone();
+        let buf_ptr = utils::SendRawPtr::new(this.buffer.as_ptr());
         let rx = tokio::task::spawn_blocking(move || {
             // Safety: buffer may be invalidated somewhere,
             // which may lead to dirty stuff to be written to file,
@@ -80,62 +88,62 @@ impl<'a> AlignedWriter<'a> {
     }
 }
 
-impl<'a> AsyncWrite for AlignedWriter<'a> {
+impl<G: BufGuardMut> AsyncWrite for AlignedWriter<G> {
     fn poll_write(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         mut buf: &[u8],
     ) -> Poll<std::io::Result<usize>> {
+        let this = self.project();
         if buf.is_empty() {
             return Poll::Ready(Ok(0));
         }
-        if let Some(total_size) = self.total_size {
-            if self.written == total_size {
+        if let Some(total_size) = this.total_size {
+            if this.written == total_size {
                 return Poll::Ready(Ok(0)); // deny writing anymore
             }
         }
-
-        let this = self.get_mut();
 
         loop {
             match this.state {
                 State::Idle => {
                     // Assign buffer.
                     if let Some(total_size) = this.total_size {
-                        let remaining = (total_size - this.written) as usize;
+                        let remaining = (*total_size - *this.written) as usize;
                         if remaining < this.buffer.len() {
                             let buffer = &mut this.buffer[..remaining];
                             // Safety: bypass lifetime check.
-                            this.buffer = unsafe {
+                            *this.buffer = unsafe {
                                 std::slice::from_raw_parts_mut(buffer.as_mut_ptr(), buffer.len())
                             };
                         }
                     }
                     // Safety: bypass lifetime check.
-                    this.buffer_cursor = unsafe {
+                    *this.buffer_cursor = unsafe {
                         std::slice::from_raw_parts_mut(this.buffer.as_mut_ptr(), this.buffer.len())
                     };
 
-                    this.state = State::Buffering;
+                    *this.state = State::Buffering;
                 }
                 State::Buffering => {
                     let consume = buf.len().min(this.buffer_cursor.remaining_mut());
                     debug_assert_ne!(consume, 0);
                     this.buffer_cursor.put_slice(&buf[..consume]);
-                    this.written += consume as u64;
+                    *this.written += consume as u64;
                     if this.buffer_cursor.has_remaining_mut() {
                         return Poll::Ready(Ok(consume));
                     }
 
                     // Buffer is full, so write it.
-                    let rx = this.write(this.buffer.len())?;
+                    let rx = Self::write(&this, this.buffer.len())?;
 
-                    this.state = State::Busy(consume, rx);
+                    *this.state = State::Busy(consume, rx);
                 }
                 State::Busy(consume, ref mut rx) => {
+                    let consume = *consume;
                     let res = ready!(Pin::new(rx).poll(cx))?;
                     res?;
-                    this.state = State::Idle;
+                    *this.state = State::Idle;
                     return Poll::Ready(Ok(consume));
                 }
             }
@@ -143,16 +151,16 @@ impl<'a> AsyncWrite for AlignedWriter<'a> {
     }
 
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
-        let this = self.get_mut();
+        let this = self.project();
         loop {
             match this.state {
                 State::Idle => break,
                 State::Buffering => {
                     let buf_size = this.buffer.len() - this.buffer_cursor.remaining_mut();
                     if buf_size > 0 {
-                        let rx = this.write(buf_size)?;
+                        let rx = Self::write(&this, buf_size)?;
 
-                        this.state = State::Busy(0, rx);
+                        *this.state = State::Busy(0, rx);
                     } else {
                         break;
                     }
@@ -160,7 +168,7 @@ impl<'a> AsyncWrite for AlignedWriter<'a> {
                 State::Busy(_, ref mut rx) => {
                     let res = ready!(Pin::new(rx).poll(cx))?;
                     res?;
-                    this.state = State::Idle;
+                    *this.state = State::Idle;
                     break;
                 }
             };
@@ -180,7 +188,6 @@ mod tests {
     use tokio::io::AsyncWriteExt;
 
     use super::*;
-    use crate::pool::TypedPool;
     use crate::utils;
 
     #[test]
@@ -237,12 +244,19 @@ mod tests {
         aligned_buf_size: usize,
         total_size: Option<usize>,
     ) {
-        const BLOCK_SIZE: usize = utils::MIB * 2;
-        assert!(aligned_buf_size <= BLOCK_SIZE);
-        let pool: TypedPool<SizedAlignedBlock<BLOCK_SIZE>> = TypedPool::new(1);
-        let mut aligned_buf = pool.get().await.unwrap();
-        let mut aligned_buf = &mut **aligned_buf;
-        let mut aligned_buf = &mut aligned_buf[..aligned_buf_size];
+        let aligned_buf = AlignedBlock::new(aligned_buf_size);
+
+        impl utils::BufGuard for AlignedBlock {
+            fn buf(&self) -> &[u8] {
+                self
+            }
+        }
+
+        impl utils::BufGuardMut for AlignedBlock {
+            fn buf_mut(&mut self) -> &mut [u8] {
+                self
+            }
+        }
 
         let file = OpenOptions::new()
             .create_new(true)

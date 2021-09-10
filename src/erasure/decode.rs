@@ -7,7 +7,6 @@ use tokio::io::AsyncWrite;
 use super::*;
 use crate::errors::{AsError, StorageError};
 use crate::io::AsyncReadAt;
-use crate::utils::SendRawPtr;
 
 struct ParallelReader<'a> {
     readers: Vec<(usize, &'a mut Option<Box<dyn AsyncReadAt + Send + Unpin>>)>,
@@ -75,7 +74,9 @@ impl<'a> ParallelReader<'a> {
             read_trigger_tx.send(true).await;
         }
 
+        let readers_len = self.readers.len();
         let mut reader_iter = 0;
+        let mut readers = &mut self.readers[..];
         let mut handles = Vec::new();
         let mut success_count = Arc::new(AtomicUsize::new(0));
 
@@ -84,7 +85,7 @@ impl<'a> ParallelReader<'a> {
                 break; // can decode now
             }
 
-            if reader_iter == self.readers.len() {
+            if reader_iter == readers_len {
                 break; // oops, no remaining reader to read
             }
 
@@ -95,15 +96,24 @@ impl<'a> ParallelReader<'a> {
             let reader_index = reader_iter;
             reader_iter += 1; // for next iter
 
+            let (reader, readers_remaining) = readers.split_first_mut().unwrap();
+            readers = readers_remaining;
+
             let read_trigger_tx = read_trigger_tx.clone();
-            let (buf_idx, ref mut reader) = self.readers[reader_index];
-            if reader.is_none() {
-                // Since reader is none, trigger another read.
-                read_trigger_tx.send(true).await;
-                continue;
-            }
+            let (buf_idx, ref mut reader) = *reader;
+            let reader = match reader {
+                None => {
+                    // Since reader is none, trigger another read.
+                    read_trigger_tx.send(true).await;
+                    continue;
+                }
+                Some(r) => r,
+            };
 
             let buf = self.buf[buf_idx].get_or_insert_default();
+            // Safety: bypass mutable borrow checking, since it is actually like `split_at_mut`.
+            let buf = unsafe { (buf as *mut Vec<u8>).as_mut().unwrap() };
+
             if buf.is_empty() {
                 // Reading first time on this disk, hence buf needs to be allocated.
                 // Subsequent reads will reuse this buf.
@@ -114,17 +124,9 @@ impl<'a> ParallelReader<'a> {
                 buf.truncate(shard_size);
             }
 
-            // Safety: this buf will only be accessed by this task.
-            let buf_ptr = SendRawPtr::new(unsafe { buf as *mut Vec<u8> });
-            // Safety: this reader will only be accessed by this task.
-            let reader = SendRawPtr::new(unsafe {
-                reader.as_mut().unwrap() as *mut Box<dyn AsyncReadAt + Send + Unpin>
-            });
             let success_count = Arc::clone(&success_count);
 
-            handles.push(tokio::spawn(async move {
-                let buf = unsafe { buf_ptr.to().as_mut().unwrap() };
-                let reader = unsafe { reader.to().as_mut().unwrap() };
+            handles.push(async move {
                 match reader.read_at(&mut buf[..], offset).await {
                     Err(e) => {
                         let mut err = None;
@@ -154,12 +156,11 @@ impl<'a> ParallelReader<'a> {
                         (None, None)
                     }
                 }
-            }))
+            })
         }
 
         let mut err = None;
         for r in futures_util::future::join_all(handles).await {
-            let r = r.unwrap(); // no task should panic
             if let Some(idx) = r.0 {
                 *self.readers[idx].1 = None; // notify reader fault to caller
             }

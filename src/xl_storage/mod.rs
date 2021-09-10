@@ -104,7 +104,7 @@ pub struct XlStorage {
 
     meta_cache: RwLock<Option<XlStorageMeta>>,
 
-    disk_info_cache: Option<utils::TimedValue<crate::storage::DiskInfo>>,
+    disk_info_cache: utils::TimedValue<crate::storage::DiskInfo>,
 }
 
 struct XlStorageMeta {
@@ -243,55 +243,46 @@ impl XlStorage {
         todo!()
     }
 
-    fn build_disk_info_cache(&mut self) {
-        let this = utils::SendRawPtr::new(self as *mut Self);
-        let disk_info_cache = move || {
-            let fut = async move {
-                // Safety: lifetime is bounded by `self`.
-                let this = unsafe { this.to().as_mut().unwrap() };
-                let info = fs::get_disk_info(&this.disk_path).await?;
-
-                let mut disk_id = None;
-                let mut healing = false;
-                match this.get_disk_id().await {
-                    Ok(id) => {
-                        disk_id = Some(id);
-                    }
-                    Err(err) => {
-                        if err.is_error(&StorageError::UnformattedDisk) {
-                            // If we found an unformatted disk then
-                            // healing is automatically true.
-                            healing = true;
-                        } else {
-                            // Check if the disk is being healed .
-                            healing = this.healing().await.is_some();
-                        }
-                    }
-                };
-
-                Ok(crate::storage::DiskInfo {
-                    total: info.total,
-                    free: info.free,
-                    used: info.used,
-                    used_inodes: info.files - info.ffree,
-                    free_inodes: info.ffree,
-                    fs_type: info.fs_type,
-                    root_disk: this.root_disk,
-                    healing,
-                    endpoint: this.endpoint.to_string(),
-                    mount_path: this.disk_path.to_owned(),
-                    id: disk_id.unwrap_or_default(),
-                    metrics: None,
-                    error: None,
-                })
-            };
-            Box::pin(fut) as TimedValueUpdateFnResult<crate::storage::DiskInfo>
-        };
-        self.disk_info_cache = Some(utils::TimedValue::new(None, Box::new(disk_info_cache)));
-    }
-
     pub async fn disk_info(&self) -> anyhow::Result<crate::storage::DiskInfo> {
-        self.disk_info_cache.as_ref().unwrap().get().await
+        let get_disk_info = async move || {
+            let info = fs::get_disk_info(&self.disk_path).await?;
+
+            let mut disk_id = None;
+            let mut healing = false;
+            match self.get_disk_id().await {
+                Ok(id) => {
+                    disk_id = Some(id);
+                }
+                Err(err) => {
+                    if err.is_error(&StorageError::UnformattedDisk) {
+                        // If we found an unformatted disk then
+                        // healing is automatically true.
+                        healing = true;
+                    } else {
+                        // Check if the disk is being healed .
+                        healing = self.healing().await.is_some();
+                    }
+                }
+            };
+
+            Ok(crate::storage::DiskInfo {
+                total: info.total,
+                free: info.free,
+                used: info.used,
+                used_inodes: info.files - info.ffree,
+                free_inodes: info.ffree,
+                fs_type: info.fs_type,
+                root_disk: self.root_disk,
+                healing,
+                endpoint: self.endpoint.to_string(),
+                mount_path: self.disk_path.to_owned(),
+                id: disk_id.unwrap_or_default(),
+                metrics: None,
+                error: None,
+            })
+        };
+
+        self.disk_info_cache.get(Some(get_disk_info)).await
     }
 
     pub(super) async fn new(endpoint: Endpoint) -> anyhow::Result<Self> {
@@ -318,7 +309,7 @@ impl XlStorage {
             root_disk
         };
 
-        let mut xl = XlStorage {
+        let xl = XlStorage {
             disk_path: path.to_owned(),
             endpoint,
             global_sync: std::env::var(config::ENV_FS_OSYNC)
@@ -330,7 +321,7 @@ impl XlStorage {
             set_index: -1,
             disk_index: -1,
             meta_cache: RwLock::new(None),
-            disk_info_cache: None,
+            disk_info_cache: utils::TimedValue::new(None, None),
         };
 
         // Check if backend is writable and supports O_DIRECT
@@ -348,8 +339,6 @@ impl XlStorage {
         let _ = file.write_all(aligned_buf.as_ref()).await?;
         drop(file);
         let _ = fs::remove(&tmp_file).await;
-
-        xl.build_disk_info_cache();
 
         Ok(xl)
     }
@@ -1248,7 +1237,6 @@ impl XlStorage {
 
         fs::reliable_mkdir_all(&volume_dir, 0o777).await?;
 
-        let mut pool_guard = (None, None);
         let writer = if file_size.is_some() && file_size.unwrap() <= SMALL_FILE_THRESHOLD as u64 {
             // For small files, we simply write them as O_DSYNC and not O_DIRECT
             // to avoid the complexities of aligned I/O.
@@ -1260,7 +1248,7 @@ impl XlStorage {
                 .await
             {
                 Err(err) => Err(err),
-                Ok(file) => Ok((Some(file), None)),
+                Ok(file) => Ok(FileWriterEnum::Left(file)),
             }
         } else {
             match fs::OpenOptions::new()
@@ -1271,24 +1259,20 @@ impl XlStorage {
             {
                 Err(err) => Err(err),
                 Ok(file) => {
-                    let mut buf;
-                    if file_size.is_some()
+                    let buf_guard = if file_size.is_some()
                         && file_size.unwrap() >= REALLY_LARGE_FILE_THRESHOLD as u64
                     {
                         // Really large files.
-                        pool_guard.0 = Some(XL_POOL_REALLY_LARGE.get().await?);
-                        buf = &mut ***pool_guard.0.as_mut().unwrap();
+                        utils::EitherGuard::Left(XL_POOL_REALLY_LARGE.get().await?)
                     } else {
                         // Large files.
-                        pool_guard.1 = Some(XL_POOL_LARGE.get().await?);
-                        buf = &mut ***pool_guard.1.as_mut().unwrap();
-                    }
-                    // Safety: lifetime of `buf` is controlled by `pool_guard`.
-                    let buf: &'static mut [u8] =
-                        unsafe { std::slice::from_raw_parts_mut(buf.as_mut_ptr(), buf.len()) };
+                        utils::EitherGuard::Right(XL_POOL_LARGE.get().await?)
+                    };
                     let file = file.into_std().await;
                     // Aligned write.
-                    Ok((None, Some(fs::AlignedWriter::new(file, buf, file_size))))
+                    Ok(FileWriterEnum::Right(fs::AlignedWriter::new(
+                        file, buf_guard, file_size,
+                    )))
                 }
             }
         };
@@ -1311,12 +1295,9 @@ impl XlStorage {
             Ok(w) => w,
         };
 
-        debug_assert!(writer.0.is_some() || writer.1.is_some());
-
         let volume = volume.to_owned();
         let w = FileWriter {
             writer,
-            pool_guard,
             file_size,
             written: 0,
             sync: None,
@@ -1853,12 +1834,10 @@ pub async fn get_valid_path(path: &str) -> anyhow::Result<Cow<'_, Path>> {
     Ok(path)
 }
 
-struct FileWriter {
-    writer: (Option<File>, Option<AlignedWriter<'static>>),
-    pool_guard: (
-        Option<TypedPoolGuard<'static, ReallyLargeAlignedBlock>>,
-        Option<TypedPoolGuard<'static, LargeAlignedBlock>>,
-    ),
+#[pin_project::pin_project]
+struct FileWriter<G: utils::BufGuardMut + 'static> {
+    #[pin]
+    writer: FileWriterEnum<G>,
     file_size: Option<u64>,
     written: u64,
     sync: Option<futures_util::future::LocalBoxFuture<'static, std::io::Result<()>>>,
@@ -1866,39 +1845,47 @@ struct FileWriter {
     cleanup: futures_util::future::LocalBoxFuture<'static, ()>,
 }
 
-impl AsyncWrite for FileWriter {
+#[pin_project::pin_project(project = FileWriterEnumProj)]
+enum FileWriterEnum<G: utils::BufGuardMut> {
+    Left(#[pin] File),
+    Right(#[pin] AlignedWriter<G>),
+    None,
+}
+
+impl<G: utils::BufGuardMut + 'static> AsyncWrite for FileWriter<G> {
     fn poll_write(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<std::io::Result<usize>> {
-        let this = self.get_mut();
-        match ready!(if let Some(writer) = &mut this.writer.0 {
-            Pin::new(writer).poll_write(cx, buf)
-        } else {
-            Pin::new(&mut this.writer.1.as_mut().unwrap()).poll_write(cx, buf)
+        let this = self.project();
+
+        match ready!(match this.writer.project() {
+            FileWriterEnumProj::Left(w) => w.poll_write(cx, buf),
+            FileWriterEnumProj::Right(w) => w.poll_write(cx, buf),
+            _ => panic!(), // never go here
         }) {
             Ok(n) => {
-                this.written += n as u64;
+                *this.written += n as u64;
                 Poll::Ready(Ok(n))
             }
             Err(err) => {
-                this.has_err = true;
+                *this.has_err = true;
                 Poll::Ready(Err(err))
             }
         }
     }
 
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
-        let this = self.get_mut();
+        let this = self.project();
 
-        if let Some(file_size) = this.file_size {
-            if this.written < file_size {
+        if let Some(file_size) = *this.file_size {
+            if *this.written < file_size {
                 return Poll::Ready(Err(std::io::Error::new(
                     ErrorKind::Other,
                     StorageError::LessData,
                 )));
-            } else if this.written > file_size {
+            } else if *this.written > file_size {
                 return Poll::Ready(Err(std::io::Error::new(
                     ErrorKind::Other,
                     StorageError::MoreData,
@@ -1908,17 +1895,24 @@ impl AsyncWrite for FileWriter {
 
         // Sync only data not metadata.
         if this.sync.is_none() {
-            if let Some(writer) = this.writer.0.take() {
-                this.sync = Some(async move { writer.sync_data().await }.boxed_local());
-            } else if let Some(writer) = this.writer.1.take() {
-                this.sync = Some(async move { writer.sync_data().await }.boxed_local());
+            // Safety: sync only once.
+            let writer = unsafe { this.writer.get_unchecked_mut() };
+            let writer = std::mem::replace(writer, FileWriterEnum::None);
+            match writer {
+                FileWriterEnum::Left(writer) => {
+                    *this.sync = Some(async move { writer.sync_data().await }.boxed_local());
+                }
+                FileWriterEnum::Right(writer) => {
+                    *this.sync = Some(async move { writer.sync_data().await }.boxed_local());
+                }
+                _ => {}
             }
         }
-        if let Some(sync) = &mut this.sync {
+        if let Some(sync) = this.sync {
             ready!(sync.poll_unpin(cx))?;
         }
 
-        if this.has_err {
+        if *this.has_err {
             ready!(this.cleanup.poll_unpin(cx));
         }
 

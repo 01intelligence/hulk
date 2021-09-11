@@ -1,6 +1,7 @@
+use std::borrow::Cow;
 use std::collections::{hash_map, hash_set, HashMap, HashSet};
 use std::fmt;
-use std::fmt::Formatter;
+use std::ops::Deref;
 
 use anyhow::bail;
 use lazy_static::lazy_static;
@@ -14,165 +15,162 @@ use crate::bucket::policy::{condition, Valid};
 // Refer https://docs.aws.amazon.com/IAM/latest/UserGuide/list_amazons3.html
 // for more information about available actions.
 #[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Clone, Debug)]
-pub struct Action<'a>(pub(super) &'a str);
+pub struct Action<'a>(pub(super) Cow<'a, str>);
 
 // ABORT_MULTIPART_UPLOAD_ACTION - AbortMultipartUpload Rest API action.
-pub const ABORT_MULTIPART_UPLOAD_ACTION: Action = Action("s3:AbortMultipartUpload");
+pub const ABORT_MULTIPART_UPLOAD_ACTION: &str = "s3:AbortMultipartUpload";
 
 // CREATE_BUCKET_ACTION - CreateBucket Rest API action.
-pub const CREATE_BUCKET_ACTION: Action = Action("s3:CreateBucket");
+pub const CREATE_BUCKET_ACTION: &str = "s3:CreateBucket";
 
 // DELETE_BUCKET_ACTION - DeleteBucket Rest API action.
-pub const DELETE_BUCKET_ACTION: Action = Action("s3:DeleteBucket");
+pub const DELETE_BUCKET_ACTION: &str = "s3:DeleteBucket";
 
 // FORCE_DELETE_BUCKET_ACTION - DeleteBucket Rest API action when x-hulk-force-delete flag
 // is specified.
-pub const FORCE_DELETE_BUCKET_ACTION: Action = Action("s3:ForceDeleteBucket");
+pub const FORCE_DELETE_BUCKET_ACTION: &str = "s3:ForceDeleteBucket";
 
 // DELETE_BUCKET_POLICY_ACTION - DeleteBucketPolicy Rest API action.
-pub const DELETE_BUCKET_POLICY_ACTION: Action = Action("s3:DeleteBucketPolicy");
+pub const DELETE_BUCKET_POLICY_ACTION: &str = "s3:DeleteBucketPolicy";
 
 // DELETE_OBJECT_ACTION - DeleteObject Rest API action.
-pub const DELETE_OBJECT_ACTION: Action = Action("s3:DeleteObject");
+pub const DELETE_OBJECT_ACTION: &str = "s3:DeleteObject";
 
 // GET_BUCKET_LOCATION_ACTION - GetBucketLocation Rest API action.
-pub const GET_BUCKET_LOCATION_ACTION: Action = Action("s3:GetBucketLocation");
+pub const GET_BUCKET_LOCATION_ACTION: &str = "s3:GetBucketLocation";
 
 // GET_BUCKET_NOTIFICATION_ACTION - GetBucketNotification Rest API action.
-pub const GET_BUCKET_NOTIFICATION_ACTION: Action = Action("s3:GetBucketNotification");
+pub const GET_BUCKET_NOTIFICATION_ACTION: &str = "s3:GetBucketNotification";
 
 // GET_BUCKET_POLICY_ACTION - GetBucketPolicy Rest API action.
-pub const GET_BUCKET_POLICY_ACTION: Action = Action("s3:GetBucketPolicy");
+pub const GET_BUCKET_POLICY_ACTION: &str = "s3:GetBucketPolicy";
 
 // GET_OBJECT_ACTION - GetObject Rest API action.
-pub const GET_OBJECT_ACTION: Action = Action("s3:GetObject");
+pub const GET_OBJECT_ACTION: &str = "s3:GetObject";
 
 // HEAD_BUCKET_ACTION - HeadBucket Rest API action. This action is unused in hulk.
-pub const HEAD_BUCKET_ACTION: Action = Action("s3:HeadBucket");
+pub const HEAD_BUCKET_ACTION: &str = "s3:HeadBucket";
 
 // LIST_ALL_MY_BUCKETS_ACTION - ListAllMyBuckets (List buckets) Rest API action.
-pub const LIST_ALL_MY_BUCKETS_ACTION: Action = Action("s3:ListAllMyBuckets");
+pub const LIST_ALL_MY_BUCKETS_ACTION: &str = "s3:ListAllMyBuckets";
 
 // LIST_BUCKET_ACTION - ListBucket Rest API action.
-pub const LIST_BUCKET_ACTION: Action = Action("s3:ListBucket");
+pub const LIST_BUCKET_ACTION: &str = "s3:ListBucket";
 
 // GET_BUCKET_POLICY_STATUS_ACTION - Retrieves the policy status for a bucket.
-pub const GET_BUCKET_POLICY_STATUS_ACTION: Action = Action("s3:GetBucketPolicyStatus");
+pub const GET_BUCKET_POLICY_STATUS_ACTION: &str = "s3:GetBucketPolicyStatus";
 
 // LIST_BUCKET_MULTIPART_UPLOADS_ACTION - ListMultipartUploads Rest API action.
-pub const LIST_BUCKET_MULTIPART_UPLOADS_ACTION: Action = Action("s3:ListBucketMultipartUploads");
+pub const LIST_BUCKET_MULTIPART_UPLOADS_ACTION: &str = "s3:ListBucketMultipartUploads";
 
 // LIST_BUCKET_VERSIONS_ACTION - ListBucket versions Rest API action.
-pub const LIST_BUCKET_VERSIONS_ACTION: Action = Action("s3:ListBucketVersions");
+pub const LIST_BUCKET_VERSIONS_ACTION: &str = "s3:ListBucketVersions";
 
 // LISTEN_NOTIFICATION_ACTION - ListenNotification Rest API action.
 // This is hulk extension.
-pub const LISTEN_NOTIFICATION_ACTION: Action = Action("s3:ListenNotification");
+pub const LISTEN_NOTIFICATION_ACTION: &str = "s3:ListenNotification";
 
 // LISTEN_BUCKET_NOTIFICATION_ACTION - ListenBucketNotification Rest API action.
 // This is hulk extension.
-pub const LISTEN_BUCKET_NOTIFICATION_ACTION: Action = Action("s3:ListenBucketNotification");
+pub const LISTEN_BUCKET_NOTIFICATION_ACTION: &str = "s3:ListenBucketNotification";
 
 // LIST_MULTIPART_UPLOAD_PARTS_ACTION - ListParts Rest API action.
-pub const LIST_MULTIPART_UPLOAD_PARTS_ACTION: Action = Action("s3:ListMultipartUploadParts");
+pub const LIST_MULTIPART_UPLOAD_PARTS_ACTION: &str = "s3:ListMultipartUploadParts";
 
 // PUT_BUCKET_LIFECYCLE_ACTION - PutBucketLifecycle Rest API action.
-pub const PUT_BUCKET_LIFECYCLE_ACTION: Action = Action("s3:PutLifecycleConfiguration");
+pub const PUT_BUCKET_LIFECYCLE_ACTION: &str = "s3:PutLifecycleConfiguration";
 
 // GET_BUCKET_LIFECYCLE_ACTION - GetBucketLifecycle Rest API action.
-pub const GET_BUCKET_LIFECYCLE_ACTION: Action = Action("s3:GetLifecycleConfiguration");
+pub const GET_BUCKET_LIFECYCLE_ACTION: &str = "s3:GetLifecycleConfiguration";
 
 // PUT_BUCKET_NOTIFICATION_ACTION - PutObjectNotification Rest API action.
-pub const PUT_BUCKET_NOTIFICATION_ACTION: Action = Action("s3:PutBucketNotification");
+pub const PUT_BUCKET_NOTIFICATION_ACTION: &str = "s3:PutBucketNotification";
 
 // PUT_BUCKET_POLICY_ACTION - PutBucketPolicy Rest API action.
-pub const PUT_BUCKET_POLICY_ACTION: Action = Action("s3:PutBucketPolicy");
+pub const PUT_BUCKET_POLICY_ACTION: &str = "s3:PutBucketPolicy";
 
 // PUT_OBJECT_ACTION - PutObject Rest API action.
-pub const PUT_OBJECT_ACTION: Action = Action("s3:PutObject");
+pub const PUT_OBJECT_ACTION: &str = "s3:PutObject";
 
 // DELETE_OBJECT_VERSION_ACTION - DeleteObjectVersion Rest API action.
-pub const DELETE_OBJECT_VERSION_ACTION: Action = Action("s3:DeleteObjectVersion");
+pub const DELETE_OBJECT_VERSION_ACTION: &str = "s3:DeleteObjectVersion";
 
 // DELETE_OBJECT_VERSION_TAGGING_ACTION - DeleteObjectVersionTagging Rest API action.
-pub const DELETE_OBJECT_VERSION_TAGGING_ACTION: Action = Action("s3:DeleteObjectVersionTagging");
+pub const DELETE_OBJECT_VERSION_TAGGING_ACTION: &str = "s3:DeleteObjectVersionTagging";
 
 // GET_OBJECT_VERSION_ACTION - GET_OBJECT_VERSION_ACTION Rest API action.
-pub const GET_OBJECT_VERSION_ACTION: Action = Action("s3:GetObjectVersion");
+pub const GET_OBJECT_VERSION_ACTION: &str = "s3:GetObjectVersion";
 
 // GET_OBJECT_VERSION_TAGGING_ACTION - GetObjectVersionTagging Rest API action.
-pub const GET_OBJECT_VERSION_TAGGING_ACTION: Action = Action("s3:GetObjectVersionTagging");
+pub const GET_OBJECT_VERSION_TAGGING_ACTION: &str = "s3:GetObjectVersionTagging";
 
 // PUT_OBJECT_VERSION_TAGGING_ACTION - PutObjectVersionTagging Rest API action.
-pub const PUT_OBJECT_VERSION_TAGGING_ACTION: Action = Action("s3:PutObjectVersionTagging");
+pub const PUT_OBJECT_VERSION_TAGGING_ACTION: &str = "s3:PutObjectVersionTagging";
 
 // BYPASS_GOVERNANCE_RETENTION_ACTION - bypass governance retention for PutObjectRetention, PutObject and DeleteObject Rest API action.
-pub const BYPASS_GOVERNANCE_RETENTION_ACTION: Action = Action("s3:BypassGovernanceRetention");
+pub const BYPASS_GOVERNANCE_RETENTION_ACTION: &str = "s3:BypassGovernanceRetention";
 
 // PUT_OBJECT_RETENTION_ACTION - PutObjectRetention Rest API action.
-pub const PUT_OBJECT_RETENTION_ACTION: Action = Action("s3:PutObjectRetention");
+pub const PUT_OBJECT_RETENTION_ACTION: &str = "s3:PutObjectRetention";
 
 // GET_OBJECT_RETENTION_ACTION - GetObjectRetention, GetObject, HeadObject Rest API action.
-pub const GET_OBJECT_RETENTION_ACTION: Action = Action("s3:GetObjectRetention");
+pub const GET_OBJECT_RETENTION_ACTION: &str = "s3:GetObjectRetention";
 
 // GET_OBJECT_LEGAL_HOLD_ACTION - GetObjectLegalHold, GetObject Rest API action.
-pub const GET_OBJECT_LEGAL_HOLD_ACTION: Action = Action("s3:GetObjectLegalHold");
+pub const GET_OBJECT_LEGAL_HOLD_ACTION: &str = "s3:GetObjectLegalHold";
 // PUT_OBJECT_LEGAL_HOLD_ACTION - PutObjectLegalHold, PutObject Rest API action.
-pub const PUT_OBJECT_LEGAL_HOLD_ACTION: Action = Action("s3:PutObjectLegalHold");
+pub const PUT_OBJECT_LEGAL_HOLD_ACTION: &str = "s3:PutObjectLegalHold";
 
 // GET_BUCKET_OBJECT_LOCK_CONFIGURATION_ACTION - GetObjectLockConfiguration Rest API action
-pub const GET_BUCKET_OBJECT_LOCK_CONFIGURATION_ACTION: Action =
-    Action("s3:GetBucketObjectLockConfiguration");
+pub const GET_BUCKET_OBJECT_LOCK_CONFIGURATION_ACTION: &str = "s3:GetBucketObjectLockConfiguration";
 // PUT_BUCKET_OBJECT_LOCK_CONFIGURATION_ACTION - PutObjectLockConfiguration Rest API action
-pub const PUT_BUCKET_OBJECT_LOCK_CONFIGURATION_ACTION: Action =
-    Action("s3:PutBucketObjectLockConfiguration");
+pub const PUT_BUCKET_OBJECT_LOCK_CONFIGURATION_ACTION: &str = "s3:PutBucketObjectLockConfiguration";
 
 // GET_BUCKET_TAGGING_ACTION - GetTagging Rest API action
-pub const GET_BUCKET_TAGGING_ACTION: Action = Action("s3:GetBucketTagging");
+pub const GET_BUCKET_TAGGING_ACTION: &str = "s3:GetBucketTagging";
 // PUT_BUCKET_TAGGING_ACTION - PutTagging Rest API action
-pub const PUT_BUCKET_TAGGING_ACTION: Action = Action("s3:PutBucketTagging");
+pub const PUT_BUCKET_TAGGING_ACTION: &str = "s3:PutBucketTagging";
 
 // GET_OBJECT_TAGGING_ACTION - Get Object Tags API action
-pub const GET_OBJECT_TAGGING_ACTION: Action = Action("s3:GetObjectTagging");
+pub const GET_OBJECT_TAGGING_ACTION: &str = "s3:GetObjectTagging";
 // PUT_OBJECT_TAGGING_ACTION - Put Object Tags API action
-pub const PUT_OBJECT_TAGGING_ACTION: Action = Action("s3:PutObjectTagging");
+pub const PUT_OBJECT_TAGGING_ACTION: &str = "s3:PutObjectTagging";
 // DELETE_OBJECT_TAGGING_ACTION - Delete Object Tags API action
-pub const DELETE_OBJECT_TAGGING_ACTION: Action = Action("s3:DeleteObjectTagging");
+pub const DELETE_OBJECT_TAGGING_ACTION: &str = "s3:DeleteObjectTagging";
 
 // PUT_BUCKET_ENCRYPTION_ACTION - PutBucketEncryption REST API action
-pub const PUT_BUCKET_ENCRYPTION_ACTION: Action = Action("s3:PutEncryptionConfiguration");
+pub const PUT_BUCKET_ENCRYPTION_ACTION: &str = "s3:PutEncryptionConfiguration";
 
 // GET_BUCKET_ENCRYPTION_ACTION - GetBucketEncryption REST API action
-pub const GET_BUCKET_ENCRYPTION_ACTION: Action = Action("s3:GetEncryptionConfiguration");
+pub const GET_BUCKET_ENCRYPTION_ACTION: &str = "s3:GetEncryptionConfiguration";
 
 // PUT_BUCKET_VERSIONING_ACTION - PutBucketVersioning REST API action
-pub const PUT_BUCKET_VERSIONING_ACTION: Action = Action("s3:PutBucketVersioning");
+pub const PUT_BUCKET_VERSIONING_ACTION: &str = "s3:PutBucketVersioning";
 
 // GET_BUCKET_VERSIONING_ACTION - GetBucketVersioning REST API action
-pub const GET_BUCKET_VERSIONING_ACTION: Action = Action("s3:GetBucketVersioning");
+pub const GET_BUCKET_VERSIONING_ACTION: &str = "s3:GetBucketVersioning";
 // GET_REPLICATION_CONFIGURATION_ACTION  - GetReplicationConfiguration REST API action
-pub const GET_REPLICATION_CONFIGURATION_ACTION: Action = Action("s3:GetReplicationConfiguration");
+pub const GET_REPLICATION_CONFIGURATION_ACTION: &str = "s3:GetReplicationConfiguration";
 // PUT_REPLICATION_CONFIGURATION_ACTION  - PutReplicationConfiguration REST API action
-pub const PUT_REPLICATION_CONFIGURATION_ACTION: Action = Action("s3:PutReplicationConfiguration");
+pub const PUT_REPLICATION_CONFIGURATION_ACTION: &str = "s3:PutReplicationConfiguration";
 
 // REPLICATE_OBJECT_ACTION  - ReplicateObject REST API action
-pub const REPLICATE_OBJECT_ACTION: Action = Action("s3:ReplicateObject");
+pub const REPLICATE_OBJECT_ACTION: &str = "s3:ReplicateObject";
 
 // REPLICATE_DELETE_ACTION  - ReplicateDelete REST API action
-pub const REPLICATE_DELETE_ACTION: Action = Action("s3:ReplicateDelete");
+pub const REPLICATE_DELETE_ACTION: &str = "s3:ReplicateDelete";
 
 // REPLICATE_TAGS_ACTION  - ReplicateTags REST API action
-pub const REPLICATE_TAGS_ACTION: Action = Action("s3:ReplicateTags");
+pub const REPLICATE_TAGS_ACTION: &str = "s3:ReplicateTags";
 
 // GET_OBJECT_VERSION_FOR_REPLICATION_ACTION  - GetObjectVersionForReplication REST API action
-pub const GET_OBJECT_VERSION_FOR_REPLICATION_ACTION: Action =
-    Action("s3:GetObjectVersionForReplication");
+pub const GET_OBJECT_VERSION_FOR_REPLICATION_ACTION: &str = "s3:GetObjectVersionForReplication";
 
 // ALL_ACTIONS - all API actions
-pub const ALL_ACTIONS: Action = Action("s3:*");
+pub const ALL_ACTIONS: &str = "s3:*";
 
 lazy_static! {
-    static ref SUPPORTED_ACTIONS: HashSet<Action<'static>> = maplit::hashset! {
+    static ref SUPPORTED_ACTIONS: HashSet<Action<'static>> = (maplit::hashset! {
         ABORT_MULTIPART_UPLOAD_ACTION,
         CREATE_BUCKET_ACTION,
         DELETE_OBJECT_ACTION,
@@ -225,9 +223,9 @@ lazy_static! {
         REPLICATE_TAGS_ACTION,
         GET_OBJECT_VERSION_FOR_REPLICATION_ACTION,
         ALL_ACTIONS,
-    };
+    }).into_iter().map(|v| v.into()).collect();
 
-    static ref SUPPORTED_OBJECT_ACTIONS: HashSet<Action<'static>> = maplit::hashset! {
+    static ref SUPPORTED_OBJECT_ACTIONS: HashSet<Action<'static>> = (maplit::hashset! {
         ALL_ACTIONS,
         ABORT_MULTIPART_UPLOAD_ACTION,
         DELETE_OBJECT_ACTION,
@@ -251,7 +249,7 @@ lazy_static! {
         REPLICATE_DELETE_ACTION,
         REPLICATE_TAGS_ACTION,
         GET_OBJECT_VERSION_FOR_REPLICATION_ACTION,
-    };
+    }).into_iter().map(|v| v.into()).collect();
 
     // Holds mapping of supported condition key for an action.
     pub(super) static ref IAM_ACTION_CONDITION_KEY_MAP: HashMap<Action<'static>, condition::KeySet<'static>> = {
@@ -261,7 +259,7 @@ lazy_static! {
 
         let common_keyset: KeySet<'static> = condition::COMMON_KEYS.iter().cloned().collect();
         let all_actions: KeySet<'static> = condition::ALL_SUPPORTED_KEYS.iter().cloned().collect();
-        maplit::hashmap! {
+        (maplit::hashmap! {
             ALL_ACTIONS => all_actions,
             GET_OBJECT_ACTION => keyset_extend!(
                 common_keyset.clone(),
@@ -378,7 +376,7 @@ lazy_static! {
                 common_keyset.clone(),
                 S3_VERSION_ID,
             ),
-        }
+        }).into_iter().map(|(k, v)| (k.into(), v)).collect()
     };
 }
 
@@ -398,7 +396,27 @@ impl<'a> Action<'a> {
         SUPPORTED_OBJECT_ACTIONS.iter().any(|a| self.is_match(a))
     }
     pub fn is_match(&self, a: &Action) -> bool {
-        crate::wildcard::match_wildcard(self.0, a.0)
+        crate::wildcard::match_wildcard(&self, &a)
+    }
+}
+
+impl<'a> Deref for Action<'a> {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref()
+    }
+}
+
+impl<'a> From<&'a str> for Action<'a> {
+    fn from(a: &'a str) -> Self {
+        Action(a.into())
+    }
+}
+
+impl From<String> for Action<'_> {
+    fn from(a: String) -> Self {
+        Action(a.into())
     }
 }
 
@@ -421,9 +439,9 @@ impl<'a> Serialize for Action<'a> {
     {
         use serde::ser::Error;
         if !self.is_valid() {
-            return Err(S::Error::custom(format!("invalid action '{}'", self.0)));
+            return Err(S::Error::custom(format!("invalid action '{}'", &self)));
         }
-        serializer.serialize_str(self.0)
+        serializer.serialize_str(&self)
     }
 }
 
@@ -489,7 +507,7 @@ impl<'a> ActionSet<'a> {
             a.is_match(action) ||
             // This is a special case where GetObjectVersion
             // means GetObject is enabled implicitly. 
-            (a == &GET_OBJECT_VERSION_ACTION && action == &GET_OBJECT_ACTION)
+            (a == &GET_OBJECT_VERSION_ACTION.into() && action == &GET_OBJECT_ACTION.into())
         })
     }
 
@@ -610,7 +628,7 @@ macro_rules! iam_actionset {
         use crate::iam::policy::ActionSet;
         let mut set = ActionSet::default();
         $(
-            set.insert($e);
+            set.insert($e.into());
         )*
         set
     }};
@@ -634,6 +652,7 @@ mod tests {
         ];
 
         for (action, expected_result) in cases {
+            let action: Action = action.into();
             let result = action.is_object_action();
 
             assert_eq!(
@@ -649,10 +668,11 @@ mod tests {
         let cases = [
             (PUT_OBJECT_ACTION, true),
             (ABORT_MULTIPART_UPLOAD_ACTION, true),
-            (Action("foo"), false),
+            ("foo", false),
         ];
 
         for (action, expected_result) in cases {
+            let action: Action = action.into();
             let result = action.is_valid();
 
             assert_eq!(
@@ -679,7 +699,7 @@ mod tests {
         ];
 
         for (mut set, action_to_add, expected_result) in cases {
-            let _result = set.insert(action_to_add);
+            let _result = set.insert(action_to_add.into());
 
             assert_eq!(
                 set, expected_result,
@@ -711,7 +731,8 @@ mod tests {
         ];
 
         for (set, action, expected_result) in cases {
-            let result = set.is_match(&action);
+            let action: Action = action.into();
+            let result = set.is_match(&action.into());
 
             assert_eq!(
                 result, expected_result,
@@ -821,7 +842,10 @@ mod tests {
     #[test]
     fn test_set_to_vec() {
         let cases = [
-            (iam_actionset!(PUT_OBJECT_ACTION), vec![PUT_OBJECT_ACTION]),
+            (
+                iam_actionset!(PUT_OBJECT_ACTION),
+                vec![Action::from(PUT_OBJECT_ACTION)],
+            ),
             (iam_actionset!(), vec![]),
         ];
 

@@ -462,11 +462,7 @@ impl<'de, 'a> Deserialize<'de> for Action<'a> {
             where
                 E: de::Error,
             {
-                SUPPORTED_ACTIONS
-                    .iter()
-                    .find(|&a| a.0 == v)
-                    .cloned()
-                    .ok_or(E::custom(format!("invalid action '{}'", v)))
+                Ok(Action(Cow::Owned(v.to_owned())))
             }
         }
 
@@ -592,12 +588,7 @@ impl<'de, 'a> Deserialize<'de> for ActionSet<'a> {
             where
                 E: de::Error,
             {
-                let action = SUPPORTED_ACTIONS
-                    .iter()
-                    .find(|&a| a.0 == v)
-                    .cloned()
-                    .ok_or(E::custom(format!("invalid action '{}'", v)))?;
-                Ok(ActionSet(HashSet::from([action])))
+                Ok(ActionSet(HashSet::from([Action(Cow::Owned(v.to_owned()))])))
             }
 
             fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
@@ -818,8 +809,13 @@ mod tests {
                 false,
             ),
             (r#"[]"#, iam_actionset!(), true, false),
-            (r#""foo""#, iam_actionset!(), true, false),
-            (r#"["s3:PutObject", "foo"]"#, iam_actionset!(), true, false),
+            (r#""foo""#, iam_actionset!(Action::from("foo")), false, true),
+            (
+                r#"["s3:PutObject", "foo"]"#,
+                iam_actionset!(PUT_OBJECT_ACTION, Action::from("foo")),
+                false,
+                true,
+            ),
         ];
 
         for (data, expected_result, expect_deserialize_err, expect_validate_err) in cases {

@@ -117,7 +117,7 @@ impl<'a, 'b> Policy<'a, 'b> {
     }
 
     // Validates all statements are for given bucket or not.
-    pub fn validate(&self, bucket_name: &str) -> anyhow::Result<()> {
+    pub fn validate(&self) -> anyhow::Result<()> {
         self.is_valid()
     }
 
@@ -255,7 +255,7 @@ mod tests {
     use crate::bucket::policy::{ALLOW, DENY};
     use crate::iam_actionset;
     use crate::utils::assert::*;
-    use crate::utils::{self, DateTime};
+    use crate::utils::{self, DateTime, DateTimeFormatExt};
 
     #[test]
     fn test_get_policies_from_claims() {
@@ -361,7 +361,7 @@ mod tests {
         let anon_get_bucket_location_args = Args {
             account_name: "Q3AM3UQ867SPQQA43P2F".to_string(),
             groups: vec![],
-            action: GET_BUCKET_LOCATION_ACTION,
+            action: Action::from(GET_BUCKET_LOCATION_ACTION),
             bucket_name: "mybucket".to_string(),
             condition_values: HashMap::default(),
             is_owner: false,
@@ -373,7 +373,7 @@ mod tests {
         let anon_put_object_action_args = Args {
             account_name: "Q3AM3UQ867SPQQA43P2F".to_string(),
             groups: vec![],
-            action: PUT_OBJECT_ACTION,
+            action: Action::from(PUT_OBJECT_ACTION),
             bucket_name: "mybucket".to_string(),
             condition_values: HashMap::from([
                 (
@@ -391,7 +391,7 @@ mod tests {
         let anon_get_object_action_args = Args {
             account_name: "Q3AM3UQ867SPQQA43P2F".to_string(),
             groups: vec![],
-            action: GET_OBJECT_ACTION,
+            action: Action::from(GET_OBJECT_ACTION),
             bucket_name: "mybucket".to_string(),
             condition_values: HashMap::default(),
             is_owner: false,
@@ -403,7 +403,7 @@ mod tests {
         let get_bucket_location_args = Args {
             account_name: "Q3AM3UQ867SPQQA43P2F".to_string(),
             groups: vec![],
-            action: GET_BUCKET_LOCATION_ACTION,
+            action: Action::from(GET_BUCKET_LOCATION_ACTION),
             bucket_name: "mybucket".to_string(),
             condition_values: HashMap::default(),
             is_owner: false,
@@ -415,7 +415,7 @@ mod tests {
         let put_object_action_args = Args {
             account_name: "Q3AM3UQ867SPQQA43P2F".to_string(),
             groups: vec![],
-            action: PUT_OBJECT_ACTION,
+            action: Action::from(PUT_OBJECT_ACTION),
             bucket_name: "mybucket".to_string(),
             condition_values: HashMap::from([
                 (
@@ -433,7 +433,7 @@ mod tests {
         let get_object_action_args = Args {
             account_name: "Q3AM3UQ867SPQQA43P2F".to_string(),
             groups: vec![],
-            action: GET_OBJECT_ACTION,
+            action: Action::from(GET_OBJECT_ACTION),
             bucket_name: "mybucket".to_string(),
             condition_values: HashMap::default(),
             is_owner: false,
@@ -885,7 +885,7 @@ mod tests {
                 Args {
                     account_name: "allowed".to_string(),
                     groups: vec![],
-                    action: CREATE_BUCKET_ACTION,
+                    action: Action::from(CREATE_BUCKET_ACTION),
                     bucket_name: "test".to_string(),
                     condition_values: HashMap::from([(
                         "LocationConstraint".to_string(),
@@ -903,7 +903,7 @@ mod tests {
                 Args {
                     account_name: "disallowed".to_string(),
                     groups: vec![],
-                    action: CREATE_BUCKET_ACTION,
+                    action: Action::from(CREATE_BUCKET_ACTION),
                     bucket_name: "test".to_string(),
                     condition_values: HashMap::from([(
                         "LocationConstraint".to_string(),
@@ -921,7 +921,7 @@ mod tests {
                 Args {
                     account_name: "allowed".to_string(),
                     groups: vec![],
-                    action: GET_OBJECT_ACTION,
+                    action: Action::from(GET_OBJECT_ACTION),
                     bucket_name: "test".to_string(),
                     condition_values: HashMap::from([(
                         "versionid".to_string(),
@@ -939,7 +939,7 @@ mod tests {
                 Args {
                     account_name: "disallowed".to_string(),
                     groups: vec![],
-                    action: GET_OBJECT_ACTION,
+                    action: Action::from(GET_OBJECT_ACTION),
                     bucket_name: "test".to_string(),
                     condition_values: HashMap::from([(
                         "versionid".to_string(),
@@ -957,7 +957,7 @@ mod tests {
                 Args {
                     account_name: "allowed".to_string(),
                     groups: vec![],
-                    action: GET_OBJECT_ACTION,
+                    action: Action::from(GET_OBJECT_ACTION),
                     bucket_name: "test".to_string(),
                     condition_values: HashMap::from([(
                         "versionid".to_string(),
@@ -975,7 +975,7 @@ mod tests {
                 Args {
                     account_name: "disallowed".to_string(),
                     groups: vec![],
-                    action: GET_OBJECT_ACTION,
+                    action: Action::from(GET_OBJECT_ACTION),
                     bucket_name: "test".to_string(),
                     condition_values: HashMap::from([(
                         "versionid".to_string(),
@@ -993,7 +993,7 @@ mod tests {
                 Args {
                     account_name: "allowed".to_string(),
                     groups: vec![],
-                    action: GET_OBJECT_ACTION,
+                    action: Action::from(GET_OBJECT_ACTION),
                     bucket_name: "test".to_string(),
                     condition_values: HashMap::from([(
                         "versionid".to_string(),
@@ -1011,11 +1011,11 @@ mod tests {
                 Args {
                     account_name: "allowed".to_string(),
                     groups: vec![],
-                    action: GET_OBJECT_ACTION,
+                    action: Action::from(GET_OBJECT_ACTION),
                     bucket_name: "test".to_string(),
                     condition_values: HashMap::from([(
                         "CurrentTime".to_string(),
-                        vec![utils::now().to_rfc3339()],
+                        vec![utils::now().rfc3339()],
                     )]),
                     is_owner: false,
                     object_name: "HappyFace.jpg".to_string(),
@@ -1029,11 +1029,11 @@ mod tests {
                 Args {
                     account_name: "disallowed".to_string(),
                     groups: vec![],
-                    action: GET_OBJECT_ACTION,
+                    action: Action::from(GET_OBJECT_ACTION),
                     bucket_name: "test".to_string(),
                     condition_values: HashMap::from([(
                         "CurrentTime".to_string(),
-                        vec![utils::now().to_rfc3339()],
+                        vec![utils::now().rfc3339()],
                     )]),
                     is_owner: false,
                     object_name: "HappyFace.jpg".to_string(),
@@ -1046,8 +1046,7 @@ mod tests {
         for (data, allowed, args) in cases {
             let policy = assert_ok!(serde_json::from_str::<Policy>(data));
 
-            // TODO: Validate of Policy need one param
-            assert_ok!(policy.is_valid());
+            assert_ok!(policy.validate());
 
             let result = policy.is_allowed(&args);
             assert_eq!(result, allowed);
@@ -1493,11 +1492,9 @@ mod tests {
                         assert!(result == expected_result);
 
                         if !expect_validation_err {
-                            // TODO
-                            assert_ok!(result.is_valid());
+                            assert_ok!(result.validate());
                         } else {
-                            // TODO
-                            assert_err!(result.is_valid());
+                            assert_err!(result.validate());
                         }
                     }
                 }
@@ -1565,11 +1562,9 @@ mod tests {
 
         for (policy, expect_err) in cases {
             if !expect_err {
-                // TODO
-                assert_ok!(policy.is_valid());
+                assert_ok!(policy.validate());
             } else {
-                // TODO
-                assert_err!(policy.is_valid());
+                assert_err!(policy.validate());
             }
         }
 

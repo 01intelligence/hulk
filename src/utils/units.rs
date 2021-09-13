@@ -6,6 +6,10 @@ pub const MIB: usize = 1 << (2 * 10);
 pub const MINUTE: u64 = 60;
 pub const HOUR: u64 = MINUTE * 60;
 
+pub const fn milliseconds(n: u64) -> Duration {
+    Duration::from_millis(n)
+}
+
 pub const fn seconds(n: u64) -> Duration {
     Duration::from_secs(n)
 }

@@ -11,7 +11,7 @@ pub type TimedValueUpdateFnResult<T> =
 pub type TimedValueUpdateFn<T> = Box<dyn Fn() -> TimedValueUpdateFnResult<T> + Send + Sync>;
 
 pub struct TimedValue<T> {
-    update: TimedValueUpdateFn<T>,
+    update: Option<TimedValueUpdateFn<T>>,
     ttl: Duration,
     inner: RwLock<Inner<T>>,
 }
@@ -24,7 +24,7 @@ struct Inner<T> {
 unsafe impl<T: Clone> Sync for TimedValue<T> {}
 
 impl<T: Clone> TimedValue<T> {
-    pub fn new(ttl: Option<Duration>, update: TimedValueUpdateFn<T>) -> Self {
+    pub fn new(ttl: Option<Duration>, update: Option<TimedValueUpdateFn<T>>) -> Self {
         Self {
             update,
             ttl: ttl.unwrap_or_else(|| Duration::from_secs(1)),
@@ -35,7 +35,11 @@ impl<T: Clone> TimedValue<T> {
         }
     }
 
-    pub async fn get(&self) -> anyhow::Result<T> {
+    pub async fn get<Fut, F>(&self, update: Option<F>) -> anyhow::Result<T>
+    where
+        Fut: Future<Output = anyhow::Result<T>>,
+        F: FnOnce() -> Fut,
+    {
         let inner = self.inner.read().await;
         if inner.last_update.elapsed() < self.ttl {
             if let Some(value) = &inner.value {
@@ -44,7 +48,11 @@ impl<T: Clone> TimedValue<T> {
         }
         drop(inner);
 
-        let value = (self.update)().await?;
+        let value = if let Some(update) = update {
+            update().await?
+        } else {
+            (self.update.as_ref().unwrap())().await?
+        };
         let mut inner = self.inner.write().await;
         inner.value = Some(value);
         inner.last_update = Instant::now();

@@ -1,12 +1,22 @@
 use std::convert::TryFrom;
+use std::future::Future;
+use std::pin::Pin;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll};
 
+use http::{HeaderValue, Request, Response};
 use lazy_static::lazy_static;
-use tonic::transport::{Channel, Endpoint, Error};
+use tonic::body::BoxBody;
+use tonic::transport::{Body, Channel, Endpoint};
+use tonic::Code;
+use tower::Service;
 
+use crate::errors::AsError;
 use crate::globals::{Guard, GLOBALS};
 use crate::utils;
+use crate::utils::{DateTimeExt, DateTimeFormatExt};
 
 lazy_static! {
     static ref GLOBAL_INTER_NODE_CLIENT_BUILDER: Arc<Mutex<Option<InterNodeClientBuilder>>> =
@@ -19,8 +29,8 @@ pub struct InterNodeClientBuilder {
 }
 
 impl InterNodeClientBuilder {
-    pub fn build(self, uri: &str) -> anyhow::Result<HealthCheckChannel> {
-        let uri = tonic::transport::Uri::from_str(uri)?;
+    pub fn build(self, endpoint: &crate::endpoint::Endpoint) -> anyhow::Result<WrappedChannel> {
+        let uri = tonic::transport::Uri::from_str(endpoint.url())?;
 
         // TODO: proxy, dns cache, ...
 
@@ -32,7 +42,7 @@ impl InterNodeClientBuilder {
             .connect_lazy()?;
 
         let channel = tower::ServiceBuilder::new()
-            .layer_fn(HealthCheckChannel::new)
+            .layer_fn(WrappedChannel::new)
             .service(channel);
 
         Ok(channel)
@@ -66,104 +76,131 @@ pub fn new_auth_token() -> String {
     crate::http::authenticate_node(active_cred.access_key.clone(), &active_cred.secret_key).unwrap()
 }
 
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
-use std::task::{Context, Poll};
+pub struct WrappedChannel {
+    channel: Channel,
+    inner: Arc<WrappedChannelInner>,
+    tx: Arc<tokio::sync::Notify>,
+}
 
-use http::{HeaderValue, Request, Response};
-use tonic::body::BoxBody;
-use tonic::transport::Body;
-use tonic::Code;
-use tower::Service;
-
-use crate::errors::AsError;
-use crate::utils::DateTimeFormatExt;
-
-pub struct HealthCheckChannel {
-    inner: Channel,
-    health_check_fn: Option<Box<dyn Fn() -> bool>>,
-    connected: AtomicBool,
-    health_check_handle: Option<tokio::task::JoinHandle<()>>,
-    last_connected: AtomicI64,
+struct WrappedChannelInner {
+    health_check_fn: Mutex<Option<HealthCheckFn>>,
     health_check_interval: utils::Duration,
+    connected: AtomicBool,
+    last_connected: AtomicI64,
+    rx: Arc<tokio::sync::Notify>,
 }
 
-unsafe impl Send for HealthCheckChannel {}
+type HealthCheckFnFuture = Pin<Box<dyn Future<Output = bool> + Send>>;
+type HealthCheckFn = Box<dyn Fn() -> HealthCheckFnFuture + Send + Sync>;
 
-impl HealthCheckChannel {
+unsafe impl Send for WrappedChannelInner {}
+unsafe impl Sync for WrappedChannelInner {}
+
+impl Drop for WrappedChannel {
+    fn drop(&mut self) {
+        self.tx.notify_one();
+    }
+}
+
+impl WrappedChannel {
     fn new(inner: Channel) -> Self {
+        let notify = Arc::new(tokio::sync::Notify::new());
+
         Self {
-            inner,
-            health_check_fn: None,
-            connected: AtomicBool::new(false),
-            health_check_handle: None,
-            last_connected: AtomicI64::new(utils::now().timestamp_nanos()),
-            health_check_interval: Default::default(),
+            channel: inner,
+            inner: Arc::new(WrappedChannelInner {
+                health_check_fn: Mutex::new(None),
+                health_check_interval: utils::milliseconds(200),
+                connected: AtomicBool::new(false),
+                last_connected: AtomicI64::new(utils::now().timestamp_nanos()),
+                rx: notify.clone(),
+            }),
+            tx: notify,
         }
     }
 
-    fn is_online(&self) -> bool {
-        todo!()
+    pub fn health_check_setter(&self) -> Box<dyn FnOnce(HealthCheckFn)> {
+        let inner = self.inner.clone();
+        Box::new(move |health_check: HealthCheckFn| {
+            *inner.health_check_fn.lock().unwrap() = Some(health_check);
+        })
     }
 
-    fn mark_offline(&mut self) {
-        if self.health_check_fn.is_some() {
-            if let Ok(_) =
-                self.connected
-                    .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
-            {
-                let this = utils::SendRawPtr::new(self as *mut Self);
-                let handle = tokio::spawn(async move {
-                    // Safety: `this` should never outlive `self`.
-                    let this = unsafe { this.to().as_mut().unwrap() };
+    pub fn is_online(&self) -> bool {
+        self.inner.connected.load(Ordering::Relaxed)
+    }
 
-                    let mut rng = utils::rng_seed_now();
-                    loop {
-                        if (this.health_check_fn.as_ref().unwrap())() {
-                            if let Ok(_) = this.connected.compare_exchange(
-                                false,
-                                true,
-                                Ordering::SeqCst,
-                                Ordering::SeqCst,
-                            ) {
-                                // TODO: log
-                                this.last_connected
-                                    .store(utils::now().timestamp_nanos(), Ordering::Relaxed);
-                                return;
-                            }
-                        }
-                        utils::sleep(this.health_check_interval, Some(&mut rng)).await;
+    pub fn last_connected(&self) -> utils::DateTime {
+        utils::DateTime::from_timestamp_nanos(self.inner.last_connected.load(Ordering::Relaxed))
+    }
+
+    fn mark_offline(inner: Arc<WrappedChannelInner>) {
+        let mut health_check_guard = match inner.health_check_fn.try_lock() {
+            Ok(h) => h,
+            Err(_) => return,
+        };
+
+        if let Err(_) =
+            inner
+                .connected
+                .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
+        {
+            return;
+        }
+
+        let health_check = health_check_guard.take().unwrap();
+        drop(health_check_guard);
+        let _ = tokio::spawn(async move {
+            let mut rng = utils::rng_seed_now();
+            loop {
+                if health_check().await {
+                    if let Ok(_) = inner.connected.compare_exchange(
+                        false,
+                        true,
+                        Ordering::SeqCst,
+                        Ordering::SeqCst,
+                    ) {
+                        // TODO: log
+                        inner
+                            .last_connected
+                            .store(utils::now().timestamp_nanos(), Ordering::Relaxed);
+                        break;
                     }
-                });
-                self.health_check_handle = Some(handle);
+                }
+
+                tokio::select! {
+                    _ = utils::sleep(inner.health_check_interval, Some(&mut rng)) => {},
+                    _ = inner.rx.notified() => {
+                        break;
+                    },
+                }
             }
-        }
+            let _ = inner.health_check_fn.lock().unwrap().insert(health_check);
+        });
     }
 }
 
-impl Service<Request<BoxBody>> for HealthCheckChannel {
+impl Service<Request<BoxBody>> for WrappedChannel {
     type Response = Response<Body>;
     type Error = anyhow::Error;
     #[allow(clippy::type_complexity)]
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready(cx).map_err(Into::into)
+        self.channel.poll_ready(cx).map_err(Into::into)
     }
 
     fn call(&mut self, mut req: Request<BoxBody>) -> Self::Future {
-        if !self.is_online() {}
+        if !self.is_online() {
+            return Box::pin(async { Err(anyhow::anyhow!("remote node offline")) });
+        }
 
         // See https://github.com/tower-rs/tower/issues/547#issuecomment-767629149
-        let inner_cloned = self.inner.clone();
-        let mut inner = std::mem::replace(&mut self.inner, inner_cloned);
+        let channel_cloned = self.channel.clone();
+        let mut channel = std::mem::replace(&mut self.channel, channel_cloned);
 
-        let this = utils::SendRawPtr::new(self as *mut Self);
+        let inner = Arc::clone(&self.inner);
         Box::pin(async move {
-            // Safety: `this` should never outlive `self`.
-            let this = unsafe { this.to().as_mut().unwrap() };
-
             let headers = req.headers_mut();
             let _ = headers.insert(
                 "Authorization",
@@ -174,13 +211,13 @@ impl Service<Request<BoxBody>> for HealthCheckChannel {
                 HeaderValue::try_from(utils::now().rfc3339())?,
             );
 
-            match inner.call(req).await {
+            match channel.call(req).await {
                 Ok(rep) => Ok(rep),
                 Err(err) => {
                     if let Some(status) = err.as_error::<tonic::Status>() {
                         match status.code() {
                             Code::Unavailable | Code::FailedPrecondition => {
-                                this.mark_offline();
+                                Self::mark_offline(inner);
                             }
                             _ => {}
                         }

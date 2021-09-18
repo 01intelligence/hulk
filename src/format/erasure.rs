@@ -19,7 +19,9 @@ const OFFLINE_DISK_UUID: &str = "ffffffff-ffff-ffff-ffff-ffffffffffff";
 
 #[derive(Serialize, Deserialize)]
 pub struct FormatErasureV3 {
+    #[serde(flatten)]
     pub meta: FormatMetaV1,
+    #[serde(rename = "xl")]
     pub erasure: ErasureV3,
 }
 
@@ -28,5 +30,6 @@ pub struct ErasureV3 {
     pub version: String,
     pub this: String,
     pub sets: Vec<Vec<String>>,
+    #[serde(rename = "distributionAlgo")]
     pub distribution_algo: String,
 }

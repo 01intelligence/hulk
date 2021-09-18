@@ -62,7 +62,7 @@ pub fn err_permission(err: &std::io::Error) -> bool {
 }
 
 pub fn err_already_exists(err: &std::io::Error) -> bool {
-    err.kind() == std::io::ErrorKind::AlreadyExists
+    is_libc_err(err, libc::EEXIST) || err.kind() == std::io::ErrorKind::AlreadyExists
 }
 
 fn is_libc_err(err: &std::io::Error, libc_err: i32) -> bool {

@@ -122,8 +122,12 @@ impl TryFrom<std::io::Error> for StorageError {
 
     fn try_from(err: std::io::Error) -> Result<Self, Self::Error> {
         use crate::fs;
-        if fs::err_not_found(&err) || fs::err_not_dir(&err) || fs::err_is_dir(&err) {
-            return Ok(StorageError::FileNotFound);
+        if fs::err_not_found(&err) {
+            return Ok(StorageError::DiskNotFound);
+        } else if fs::err_not_dir(&err) {
+            return Ok(StorageError::VolumeNotFound);
+        } else if fs::err_is_dir(&err) {
+            return Ok(StorageError::IsNotRegular);
         } else if fs::err_permission(&err) {
             return Ok(StorageError::FileAccessDenied);
         } else if fs::err_too_many_files(&err) {

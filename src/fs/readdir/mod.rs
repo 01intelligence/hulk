@@ -71,7 +71,8 @@ impl<P: AsRef<Path>> ReadDirEntries<P> {
             }
 
             let name = path
-                .to_str()
+                .file_name()
+                // .to_str()
                 .ok_or_else(|| {
                     io::Error::new(io::ErrorKind::Other, "PathBuf contains invalid UTF-8")
                 })?

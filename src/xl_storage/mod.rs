@@ -285,6 +285,17 @@ impl XlStorage {
         self.disk_info_cache.get(Some(get_disk_info)).await
     }
 
+    pub async fn new_local(path: &str) -> anyhow::Result<Self> {
+        let result = url::Url::from_file_path(path);
+        match result {
+            Ok(u) => {
+                let endpoint = Endpoint::Url(u, true);
+                XlStorage::new(endpoint).await
+            }
+            Err(_) => Err(TypedError::InvalidArgument.into()),
+        }
+    }
+
     pub(super) async fn new(endpoint: Endpoint) -> anyhow::Result<Self> {
         let path = get_valid_path(endpoint.path()).await?;
         let path = path.to_str().ok_or_else(|| StorageError::Unexpected)?;
@@ -328,7 +339,9 @@ impl XlStorage {
         use utils::Rng;
         let rnd = utils::rng_seed_now().gen::<[u8; 8]>();
         let tmp_file = format!(".writable-check-{}.tmp", hex::encode(rnd));
+        let tmp_dir = path_join(&[&xl.disk_path, globals::SYSTEM_RESERVED_BUCKET]);
         let tmp_file = path_join(&[&xl.disk_path, globals::SYSTEM_RESERVED_BUCKET, &tmp_file]);
+        fs::reliable_mkdir_all(&tmp_dir, 0o777).await?;
         let mut file = fs::OpenOptions::new()
             .create_new(true)
             .write(true)
@@ -338,7 +351,7 @@ impl XlStorage {
         utils::rng_seed_now().fill(&mut *aligned_buf);
         let _ = file.write_all(aligned_buf.as_ref()).await?;
         drop(file);
-        let _ = fs::remove(&tmp_file).await;
+        let _ = fs::remove_all(&tmp_dir).await;
 
         Ok(xl)
     }
@@ -397,22 +410,30 @@ impl XlStorage {
 
     pub async fn list_volumes(&self) -> anyhow::Result<Vec<storage::VolInfo>> {
         let _ = check_path_length(&self.disk_path)?;
-        let entries = fs::read_dir_entries(&self.disk_path).await?;
-        Ok(entries
-            .into_iter()
-            .filter_map(|entry| {
-                if !entry.ends_with(crate::globals::SLASH_SEPARATOR)
-                    || !is_valid_volume_name(&entry)
-                {
-                    // Skip if entry is neither a directory not a valid volume name.
-                    return None;
-                }
-                Some(storage::VolInfo {
-                    name: entry,
-                    created: utils::DateTime::zero(),
+        let entries = fs::read_dir_entries(&self.disk_path).await;
+        match entries {
+            Ok(entries) => Ok(entries
+                .into_iter()
+                .filter_map(|entry| {
+                    if !entry.ends_with(crate::globals::SLASH_SEPARATOR)
+                        || !is_valid_volume_name(&entry)
+                    {
+                        // Skip if entry is neither a directory not a valid volume name.
+                        return None;
+                    }
+                    Some(storage::VolInfo {
+                        name: entry
+                            .trim_end_matches(crate::globals::SLASH_SEPARATOR)
+                            .to_string(),
+                        created: utils::DateTime::zero(),
+                    })
                 })
-            })
-            .collect())
+                .collect()),
+            Err(err) => match StorageError::try_from(err) {
+                Ok(err) => Err(err.into()),
+                Err(err) => Err(err.into()),
+            },
+        }
     }
 
     pub async fn stat_volume(&self, volume: &str) -> anyhow::Result<storage::VolInfo> {
@@ -486,9 +507,9 @@ impl XlStorage {
 
         let dir_path = path_join(&[&volume_dir, dir_path]);
         match if count > 0 {
-            fs::read_dir_entries(dir_path).await
-        } else {
             fs::read_dir_entries_n(dir_path, count).await
+        } else {
+            fs::read_dir_entries(dir_path).await
         } {
             Err(err) => {
                 if err_not_found(&err) {
@@ -499,8 +520,12 @@ impl XlStorage {
                             return Err(StorageError::FaultyDisk.into());
                         }
                     }
+                    return Err(StorageError::FileNotFound.into());
                 }
-                return Err(err.into());
+                match StorageError::try_from(err) {
+                    Ok(err) => Err(err.into()),
+                    Err(err) => Err(err.into()),
+                }
             }
             Ok(entries) => Ok(entries),
         }
@@ -697,21 +722,25 @@ impl XlStorage {
     pub async fn append_file(&self, volume: &str, path: &str, buf: &[u8]) -> anyhow::Result<()> {
         let volume_dir = self.get_volume_dir(volume)?;
         if let Err(err) = fs::access(&volume_dir).await {
-            return if err_not_found(&err) {
-                Err(StorageError::VolumeNotFound.into())
-            } else if err_permission(&err) {
-                Err(StorageError::VolumeAccessDenied.into())
-            } else if err_io(&err) {
-                Err(StorageError::FaultyDisk.into())
+            if err_permission(&err) {
+                return Err(StorageError::VolumeAccessDenied.into());
+            } else if err_not_found(&err) {
+                return Err(StorageError::VolumeNotFound.into());
             } else {
-                Err(err.into())
-            };
+                return match StorageError::try_from(err) {
+                    Ok(err) => Err(err.into()),
+                    Err(err) => Err(err.into()),
+                };
+            }
         }
 
         let file_path = path_join(&[&volume_dir, path]);
         check_path_length(&file_path)?;
-
-        fs::reliable_mkdir_all(&volume_dir, 0o777).await?;
+        if let Some((dir_path, _)) = file_path.rsplit_once(globals::SLASH_SEPARATOR) {
+            fs::reliable_mkdir_all(dir_path, 0o777).await?;
+        } else {
+            fs::reliable_mkdir_all(&volume_dir, 0o777).await?;
+        }
 
         let mut file = fs::OpenOptions::new()
             .create(true)
@@ -719,8 +748,24 @@ impl XlStorage {
             .write(true)
             .sync()
             .open(file_path)
-            .await?;
-        file.write_all(buf).await?;
+            .await;
+        if let Err(err) = file {
+            if err_permission(&err) {
+                return Err(StorageError::IsNotRegular.into());
+            } else {
+                return match StorageError::try_from(err) {
+                    Ok(err) => Err(err.into()),
+                    Err(err) => Err(err.into()),
+                };
+            }
+        };
+        let mut file = file.unwrap();
+        if let Err(err) = file.write_all(buf).await {
+            return match StorageError::try_from(err) {
+                Ok(err) => Err(err.into()),
+                Err(err) => Err(err.into()),
+            };
+        }
 
         Ok(())
     }
@@ -728,10 +773,9 @@ impl XlStorage {
     pub async fn check_parts(&self, volume: &str, path: &str, fi: &FileInfo) -> anyhow::Result<()> {
         let volume_dir = self.get_volume_dir(volume)?;
         if let Err(err) = fs::access(&volume_dir).await {
-            return if err_not_found(&err) {
-                Err(StorageError::VolumeNotFound.into())
-            } else {
-                Err(err.into())
+            return match StorageError::try_from(err) {
+                Ok(err) => Err(err.into()),
+                Err(err) => Err(err.into()),
             };
         }
 
@@ -1338,11 +1382,29 @@ impl XlStorage {
         let file_path = path_join(&[&volume_dir, path]);
         check_path_length(&file_path)?;
 
-        let mut file = fs::OpenOptions::new().open(&file_path).await?;
-        let meta = file.metadata().await?;
-        if !meta.is_file() {
-            return Err(StorageError::IsNotRegular.into());
-        }
+        let mut file = fs::OpenOptions::new().read(true).open(&file_path).await;
+        if let Err(err) = file {
+            return if err_not_found(&err) {
+                Err(StorageError::FileNotFound.into())
+            } else if err_permission(&err) {
+                Err(StorageError::IsNotRegular.into())
+            } else {
+                match StorageError::try_from(err) {
+                    Ok(err) => Err(err.into()),
+                    Err(err) => Err(err.into()),
+                }
+            };
+        };
+        let mut file = file.unwrap();
+        let meta = match file.metadata().await {
+            Ok(meta) => meta,
+            Err(err) => {
+                return match StorageError::try_from(err) {
+                    Ok(err) => Err(err.into()),
+                    Err(err) => Err(err.into()),
+                }
+            }
+        };
 
         let verifier = match verifier {
             None => {
@@ -1356,10 +1418,23 @@ impl XlStorage {
 
         let mut h = verifier.algorithm.hasher();
         let mut reader = file.take(offset);
-        let _ = tokio::io::copy(&mut reader, &mut h).await?;
+        if let Err(err) = tokio::io::copy(&mut reader, &mut h).await {
+            return match StorageError::try_from(err) {
+                Ok(err) => Err(err.into()),
+                Err(err) => Err(err.into()),
+            };
+        };
 
         let mut file = reader.into_inner();
-        let n = file.read_full(buf).await?;
+        let n = match file.read_full(buf).await {
+            Ok(n) => n,
+            Err(err) => {
+                return match StorageError::try_from(err) {
+                    Ok(err) => Err(err.into()),
+                    Err(err) => Err(err.into()),
+                };
+            }
+        };
         if n != buf.len() {
             let err: std::io::Error = ErrorKind::UnexpectedEof.into();
             return Err(err.into());
@@ -1786,8 +1861,14 @@ async fn read_all_data(
         Ok(r) => r,
     };
     let mut buf = Vec::new();
-    r.read_to_end(&mut buf).await?;
-    Ok(buf)
+    let buf_size = r.read_to_end(&mut buf).await;
+    match buf_size {
+        Ok(_) => Ok(buf),
+        Err(err) => match StorageError::try_from(err) {
+            Ok(err) => Err(err.into()),
+            Err(err) => Err(err.into()),
+        },
+    }
 }
 
 lazy_static! {
@@ -1921,5 +2002,1963 @@ impl<G: utils::BufGuardMut + 'static> AsyncWrite for FileWriter<G> {
 
     fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         self.poll_flush(cx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::ErrorKind;
+    #[cfg(not(windows))]
+    use std::os::unix::fs::PermissionsExt;
+
+    use async_std::println;
+    use bstr::io::BufReadExt;
+    use scopeguard::defer;
+    use tempfile::tempdir_in;
+    use utils::Rng;
+
+    use super::*;
+    use crate::bitrot::{BitrotAlgorithm, HighwayBitrotWriter};
+    use crate::config::storageclass;
+    use crate::endpoint::Endpoint;
+    use crate::format::FORMAT_CONFIG_FILE;
+    use crate::fs::{
+        get_disk_info, is_dir_empty, mkdir_all, read_file, reliable_remove_all, remove_all,
+        set_permissions, OpenOptions, OpenOptionsDirectIo, Permissions,
+    };
+    use crate::object::{SLASH_SEPARATOR, SYSTEM_META_BUCKET};
+    use crate::utils::assert::{assert_err, assert_ok};
+
+    // Tests validate volume name.
+    #[test]
+    fn test_is_valid_volname() {
+        let cases: [(&str, bool); 31] = [
+            // Cases which should pass the test.
+            // passing in valid bucket names.
+            ("lol", true),
+            ("1-this-is-valid", true),
+            ("1-this-too-is-valid-1", true),
+            ("this.works.too.1", true),
+            ("1234567", true),
+            ("123", true),
+            ("s3-eu-west-1.amazonaws.com", true),
+            ("ideas-are-more-powerful-than-guns", true),
+            ("testbucket", true),
+            ("1bucket", true),
+            ("bucket1", true),
+            ("$this-is-not-valid-too", true),
+            ("contains-$-dollar", true),
+            ("contains-^-carrot", true),
+            ("contains-$-dollar", true),
+            ("contains-$-dollar", true),
+            (".starts-with-a-dot", true),
+            ("ends-with-a-dot.", true),
+            ("ends-with-a-dash-", true),
+            ("-starts-with-a-dash", true),
+            ("THIS-BEINGS-WITH-UPPERCASe", true),
+            ("tHIS-ENDS-WITH-UPPERCASE", true),
+            ("ThisBeginsAndEndsWithUpperCase", true),
+            ("una ñina", true),
+            (
+                "lalalallalallalalalallalallalala-theString-size-is-greater-than-64",
+                true,
+            ),
+            // cases for which test should fail.
+            // passing invalid bucket names.
+            ("", false),
+            (SLASH_SEPARATOR, false),
+            ("a", false),
+            ("ab", false),
+            ("ab/", true),
+            ("......", true),
+        ];
+        for (vol_name, should_pass) in cases.iter() {
+            assert_eq!(is_valid_volume_name(vol_name), *should_pass);
+        }
+    }
+
+    // creates a temp dir and sets up xlStorage layer.
+    // returns xlStorage layer, temp dir path to be used for the purpose of tests.
+    async fn new_xl_storage_test_setup() -> anyhow::Result<(XlStorageWithCheck, PathBuf)> {
+        let disk_path =
+            PathBuf::from_path_buf(tempdir_in(".").unwrap().into_path()).expect("utils.PathBuf");
+
+        assert_ok!(
+            mkdir_all(disk_path.as_path(), 0o777).await,
+            "Unable to create temporary directory. {:?}",
+            disk_path
+        );
+
+        // Initialize a new xlStorage layer.
+        let end_point = assert_ok!(Endpoint::new(disk_path.to_str().unwrap()));
+
+        let storage = assert_ok!(XlStorage::new(end_point).await);
+
+        // Create a sample format.json file
+        assert_ok!(storage.write_all(SYSTEM_META_BUCKET, FORMAT_CONFIG_FILE, r#"{"version":"1","format":"xl","id":"592a41c2-b7cc-4130-b883-c4b5cb15965b","xl":{"version":"3","this":"da017d62-70e3-45f1-8a1a-587707e69ad1","sets":[["e07285a6-8c73-4962-89c6-047fb939f803","33b8d431-482d-4376-b63c-626d229f0a29","cff6513a-4439-4dc1-bcaa-56c9e880c352","da017d62-70e3-45f1-8a1a-587707e69ad1","9c9f21d5-1f15-4737-bce6-835faa0d9626","0a59b346-1424-4fc2-9fa2-a2e80541d0c1","7924a3dc-b69a-4971-9a2e-014966d6aebb","4d2b8dd9-4e48-444b-bdca-c89194b26042"]],"distributionAlgo":"CRCMOD"}}"#.as_bytes()).await);
+        let mut disk = XlStorageWithCheck::new(storage);
+        *disk.disk_id_mut() = Some(String::from("da017d62-70e3-45f1-8a1a-587707e69ad1"));
+        Ok((disk, disk_path.clone()))
+    }
+
+    // create_perm_denied_file - creates temporary directory and file with
+    // path '/mybucket/myobject'
+    #[cfg(target_family = "unix")]
+    async fn create_perm_denied_file() -> String {
+        let mut file_path =
+            PathBuf::from_path_buf(tempdir_in(".").unwrap().into_path()).expect("utils.PathBuf");
+
+        assert_ok!(
+            mkdir_all(file_path.as_path(), 0o755).await,
+            "Unable to create temporary directory. {:?}",
+            file_path
+        );
+        file_path.push("mybucket");
+        assert_ok!(
+            mkdir_all(file_path.as_path(), 0o755).await,
+            "Unable to create temporary directory. {:?}",
+            file_path
+        );
+        file_path.push("myobject");
+        #[cfg(windows)]
+        let mut object_file = assert_ok!(
+            OpenOptions::new()
+                .create(true)
+                .append(true)
+                .write(true)
+                .sync()
+                .open(file_path.to_str().unwrap())
+                .await,
+            "Unable to create file. {:?}",
+            file_path
+        );
+        #[cfg(not(windows))]
+        let mut object_file = assert_ok!(
+            OpenOptions::new()
+                .create(true)
+                .append(true)
+                .write(true)
+                .mode(0o400)
+                .sync()
+                .open(file_path.to_str().unwrap())
+                .await,
+            "Unable to create file. {:?}",
+            file_path
+        );
+        assert_ok!(
+            object_file.write_all(b"").await,
+            "Unable to write file. {:?}",
+            file_path
+        );
+        assert!(file_path.pop());
+        assert_ok!(
+            set_permissions(file_path.as_path(), Permissions::from_mode(0o400)).await,
+            "Unable to set directory permissions. {:?}",
+            file_path
+        );
+        assert!(file_path.pop());
+        assert_ok!(
+            set_permissions(file_path.as_path(), Permissions::from_mode(0o400)).await,
+            "Unable to set directory permissions. {:?}",
+            file_path
+        );
+
+        String::from(file_path.to_str().unwrap())
+    }
+
+    // remove_perm_denied_file - removes temporary directory and file with
+    // path '/mybucket/myobject'
+    #[cfg(target_family = "unix")]
+    async fn remove_perm_denied_file(perm_denied_dir: &str) {
+        assert_ok!(
+            set_permissions(perm_denied_dir, Permissions::from_mode(0o755)).await,
+            "Unable to set directory permissions. {:?}",
+            perm_denied_dir
+        );
+        let mybucket_dir = path_join(&[perm_denied_dir, "mybucket"]);
+        assert_ok!(
+            set_permissions(&mybucket_dir, Permissions::from_mode(0o755)).await,
+            "Unable to set directory permissions. {:?}",
+            &mybucket_dir
+        );
+        assert_ok!(remove_all(perm_denied_dir).await);
+    }
+
+    // test_xl_storage_read_version - test_xl_storages the functionality
+    // implemented by xlStorage ReadVersion storage API.
+    #[tokio::test]
+    async fn test_xl_storage_read_version() {
+        let xl_storages = new_xl_storage_test_setup().await;
+        let (xl_storage, path) = assert_ok!(xl_storages, "Unable to create xlStorage test setup.");
+        defer! {std::fs::remove_dir_all(path.as_std_path());}
+        let xl_meta = read_file("./src/xl_storage/testdata/xl.meta")
+            .await
+            .unwrap();
+
+        // Create files for the test cases.
+        assert_ok!(
+            xl_storage.make_volume("exists").await,
+            "Unable to create a volume exists."
+        );
+        assert_ok!(
+            xl_storage
+                .append_file("exists", "as-directory/as-file/xl.meta", &xl_meta)
+                .await,
+            "Unable to create a file as-directory/as-file"
+        );
+        assert_ok!(
+            xl_storage
+                .append_file("exists", "as-file/xl.meta", &xl_meta)
+                .await,
+            "Unable to create a file as-file"
+        );
+        assert_ok!(
+            xl_storage
+                .append_file("exists", "as-file-parent/xl.meta", &xl_meta)
+                .await,
+            "Unable to create a file as-file-parent"
+        );
+
+        // TestXLStoragecases to validate different conditions for ReadVersion API.
+        let cases: [(&str, &str, Option<StorageError>); 6] = [
+            // TestXLStorage case - 1.
+            // Validate volume does not exist.
+            (
+                "i-dont-exist",
+                "",
+                Some(StorageError::VolumeNotFound.into()),
+            ),
+            // TestXLStorage case - 2.
+            // Validate bad condition file does not exist.
+            (
+                "exists",
+                "as-file-not-found",
+                Some(StorageError::FileNotFound.into()),
+            ),
+            // TestXLStorage case - 3.
+            // Validate bad condition file exists as prefix/directory and
+            // we are attempting to read it.
+            (
+                "exists",
+                "as-directory",
+                Some(StorageError::FileNotFound.into()),
+            ),
+            // TestXLStorage case - 4.
+            (
+                "exists",
+                "as-file-parent/as-file",
+                Some(StorageError::FileNotFound.into()),
+            ),
+            // TestXLStorage case - 5.
+            // Validate the good condition file exists and we are able to read it.
+            // TODO: meta minor version not match and xl.meta format not match
+            ("exists", "as-file", None),
+            // TestXLStorage case - 6.
+            // TestXLStorage case with invalid volume name.
+            ("ab", "as-file", Some(StorageError::VolumeNotFound.into())),
+        ];
+
+        // Run through all the test cases and validate for ReadVersion.
+        for (volume, path, expected_err) in cases.iter() {
+            let result = xl_storage.read_version(volume, path, "", false).await;
+            match result {
+                Ok(_) => assert_eq!(None, *expected_err),
+                Err(err) => {
+                    if *expected_err != None {
+                        assert_eq!(err.to_string(), expected_err.as_ref().unwrap().to_string());
+                    } else {
+                        // TODO: testdata xl.meta is 1.0. now only support 1.2. also xl.meta format not match
+                        assert_eq!(err.to_string(), "xl.meta: unknown minor metadata version");
+                    }
+                }
+            }
+        }
+    }
+
+    // test_xl_storage_read_all - test_xl_storages the functionality
+    // implemented by xlStorage ReadAll storage API.
+    #[tokio::test]
+    async fn test_xl_storage_read_all() {
+        let xl_storages = new_xl_storage_test_setup().await;
+        let (xl_storage, path) = assert_ok!(xl_storages, "Unable to create xlStorage test setup.");
+        defer! {std::fs::remove_dir_all(path.as_std_path());}
+
+        // Create files for the test cases.
+        assert_ok!(
+            xl_storage.make_volume("exists").await,
+            "Unable to create a volume exists."
+        );
+        assert_ok!(
+            xl_storage
+                .append_file("exists", "as-directory/as-file", b"Hello, World")
+                .await,
+            "Unable to create a file as-directory/as-file"
+        );
+        assert_ok!(
+            xl_storage
+                .append_file("exists", "as-file", b"Hello, World")
+                .await,
+            "Unable to create a file as-file"
+        );
+        assert_ok!(
+            xl_storage
+                .append_file("exists", "as-file-parent", b"Hello, World")
+                .await,
+            "Unable to create a file as-file-parent"
+        );
+
+        // TestXLStoragecases to validate different conditions for ReadAll API.
+        let cases: [(&str, &str, Option<StorageError>); 6] = [
+            // TestXLStorage case - 1.
+            // Validate volume does not exist.
+            (
+                "i-dont-exist",
+                "",
+                Some(StorageError::VolumeNotFound.into()),
+            ),
+            // TestXLStorage case - 2.
+            // Validate bad condition file does not exist.
+            (
+                "exists",
+                "as-file-not-found",
+                Some(StorageError::FileNotFound.into()),
+            ),
+            // TestXLStorage case - 3.
+            // Validate bad condition file exists as prefix/directory and
+            // we are attempting to read it.
+            (
+                "exists",
+                "as-directory",
+                #[cfg(windows)]
+                Some(StorageError::FileAccessDenied.into()),
+                #[cfg(not(windows))]
+                Some(StorageError::IsNotRegular.into()),
+            ),
+            // TestXLStorage case - 4.
+            (
+                "exists",
+                "as-file-parent/as-file",
+                Some(StorageError::FileNotFound.into()),
+            ),
+            // TestXLStorage case - 5.
+            // Validate the good condition file exists and we are able to read it.
+            ("exists", "as-file", None),
+            // TestXLStorage case - 6.
+            // TestXLStorage case with invalid volume name.
+            ("ab", "as-file", Some(StorageError::VolumeNotFound.into())),
+        ];
+
+        // Run through all the test cases and validate for ReadAll.
+        for (volume, path, expected_err) in cases.iter() {
+            println!("volume {} path {}", volume, path);
+            let result = xl_storage.read_all(volume, path).await;
+            match result {
+                Ok(data_read) => {
+                    assert_eq!(None, *expected_err);
+                    assert_eq!(data_read, b"Hello, World");
+                }
+                Err(err) => assert_eq!(err.to_string(), expected_err.as_ref().unwrap().to_string()),
+            }
+        }
+    }
+
+    // test_new_xl_storage all the cases handled in xlStorage storage
+    // layer initialization.
+    #[tokio::test]
+    async fn test_new_xl_storage() {
+        let tmp_dir = tempdir_in(".").unwrap();
+        let mut tmp_path =
+            PathBuf::from_path_buf(tmp_dir.path().to_path_buf()).expect("utils.PathBuf");
+        tmp_path.push("noexist");
+        let tmp_dir_name = String::from(tmp_path.to_str().unwrap());
+        tmp_path.pop();
+        tmp_path.push("tmpfile");
+        let tmp_file_name = String::from(tmp_path.to_str().unwrap());
+        let tmp_file = assert_ok!(
+            OpenOptions::new()
+                .create(true)
+                .append(true)
+                .write(true)
+                .sync()
+                .open(&tmp_file_name)
+                .await,
+            "Unable to create file. {:?}",
+            tmp_file_name
+        );
+
+        // List of all tests for xlStorage initialization.
+        let cases: [(&str, bool, Option<anyhow::Error>); 3] = [
+            // Validates input argument cannot be empty.
+            ("", true, Some(TypedError::InvalidArgument.into())),
+            // Validates if the directory does not exist and
+            // gets automatically created.
+            #[cfg(windows)]
+            (
+                &tmp_dir_name,
+                false,
+                //TODO: unknow error "The filename, directory name, or volume label syntax is incorrect. (os error 123)"
+                None,
+            ),
+            #[cfg(not(windows))]
+            (&tmp_dir_name, false, None),
+            // Validates if the disk exists as file and returns error
+            // not a directory.
+            #[cfg(windows)]
+            (
+                &tmp_file_name,
+                false,
+                //TODO: unknow error "The filename, directory name, or volume label syntax is incorrect. (os error 123)"
+                None,
+            ),
+            #[cfg(not(windows))]
+            (&tmp_file_name, true, Some(StorageError::DiskNotDir.into())),
+        ];
+        // Validate all test cases.
+        for (name, is_err, expected_err) in cases.iter() {
+            // Initialize a new xlStorage layer.
+            let result = XlStorage::new_local(name).await;
+            match result {
+                Ok(_) => assert!(!is_err),
+                Err(err) => {
+                    if *is_err {
+                        assert_eq!(err.to_string(), expected_err.as_ref().unwrap().to_string())
+                    }
+                }
+            }
+        }
+    }
+
+    // test_xl_storage_make_vol - TestXLStorage validate the logic
+    // for creation of new xlStorage volume.
+    // Asserts the failures too against the expected failures.
+    #[tokio::test]
+    async fn test_xl_storage_make_vol() {
+        let xl_storages = new_xl_storage_test_setup().await;
+        let (xl_storage, path) = assert_ok!(xl_storages, "Unable to create xlStorage test setup.");
+        defer! {std::fs::remove_dir_all(path.as_std_path());}
+
+        // Setup test environment.
+        // Create a file.
+        #[cfg(windows)]
+        let mut vol_file = assert_ok!(
+            OpenOptions::new()
+                .create(true)
+                .append(true)
+                .write(true)
+                .sync()
+                .open(&path_join(&[path.to_str().unwrap(), "vol-as-file"]))
+                .await,
+            "Unable to create file."
+        );
+        #[cfg(not(windows))]
+        let mut vol_file = assert_ok!(
+            OpenOptions::new()
+                .create(true)
+                .append(true)
+                .write(true)
+                .mode(0o777)
+                .sync()
+                .open(&path_join(&[path.to_str().unwrap(), "vol-as-file"]))
+                .await,
+            "Unable to create file."
+        );
+        assert_ok!(vol_file.write_all(b"").await, "Unable to write file.");
+        // Create a directory.
+        assert_ok!(
+            mkdir_all(&path_join(&[path.to_str().unwrap(), "existing-vol"]), 0o777).await,
+            "Unable to create directory."
+        );
+
+        let cases: [(&str, bool, Option<anyhow::Error>); 4] = [
+            // TestXLStorage case - 1.
+            // A valid case, volume creation is expected to succeed.
+            ("success-vol", false, None),
+            // TestXLStorage case - 2.
+            // Case where a file exists by the name of the volume to be created.
+            ("vol-as-file", true, Some(StorageError::VolumeExists.into())),
+            // TestXLStorage case - 3.
+            (
+                "existing-vol",
+                true,
+                Some(StorageError::VolumeExists.into()),
+            ),
+            // TestXLStorage case - 5.
+            // TestXLStorage case with invalid volume name.
+            ("ab", true, Some(TypedError::InvalidArgument.into())),
+        ];
+
+        for (vol_name, is_err, expected_err) in cases.iter() {
+            let result = xl_storage.make_volume(vol_name).await;
+            match result {
+                Ok(_) => assert!(!is_err),
+                Err(err) => assert_eq!(err.to_string(), expected_err.as_ref().unwrap().to_string()),
+            }
+        }
+
+        // TestXLStorage for permission denied.
+        #[cfg(not(windows))]
+        {
+            let tmp_dir = tempdir_in(".").unwrap();
+            let perm_denied_dir =
+                PathBuf::from_path_buf(tmp_dir.path().to_path_buf()).expect("utils.PathBuf");
+            assert_ok!(
+                set_permissions(perm_denied_dir.as_path(), Permissions::from_mode(0o400)).await,
+                "Unable to change permission to temporary directory {:?}",
+                perm_denied_dir
+            );
+            // Initialize xlStorage storage layer for permission denied error.
+            let err = XlStorage::new_local(perm_denied_dir.to_str().unwrap()).await;
+            match err {
+                Ok(_) => assert!(false, "Should unable to initialize xlStorage"),
+                Err(err) => assert_eq!(err.to_string(), StorageError::DiskAccessDenied.to_string()),
+            }
+            assert_ok!(
+                set_permissions(perm_denied_dir.as_path(), Permissions::from_mode(0o755)).await,
+                "Unable to change permission to temporary directory {:?}",
+                perm_denied_dir
+            );
+            let xl_storage_new = assert_ok!(
+                XlStorage::new_local(perm_denied_dir.to_str().unwrap()).await,
+                "Unable to initialize xlStorage"
+            );
+            // change backend permissions for MakeVol error.
+            assert_ok!(
+                set_permissions(perm_denied_dir.as_path(), Permissions::from_mode(0o400)).await,
+                "Unable to change permission to temporary directory {:?}",
+                perm_denied_dir
+            );
+            let err = assert_err!(xl_storage_new.make_volume("test-vol").await);
+            assert_eq!(err.to_string(), StorageError::DiskAccessDenied.to_string());
+        }
+    }
+
+    // test_xl_storage_delete_vol - Validates the expected behavior
+    // of xlStorage.delete_vol for various cases.
+    #[tokio::test]
+    async fn test_xl_storage_delete_vol() {
+        let xl_storages = new_xl_storage_test_setup().await;
+        let (xl_storage, path) = assert_ok!(xl_storages, "Unable to create xlStorage test setup.");
+        defer! {std::fs::remove_dir_all(path.as_std_path());}
+
+        // Setup test environment.
+        assert_ok!(
+            xl_storage.make_volume("success-vol").await,
+            "Unable to create volume"
+        );
+
+        // TestXLStorage failure cases.
+        let vol = path_join(&[path.to_str().unwrap(), "nonempty-vol"]);
+        assert_ok!(mkdir_all(&vol, 0o777).await, "Unable to create directory.");
+        #[cfg(windows)]
+        let mut vol_file = assert_ok!(
+            OpenOptions::new()
+                .create(true)
+                .append(true)
+                .write(true)
+                .sync()
+                .open(&path_join(&[&vol, "test-file"]))
+                .await,
+            "Unable to create file."
+        );
+        #[cfg(not(windows))]
+        let mut vol_file = assert_ok!(
+            OpenOptions::new()
+                .create(true)
+                .append(true)
+                .write(true)
+                .mode(0o777)
+                .sync()
+                .open(&path_join(&[&vol, "test-file"]))
+                .await,
+            "Unable to create file."
+        );
+        assert_ok!(vol_file.write_all(b"").await, "Unable to write file.");
+
+        let cases: [(&str, Option<StorageError>); 4] = [
+            // A valida case. Empty vol, should be possible to delete.
+            ("success-vol", None),
+            // volume is non-existent.
+            ("nonexistent-vol", Some(StorageError::VolumeNotFound.into())),
+            // It shouldn't be possible to delete an non-empty volume, validating the same.
+            ("nonempty-vol", Some(StorageError::VolumeNotEmpty.into())),
+            // Invalid volume name.
+            ("ab", Some(StorageError::VolumeNotFound.into())),
+        ];
+        for (vol_name, expected_err) in cases.iter() {
+            let result = xl_storage.delete_volume(vol_name, false).await;
+            match result {
+                Ok(_) => assert_eq!(None, *expected_err),
+                Err(err) => assert_eq!(err.to_string(), expected_err.as_ref().unwrap().to_string()),
+            }
+        }
+
+        // TestXLStorage for permission denied.
+        #[cfg(not(windows))]
+        {
+            let tmp_dir = tempdir_in(".").unwrap();
+            let perm_denied_dir =
+                PathBuf::from_path_buf(tmp_dir.path().to_path_buf()).expect("utils.PathBuf");
+
+            let mybucket_path = path_join(&[perm_denied_dir.to_str().unwrap(), "mybucket"]);
+            assert_ok!(
+                mkdir_all(&mybucket_path, 0o400).await,
+                "Unable to create temporary directory."
+            );
+            assert_ok!(
+                set_permissions(perm_denied_dir.as_path(), Permissions::from_mode(0o400)).await,
+                "Unable to change permission to temporary directory {:?}",
+                perm_denied_dir
+            );
+
+            // Initialize xlStorage storage layer for permission denied error.
+            let err = XlStorage::new_local(perm_denied_dir.to_str().unwrap()).await;
+            match err {
+                Ok(_) => assert!(false, "Should unable to initialize xlStorage"),
+                Err(err) => assert_eq!(err.to_string(), StorageError::DiskAccessDenied.to_string()),
+            }
+            assert_ok!(
+                set_permissions(perm_denied_dir.as_path(), Permissions::from_mode(0o755)).await,
+                "Unable to change permission to temporary directory {:?}",
+                perm_denied_dir
+            );
+            let xl_storage_new = assert_ok!(
+                XlStorage::new_local(perm_denied_dir.to_str().unwrap()).await,
+                "Unable to initialize xlStorage"
+            );
+            // change backend permissions for MakeVol error.
+            assert_ok!(
+                set_permissions(perm_denied_dir.as_path(), Permissions::from_mode(0o400)).await,
+                "Unable to change permission to temporary directory {:?}",
+                perm_denied_dir
+            );
+            let err = assert_err!(xl_storage_new.delete_volume("mybucket", false).await);
+            assert_eq!(err.to_string(), StorageError::DiskAccessDenied.to_string());
+
+            remove_perm_denied_file(perm_denied_dir.to_str().unwrap()).await;
+        }
+
+        let xl_storages_delete = new_xl_storage_test_setup().await;
+        let (xl_storage_delete, disk_path) =
+            assert_ok!(xl_storages_delete, "Unable to create xlStorage test setup.");
+        defer! {std::fs::remove_dir_all(disk_path.as_std_path());}
+        // TestXLStorage for delete on an removed disk.
+        // should fail with disk not found.
+        let err = assert_err!(xl_storage_delete.delete_volume("Del-Vol", false).await);
+        assert_eq!(err.to_string(), StorageError::VolumeNotFound.to_string());
+    }
+
+    // test_xl_storage_stat_vol - TestXLStorages validate the volume
+    // info returned by xlStorage.StatVol() for various inputs.
+    #[tokio::test]
+    async fn test_xl_storage_stat_vol() {
+        let xl_storages = new_xl_storage_test_setup().await;
+        let (xl_storage, path) = assert_ok!(xl_storages, "Unable to create xlStorage test setup.");
+        defer! {std::fs::remove_dir_all(path.as_std_path());}
+
+        // Setup test environment.
+        assert_ok!(
+            xl_storage.make_volume("success-vol").await,
+            "Unable to create volume"
+        );
+
+        let cases: [(&str, Option<StorageError>); 3] = [
+            ("success-vol", None),
+            ("nonexistent-vol", Some(StorageError::VolumeNotFound.into())),
+            ("ab", Some(StorageError::VolumeNotFound.into())),
+        ];
+
+        for (vol_name, expected_err) in cases.iter() {
+            let result = xl_storage.stat_volume(vol_name).await;
+            match result {
+                Ok(info) => {
+                    assert_eq!(None, *expected_err);
+                    assert_eq!(&info.name, *vol_name);
+                }
+                Err(err) => assert_eq!(err.to_string(), expected_err.as_ref().unwrap().to_string()),
+            }
+        }
+
+        let xl_storages_delete = new_xl_storage_test_setup().await;
+        let (xl_storage_delete, disk_path) =
+            assert_ok!(xl_storages_delete, "Unable to create xlStorage test setup.");
+        defer! {std::fs::remove_dir_all(disk_path.as_std_path());}
+
+        // TestXLStorage for delete on an removed disk.
+        // should fail with disk not found.
+        let result_delete = xl_storage_delete.stat_volume("Stat vol").await;
+        match result_delete {
+            Ok(_) => assert!(false, "Expected Error"),
+            Err(err) => assert_eq!(err.to_string(), StorageError::VolumeNotFound.to_string()),
+        }
+    }
+
+    // test_xl_storage_list_vols - Validates the result and the error output
+    // for xlStorage volume listing functionality xlStorage.ListVols().
+    #[tokio::test]
+    async fn test_xl_storage_list_vols() {
+        let xl_storages = new_xl_storage_test_setup().await;
+        let (xl_storage, path) = assert_ok!(xl_storages, "Unable to create xlStorage test setup.");
+
+        // TestXLStorage empty list vols.
+        let vol_infos = assert_ok!(xl_storage.list_volumes().await);
+        assert_eq!(vol_infos.len(), 1);
+
+        // TestXLStorage non-empty list vols.
+        assert_ok!(
+            xl_storage.make_volume("success-vol").await,
+            "Unable to create volume"
+        );
+        let vol_infos = assert_ok!(xl_storage.list_volumes().await);
+        assert_eq!(vol_infos.len(), 2);
+        let mut vol_found = false;
+        for info in vol_infos {
+            if info.name == "success-vol" {
+                vol_found = true;
+                break;
+            }
+        }
+        assert!(vol_found, "expected: success-vol to be created");
+
+        // removing the path and simulating disk failure
+        assert_ok!(std::fs::remove_dir_all(path.as_std_path()));
+        // should fail with errDiskNotFound.
+        let result_delete = xl_storage.list_volumes().await;
+        match result_delete {
+            Ok(_) => assert!(false, "Expected Error"),
+            Err(err) => assert_eq!(err.to_string(), StorageError::DiskNotFound.to_string()),
+        }
+    }
+
+    // test_xl_storage_list_dir - TestXLStorages validate the directory
+    // listing functionality provided by xlStorage.ListDir.
+    #[tokio::test]
+    async fn test_xl_storage_list_dir() {
+        let xl_storages = new_xl_storage_test_setup().await;
+        let (xl_storage, path) = assert_ok!(xl_storages, "Unable to create xlStorage test setup.");
+        defer! {std::fs::remove_dir_all(path.as_std_path());}
+
+        let xl_storages_delete = new_xl_storage_test_setup().await;
+        let (xl_storage_delete, disk_path) =
+            assert_ok!(xl_storages_delete, "Unable to create xlStorage test setup.");
+        // removing the disk, used to recreate disk not found error.
+        assert_ok!(remove_all(disk_path.as_path()).await);
+
+        // Setup test environment.
+        assert_ok!(
+            xl_storage.make_volume("success-vol").await,
+            "Unable to create a volume."
+        );
+        assert_ok!(
+            xl_storage
+                .append_file("success-vol", "abc/def/ghi/success-file", b"Hello, world")
+                .await,
+            "Unable to create file"
+        );
+        assert_ok!(
+            xl_storage
+                .append_file("success-vol", "abc/xyz/ghi/success-file", b"Hello, world")
+                .await,
+            "Unable to create file"
+        );
+
+        let cases: [(&str, &str, Vec<&str>, Option<StorageError>); 6] = [
+            // valid case with existing volume and file to delete.
+            ("success-vol", "abc", vec!["def/", "xyz/"], None),
+            ("success-vol", "abc/def", vec!["ghi/"], None),
+            ("success-vol", "abc/def/ghi", vec!["success-file"], None),
+            (
+                "success-vol",
+                "abcdef",
+                Vec::new(),
+                Some(StorageError::FileNotFound.into()),
+            ),
+            (
+                "ab",
+                "success-file",
+                Vec::new(),
+                Some(StorageError::VolumeNotFound.into()),
+            ),
+            (
+                "non-existent-vol",
+                "success-file",
+                Vec::new(),
+                Some(StorageError::VolumeNotFound.into()),
+            ),
+        ];
+
+        for (src_vol, src_path, expected_list_dir, expected_err) in cases.iter() {
+            let result = xl_storage.list_dir(src_vol, src_path, 0).await;
+            match result {
+                Ok(dir_list) => {
+                    let dir_list_join = dir_list.join(",");
+                    assert_eq!(None, *expected_err);
+                    for expected in expected_list_dir {
+                        assert!(dir_list_join.contains(expected));
+                    }
+                }
+                Err(err) => assert_eq!(err.to_string(), expected_err.as_ref().unwrap().to_string()),
+            }
+        }
+
+        // TestXLStorage for permission denied.
+        #[cfg(not(windows))]
+        {
+            let perm_denied_dir = create_perm_denied_file().await;
+
+            // Initialize xlStorage storage layer for permission denied error.
+            let err = XlStorage::new_local(&perm_denied_dir).await;
+            match err {
+                Ok(_) => assert!(false, "Should unable to initialize xlStorage"),
+                Err(err) => assert_eq!(err.to_string(), StorageError::DiskAccessDenied.to_string()),
+            }
+            assert_ok!(
+                set_permissions(&perm_denied_dir, Permissions::from_mode(0o755)).await,
+                "Unable to change permission to temporary directory {:?}",
+                &perm_denied_dir
+            );
+            let xl_storage_new = assert_ok!(
+                XlStorage::new_local(&perm_denied_dir).await,
+                "Unable to initialize xlStorage"
+            );
+
+            let err = assert_err!(xl_storage_new.delete("mybucket", "myobject", false).await);
+            assert_eq!(
+                err.to_string(),
+                StorageError::VolumeAccessDenied.to_string()
+            );
+
+            remove_perm_denied_file(&perm_denied_dir).await;
+        }
+
+        // TestXLStorage for delete on an removed disk.
+        // should fail with disk not found.
+        let err = assert_err!(xl_storage_delete.delete("del-vol", "my-file", false).await);
+        assert_eq!(err.to_string(), StorageError::DiskNotFound.to_string());
+    }
+
+    // test_xl_storage_delete_file - Series of test cases construct valid
+    // and invalid input data and validates the result and the error response.
+    #[cfg(not(windows))]
+    #[tokio::test]
+    async fn test_xl_storage_delete_file() {
+        let xl_storages = new_xl_storage_test_setup().await;
+        let (xl_storage, path) = assert_ok!(xl_storages, "Unable to create xlStorage test setup.");
+        defer! {std::fs::remove_dir_all(path.as_std_path());}
+
+        let xl_storages_delete = new_xl_storage_test_setup().await;
+        let (xl_storage_delete, disk_path) =
+            assert_ok!(xl_storages_delete, "Unable to create xlStorage test setup.");
+        // removing the disk, used to recreate disk not found error.
+        assert_ok!(remove_all(disk_path.as_path()).await);
+
+        // Setup test environment.
+        assert_ok!(
+            xl_storage.make_volume("success-vol").await,
+            "Unable to create a volume"
+        );
+        assert_ok!(
+            xl_storage
+                .append_file("success-vol", "success-file", b"Hello, world")
+                .await,
+            "Unable to create file"
+        );
+        assert_ok!(
+            xl_storage.make_volume("no-permissions").await,
+            "Unable to create a volume"
+        );
+        assert_ok!(
+            xl_storage
+                .append_file("no-permissions", "dir/file", b"Hello, world")
+                .await,
+            "Unable to create file"
+        );
+        // Parent directory must have write permissions, this is read + execute.
+        assert_ok!(
+            set_permissions(
+                &path_join(&[path.to_str().unwrap(), "no-permissions"]),
+                Permissions::from_mode(0o555)
+            )
+            .await,
+            "Unable to change permission to no-permissions"
+        );
+
+        let cases: [(&str, &str, Option<StorageError>); 6] = [
+            // valid case with existing volume and file to delete.
+            ("success-vol", "success-file", None),
+            // The file was deleted in the last  case, so Delete should not fail.
+            ("success-vol", "success-file", None),
+            // TestXLStorage case with segment of the volume name > 255.
+            (
+                "my",
+                "success-file",
+                Some(StorageError::VolumeNotFound.into())
+            ),
+            // TestXLStorage case with non-existent volume.
+            (
+                "non-existent-vol",
+                "success-file",
+                Some(StorageError::VolumeNotFound.into())
+            ),
+            // TestXLStorage case with src path segment > 255.
+            (
+                "success-vol",
+                "my-obj-del-0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001", 
+                Some(StorageError::FileNameTooLong.into())
+            ),
+            // TestXLStorage case with undeletable parent directory.
+            // File can delete, dir cannot delete because no-permissions doesn't have write perms.
+            ("no-permissions", "dir/file", Some(StorageError::VolumeAccessDenied.into())),
+        ];
+
+        for (src_vol, src_path, expected_err) in cases.iter() {
+            let result = xl_storage.delete(src_vol, src_path, false).await;
+            match result {
+                Ok(_) => assert_eq!(None, *expected_err),
+                Err(err) => assert_eq!(err.to_string(), expected_err.as_ref().unwrap().to_string()),
+            }
+        }
+
+        // TestXLStorage for permission denied.
+        let perm_denied_dir = create_perm_denied_file().await;
+
+        // Initialize xlStorage storage layer for permission denied error.
+        let err = XlStorage::new_local(&perm_denied_dir).await;
+        match err {
+            Ok(_) => assert!(false, "Should unable to initialize xlStorage"),
+            Err(err) => assert_eq!(err.to_string(), StorageError::DiskAccessDenied.to_string()),
+        }
+        assert_ok!(
+            set_permissions(&perm_denied_dir, Permissions::from_mode(0o755)).await,
+            "Unable to change permission to temporary directory {:?}",
+            &perm_denied_dir
+        );
+        let xl_storage_new = assert_ok!(
+            XlStorage::new_local(&perm_denied_dir).await,
+            "Unable to initialize xlStorage"
+        );
+
+        let err = assert_err!(xl_storage_new.delete("mybucket", "myobject", false).await);
+        assert_eq!(
+            err.to_string(),
+            StorageError::VolumeAccessDenied.to_string()
+        );
+
+        remove_perm_denied_file(&perm_denied_dir).await;
+
+        // TestXLStorage for delete on an removed disk.
+        // should fail with disk not found.
+        let err = assert_err!(xl_storage_delete.delete("del-vol", "my-file", false).await);
+        assert_eq!(err.to_string(), StorageError::DiskNotFound.to_string());
+
+        assert_ok!(
+            set_permissions(
+                &path_join(&[path.to_str().unwrap(), "no-permissions"]),
+                Permissions::from_mode(0o755)
+            )
+            .await,
+            "Unable to change permission to no-permissions"
+        );
+    }
+
+    // test_xl_storage_read_file - TestXLStorages xlStorage.ReadFile with
+    // wide range of cases and asserts the result and error response.
+    #[tokio::test]
+    async fn test_xl_storage_read_file() {
+        let xl_storages = new_xl_storage_test_setup().await;
+        let (xl_storage, path) = assert_ok!(xl_storages, "Unable to create xlStorage test setup.");
+        defer! {std::fs::remove_dir_all(path.as_std_path());}
+
+        // Setup test environment.
+        assert_ok!(
+            xl_storage.make_volume("success-vol").await,
+            "Unable to create a volume"
+        );
+        assert_ok!(
+            mkdir_all(
+                path_join(&[path.to_str().unwrap(), "success-vol", "object-as-dir"]),
+                0o777
+            )
+            .await,
+            "Unable to create directory. {:?}",
+            path
+        );
+
+        let cases: [(
+            &str,
+            &str,
+            u64,
+            usize,
+            &[u8],
+            Option<StorageError>,
+            Option<std::io::ErrorKind>,
+        ); 13] = [
+            // Successful read at offset 0 and proper buffer size. - 1
+            ("success-vol", "myobject", 0, 5, b"hello", None, None),
+            // Success read at hierarchy. - 2
+            (
+                "success-vol",
+                "path/to/my/object",
+                0,
+                5,
+                b"hello",
+                None,
+                None,
+            ),
+            // Object is a directory. - 3
+            (
+                "success-vol",
+                "object-as-dir",
+                0,
+                5,
+                b"",
+                Some(StorageError::IsNotRegular.into()),
+                None,
+            ),
+            // One path segment length is > 255 chars long. - 4
+            (
+                "success-vol",
+                "path/to/my/object0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001",
+                0,
+                5,
+                b"",
+                Some(StorageError::FileNameTooLong.into()),
+                None
+            ),
+            // Path length is > 1024 chars long. - 5
+            (
+                "success-vol",
+                "level0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001/level0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002/level0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003/object000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001",
+                0,
+                5,
+                b"",
+                Some(StorageError::FileNameTooLong.into()),
+                None
+            ),
+            // Buffer size greater than object size. - 6
+            (
+                "success-vol",
+                "myobject",
+                0,
+                16,
+                b"hello, world",
+                None,
+                Some(ErrorKind::UnexpectedEof.into()),
+            ),
+            // Reading from an offset success. - 7
+            ("success-vol", "myobject", 7, 5, b"world", None, None),
+            // Reading from an object but buffer size greater. - 8
+            (
+                "success-vol",
+                "myobject",
+                7,
+                8,
+                b"world",
+                None,
+                Some(ErrorKind::UnexpectedEof.into()),
+            ),
+            // Seeking ahead returns io.EOF. - 9
+            (
+                "success-vol",
+                "myobject",
+                14,
+                1,
+                b"",
+                None,
+                Some(ErrorKind::UnexpectedEof.into()),
+            ),
+            // Empty volume name. - 10
+            (
+                "",
+                "myobject",
+                14,
+                1,
+                b"",
+                Some(StorageError::VolumeNotFound.into()),
+                None,
+            ),
+            // Empty filename name. - 11
+            (
+                "success-vol",
+                "",
+                14,
+                1,
+                b"",
+                Some(StorageError::IsNotRegular.into()),
+                None,
+            ),
+            // Non existent volume name - 12
+            (
+                "abcd",
+                "",
+                14,
+                1,
+                b"",
+                Some(StorageError::VolumeNotFound.into()),
+                None,
+            ),
+            // Non existent filename - 13
+            (
+                "success-vol",
+                "abcd",
+                14,
+                1,
+                b"",
+                Some(StorageError::FileNotFound.into()),
+                None,
+            ),
+        ];
+        // Create all files needed during testing.
+        // SHA256Sum([]byte("hello, world")
+        for (
+            i,
+            (volume, file_name, offset, buf_size, expected_buf, expected_err, expected_io_err),
+        ) in cases.iter().enumerate()
+        {
+            if i > 4 {
+                break;
+            }
+            let result = xl_storage
+                .append_file(volume, file_name, b"hello, world")
+                .await;
+            match result {
+                Ok(_) => assert_eq!(None, *expected_err),
+                Err(err) => assert_eq!(err.to_string(), expected_err.as_ref().unwrap().to_string()),
+            }
+        }
+
+        let mut buf = [0u8; 5];
+        let v = BitrotVerifier {
+            algorithm: BitrotAlgorithm::HighwayHash256,
+            hash: [
+                187, 165, 33, 249, 196, 92, 26, 88, 44, 104, 111, 20, 38, 161, 81, 148, 225, 51,
+                180, 148, 62, 207, 207, 43, 126, 71, 136, 163, 145, 52, 232, 102,
+            ],
+            // TODO: not support HASH256. use HighwayHash256 instead
+            // hash: [
+            //     9, 202, 126, 78, 170, 110, 138, 233, 199, 210, 97, 22, 113, 41, 24, 72, 131, 100,
+            //     77, 7, 223, 186, 124, 191, 188, 76, 138, 46, 8, 54, 13, 91,
+            // ],
+        };
+        let err = assert_err!(
+            xl_storage
+                .read_file("success-vol", "myobject", 100, &mut buf, Some(v))
+                .await,
+            "expected: error, got: <nil>"
+        );
+
+        let mut l = 0;
+        while l < 2 {
+            // 1st loop tests with dma=write, 2nd loop tests with dma=read-write.
+            if l == 1 {
+                globals::GLOBALS.storage_class.guard().dma =
+                    String::from(crate::config::storageclass::DMA_READ_WRITE);
+            }
+            // Following block validates all ReadFile test cases.
+            for (
+                i,
+                (volume, file_name, offset, buf_size, expected_buf, expected_err, expected_io_err),
+            ) in cases.iter().enumerate()
+            {
+                // Common read buffer.
+                let mut buf = vec![0u8; *buf_size];
+                let v = BitrotVerifier {
+                    algorithm: BitrotAlgorithm::HighwayHash256,
+                    hash: [
+                        187, 165, 33, 249, 196, 92, 26, 88, 44, 104, 111, 20, 38, 161, 81, 148,
+                        225, 51, 180, 148, 62, 207, 207, 43, 126, 71, 136, 163, 145, 52, 232, 102,
+                    ],
+                    // TODO: not support HASH256. use HighwayHash256 instead
+                    // hash: [
+                    //     9, 202, 126, 78, 170, 110, 138, 233, 199, 210, 97, 22, 113, 41, 24, 72, 131, 100,
+                    //     77, 7, 223, 186, 124, 191, 188, 76, 138, 46, 8, 54, 13, 91,
+                    // ],
+                };
+                let result = xl_storage
+                    .read_file(*volume, *file_name, *offset, &mut buf, Some(v))
+                    .await;
+                match result {
+                    Ok(n) => {
+                        assert_eq!(None, *expected_err);
+                        assert_eq!(None, *expected_io_err);
+                        assert_eq!(buf, *expected_buf);
+                        assert_eq!(n as usize, *buf_size);
+                    }
+                    Err(err) => {
+                        if *expected_err != None {
+                            assert_eq!(err.to_string(), expected_err.as_ref().unwrap().to_string());
+                        } else if *expected_io_err != None {
+                            assert_eq!(err.to_string(), "unexpected end of file");
+                            assert!(buf.starts_with(expected_buf));
+                        } else {
+                            assert!(false, "expected err");
+                        }
+                    }
+                }
+            }
+            l += 1;
+        }
+
+        // Reset the flag.
+        globals::GLOBALS.storage_class.guard().dma =
+            String::from(crate::config::storageclass::DMA_WRITE);
+
+        // TestXLStorage for permission denied.
+        #[cfg(not(windows))]
+        {
+            let perm_denied_dir = create_perm_denied_file().await;
+
+            // Initialize xlStorage storage layer for permission denied error.
+            let err = XlStorage::new_local(&perm_denied_dir).await;
+            match err {
+                Ok(_) => assert!(false, "Should unable to initialize xlStorage"),
+                Err(err) => assert_eq!(err.to_string(), StorageError::DiskAccessDenied.to_string()),
+            }
+            assert_ok!(
+                set_permissions(&perm_denied_dir, Permissions::from_mode(0o755)).await,
+                "Unable to change permission to temporary directory {:?}",
+                &perm_denied_dir
+            );
+
+            let xl_storage_perm = assert_ok!(
+                XlStorage::new_local(&perm_denied_dir).await,
+                "Unable to initialize xlStorage"
+            );
+
+            // Common read buffer.
+            let mut buf = [0u8; 10];
+            let v = BitrotVerifier {
+                algorithm: BitrotAlgorithm::HighwayHash256,
+                hash: [
+                    187, 165, 33, 249, 196, 92, 26, 88, 44, 104, 111, 20, 38, 161, 81, 148, 225,
+                    51, 180, 148, 62, 207, 207, 43, 126, 71, 136, 163, 145, 52, 232, 102,
+                ],
+                // TODO: not support HASH256. use HighwayHash256 instead
+                // hash: [
+                //     9, 202, 126, 78, 170, 110, 138, 233, 199, 210, 97, 22, 113, 41, 24, 72, 131, 100,
+                //     77, 7, 223, 186, 124, 191, 188, 76, 138, 46, 8, 54, 13, 91,
+                // ],
+            };
+            let err = assert_err!(
+                xl_storage_perm
+                    .read_file("mybucket", "myobject", 0, &mut buf, Some(v))
+                    .await
+            );
+            assert_eq!(err.to_string(), StorageError::FileAccessDenied.to_string());
+
+            remove_perm_denied_file(&perm_denied_dir).await;
+        }
+    }
+
+    const XL_STORAGE_READ_FILE_WITH_VERIFY_TESTS: [(
+        &str,                 // file
+        u64,                  // offset
+        usize,                // length
+        BitrotAlgorithm,      // algorithm
+        Option<StorageError>, // expError
+    ); 16] = [
+        ("myobject", 0, 100, BitrotAlgorithm::SHA256, None), // 0
+        ("myobject", 25, 74, BitrotAlgorithm::SHA256, None), // 1
+        ("myobject", 29, 70, BitrotAlgorithm::SHA256, None), // 2
+        ("myobject", 100, 0, BitrotAlgorithm::SHA256, None), // 3
+        (
+            "myobject",
+            1,
+            120,
+            BitrotAlgorithm::SHA256,
+            Some(StorageError::FileCorrupt),
+        ), // 4
+        ("myobject", 3, 1100, BitrotAlgorithm::SHA256, None), // 5
+        (
+            "myobject",
+            2,
+            100,
+            BitrotAlgorithm::SHA256,
+            Some(StorageError::FileCorrupt),
+        ), // 6
+        ("myobject", 1000, 1001, BitrotAlgorithm::SHA256, None), // 7
+        (
+            "myobject",
+            0,
+            100,
+            BitrotAlgorithm::BLAKE2b512,
+            Some(StorageError::FileCorrupt),
+        ), // 8
+        ("myobject", 25, 74, BitrotAlgorithm::BLAKE2b512, None), // 9
+        (
+            "myobject",
+            29,
+            70,
+            BitrotAlgorithm::BLAKE2b512,
+            Some(StorageError::FileCorrupt),
+        ), // 10
+        ("myobject", 100, 0, BitrotAlgorithm::BLAKE2b512, None), // 11
+        ("myobject", 1, 120, BitrotAlgorithm::BLAKE2b512, None), // 12
+        ("myobject", 3, 1100, BitrotAlgorithm::BLAKE2b512, None), // 13
+        ("myobject", 2, 100, BitrotAlgorithm::BLAKE2b512, None), // 14
+        ("myobject", 1000, 1001, BitrotAlgorithm::BLAKE2b512, None), // 15
+    ];
+
+    // TestXLStorageReadFile with bitrot verification - tests the xlStorage level
+    // ReadFile API with a BitrotVerifier. Only tests hashing related
+    // functionality. Other functionality is tested with
+    // TestXLStorageReadFile.
+    #[tokio::test]
+    async fn test_xl_storage_read_file_with_verify() {
+        let volume = "test-vol";
+        let object = "myobject";
+        let xl_storages = new_xl_storage_test_setup().await;
+        let (xl_storage, path) = assert_ok!(xl_storages, "Unable to create xlStorage test setup.");
+        defer! {std::fs::remove_dir_all(path.as_std_path());}
+
+        assert_ok!(
+            xl_storage.make_volume(volume).await,
+            "Unable to create a volume"
+        );
+
+        let mut aligned_buf = fs::AlignedBlock::new(8192);
+        utils::rng_seed_now().fill(&mut *aligned_buf);
+
+        assert_ok!(
+            xl_storage
+                .append_file(volume, object, aligned_buf.as_ref())
+                .await,
+            "Unable to create object"
+        );
+        let data = aligned_buf.to_vec();
+
+        for (file, offset, length, algorithm, exp_err) in
+            XL_STORAGE_READ_FILE_WITH_VERIFY_TESTS.iter()
+        {
+            let mut h = algorithm.hasher();
+            h.append(&data);
+            if *exp_err != None {
+                h.append(&[0u8; 1]);
+            }
+            let mut buffer = vec![0u8; *length];
+            let hash = h.finish();
+            let hash = hash.try_into().unwrap();
+            let v = BitrotVerifier {
+                algorithm: *algorithm,
+                hash,
+            };
+            let result = xl_storage
+                .read_file(volume, file, *offset, &mut buffer, Some(v))
+                .await;
+            match result {
+                Ok(n) => {
+                    assert_eq!(None, *exp_err);
+                    assert_eq!(n, *length as u64);
+                    assert_eq!(buffer, data[*offset as usize..(*offset as usize + *length)]);
+                }
+                Err(err) => assert_eq!(err.to_string(), exp_err.as_ref().unwrap().to_string()),
+            }
+        }
+    }
+
+    // test_xl_storage_format_file_change - to test if changing the diskID
+    // makes the calls fail.
+    #[tokio::test]
+    async fn test_xl_storage_format_file_change() {
+        let xl_storages = new_xl_storage_test_setup().await;
+        let (xl_storage, path) = assert_ok!(xl_storages, "Unable to create xlStorage test setup.");
+        defer! {std::fs::remove_dir_all(path.as_std_path());}
+
+        assert_ok!(
+            xl_storage.make_volume("testvolume").await,
+            "Unable to create a volume"
+        );
+
+        // Change the format.json such that "this" is changed to "randomid".
+        #[cfg(windows)]
+        let mut vol_file = assert_ok!(
+            OpenOptions::new()
+                .create(true)
+                .append(true)
+                .write(true)
+                .sync()
+                .open(&path_join(&[
+                    path.to_str().unwrap(),
+                    SYSTEM_META_BUCKET,
+                    FORMAT_CONFIG_FILE
+                ]))
+                .await,
+            "Unable to create file."
+        );
+        #[cfg(not(windows))]
+        let mut vol_file = assert_ok!(
+            OpenOptions::new()
+                .create(true)
+                .append(true)
+                .write(true)
+                .mode(0o644)
+                .sync()
+                .open(&path_join(&[
+                    path.to_str().unwrap(),
+                    SYSTEM_META_BUCKET,
+                    FORMAT_CONFIG_FILE
+                ]))
+                .await,
+            "Unable to create file."
+        );
+        assert_ok!(vol_file.write_all(r#"{"version":"1","format":"xl","id":"592a41c2-b7cc-4130-b883-c4b5cb15965b","xl":{"version":"3","this":"randomid","sets":[["e07285a6-8c73-4962-89c6-047fb939f803","33b8d431-482d-4376-b63c-626d229f0a29","cff6513a-4439-4dc1-bcaa-56c9e880c352","randomid","9c9f21d5-1f15-4737-bce6-835faa0d9626","0a59b346-1424-4fc2-9fa2-a2e80541d0c1","7924a3dc-b69a-4971-9a2e-014966d6aebb","4d2b8dd9-4e48-444b-bdca-c89194b26042"]],"distributionAlgo":"CRCMOD"}}"#.as_bytes()).await, "Unable to write file.");
+
+        let err = assert_err!(
+            xl_storage.make_volume("testvolume").await,
+            "Unable to create a volume"
+        );
+        assert_eq!(err.to_string(), StorageError::VolumeExists.to_string());
+    }
+
+    // TestXLStorage xlStorage.AppendFile()
+    #[tokio::test]
+    async fn test_xl_storage_append_file() {
+        let xl_storages = new_xl_storage_test_setup().await;
+        let (xl_storage, path) = assert_ok!(xl_storages, "Unable to create xlStorage test setup.");
+        defer! {std::fs::remove_dir_all(path.as_std_path());}
+
+        // Setup test environment.
+        assert_ok!(
+            xl_storage.make_volume("success-vol").await,
+            "Unable to create a volume"
+        );
+
+        // Create directory to make errIsNotRegular
+        assert_ok!(
+            mkdir_all(
+                path_join(&[path.to_str().unwrap(), "success-vol", "object-as-dir"]),
+                0o777
+            )
+            .await,
+            "Unable to create directory. {:?}",
+            path
+        );
+
+        let cases: [(&str, Option<StorageError>); 8] = [
+            ("myobject", None),
+            ("path/to/my/object", None),
+            // TestXLStorage to append to previously created file.
+            ("myobject", None),
+            // TestXLStorage to use same path of previously created file.
+            ("path/to/my/testobject", None),
+            // TestXLStorage to use object is a directory now.
+            ("object-as-dir", Some(StorageError::IsNotRegular.into())),
+            // path segment uses previously uploaded object.
+            (
+                "myobject/testobject",
+                Some(StorageError::FileAccessDenied.into()),
+            ),
+            // One path segment length is > 255 chars long.
+		    (
+                "path/to/my/object0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001", 
+                Some(StorageError::FileNameTooLong.into()),
+            ),
+		    // path length is > 1024 chars long.
+		    (
+                "level0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001/level0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002/level0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003/object000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001", 
+                Some(StorageError::FileNameTooLong.into()),
+            ),
+        ];
+        for (file_name, expected_err) in cases.iter() {
+            let result = xl_storage
+                .append_file("success-vol", file_name, b"hello, world")
+                .await;
+            match result {
+                Ok(_) => assert_eq!(None, *expected_err),
+                Err(err) => assert_eq!(err.to_string(), expected_err.as_ref().unwrap().to_string()),
+            }
+        }
+
+        // TestXLStorage for permission denied.
+        #[cfg(not(windows))]
+        {
+            let perm_denied_dir = create_perm_denied_file().await;
+
+            // Initialize xlStorage storage layer for permission denied error.
+            let err = XlStorage::new_local(&perm_denied_dir).await;
+            match err {
+                Ok(_) => assert!(false, "Should unable to initialize xlStorage"),
+                Err(err) => assert_eq!(err.to_string(), StorageError::DiskAccessDenied.to_string()),
+            }
+            assert_ok!(
+                set_permissions(&perm_denied_dir, Permissions::from_mode(0o755)).await,
+                "Unable to change permission to temporary directory {:?}",
+                &perm_denied_dir
+            );
+
+            let xl_storage_perm = assert_ok!(
+                XlStorage::new_local(&perm_denied_dir).await,
+                "Unable to initialize xlStorage"
+            );
+
+            let err = assert_err!(
+                xl_storage_perm
+                    .append_file("mybucket", "myobject", b"hello, world")
+                    .await
+            );
+            assert_eq!(
+                err.to_string(),
+                StorageError::VolumeAccessDenied.to_string()
+            );
+
+            remove_perm_denied_file(&perm_denied_dir).await;
+        }
+
+        // TestXLStorage case with invalid volume name.
+        // A valid volume name should be atleast of size 3.
+        let err = assert_err!(xl_storage.append_file("bh", "yes", b"hello, world").await);
+        assert_eq!(err.to_string(), StorageError::VolumeNotFound.to_string());
+    }
+
+    // TestXLStorage xlStorage.RenameFile()
+    #[tokio::test]
+    async fn test_xl_storage_rename_file() {
+        let xl_storages = new_xl_storage_test_setup().await;
+        let (xl_storage, path) = assert_ok!(xl_storages, "Unable to create xlStorage test setup.");
+        defer! {std::fs::remove_dir_all(path.as_std_path());}
+
+        // Setup test environment.
+        assert_ok!(
+            xl_storage.make_volume("src-vol").await,
+            "Unable to create a volume"
+        );
+        assert_ok!(
+            xl_storage.make_volume("dest-vol").await,
+            "Unable to create a volume"
+        );
+        assert_ok!(
+            xl_storage
+                .append_file("src-vol", "file1", b"Hello, world")
+                .await,
+            "Unable to create file"
+        );
+        assert_ok!(
+            xl_storage
+                .append_file("src-vol", "file2", b"Hello, world")
+                .await,
+            "Unable to create file"
+        );
+        assert_ok!(
+            xl_storage
+                .append_file("src-vol", "file3", b"Hello, world")
+                .await,
+            "Unable to create file"
+        );
+        assert_ok!(
+            xl_storage
+                .append_file("src-vol", "file4", b"Hello, world")
+                .await,
+            "Unable to create file"
+        );
+        assert_ok!(
+            xl_storage
+                .append_file("src-vol", "file5", b"Hello, world")
+                .await,
+            "Unable to create file"
+        );
+        assert_ok!(
+            xl_storage
+                .append_file("src-vol", "path/to/file1", b"Hello, world")
+                .await,
+            "Unable to create file"
+        );
+
+        let cases: [(&str, &str, &str, &str, Option<StorageError>); 17] = [
+            // TestXLStorage case - 1.
+            ("src-vol", "dest-vol", "file1", "file-one", None),
+            // TestXLStorage case - 2.
+            ("src-vol", "dest-vol", "path/", "new-path/", None),
+            // TestXLStorage case - 3.
+            // TestXLStorage to overwrite destination file.
+            ("src-vol", "dest-vol", "file2", "file-one", None),
+            // TestXLStorage case - 4.
+            // TestXLStorage case with io error count set to 1.
+            // expected not to fail.
+            ("src-vol", "dest-vol", "file3", "file-two", None),
+            // TestXLStorage case - 5.
+            // TestXLStorage case with io error count set to maximum allowed count.
+            // expected not to fail.
+            ("src-vol", "dest-vol", "file4", "file-three", None),
+            // TestXLStorage case - 6.
+            // TestXLStorage case with non-existent source file.
+            (
+                "src-vol",
+                "dest-vol",
+                "non-existent-file",
+                "file-three",
+                Some(StorageError::FileNotFound.into()),
+            ),
+            // TestXLStorage case - 7.
+            // TestXLStorage to check failure of source and destination are not same type.
+            (
+                "src-vol",
+                "dest-vol",
+                "path/",
+                "file-one",
+                Some(StorageError::FileAccessDenied.into()),
+            ),
+            // TestXLStorage case - 8.
+            // TestXLStorage to check failure of destination directory exists.
+            (
+                "src-vol",
+                "dest-vol",
+                "path/",
+                "new-path/",
+                Some(StorageError::FileAccessDenied.into()),
+            ),
+            // TestXLStorage case - 9.
+            // TestXLStorage case with source being a file and destination being a directory.
+            // Either both have to be files or directories.
+            // Expecting to fail with `errFileAccessDenied`.
+            (
+                "src-vol",
+                "dest-vol",
+                "file4",
+                "new-path/",
+                Some(StorageError::FileAccessDenied.into()),
+            ),
+            // TestXLStorage case - 10.
+            // TestXLStorage case with non-existent source volume.
+            // Expecting to fail with `errVolumeNotFound`.
+            (
+                "src-vol-non-existent",
+                "dest-vol",
+                "file4",
+                "new-path/",
+                Some(StorageError::VolumeNotFound.into()),
+            ),
+            // TestXLStorage case - 11.
+            // TestXLStorage case with non-existent destination volume.
+            // Expecting to fail with `errVolumeNotFound`.
+            (
+                "src-vol",
+                "dest-vol-non-existent",
+                "file4",
+                "new-path/",
+                Some(StorageError::VolumeNotFound.into()),
+            ),
+            // TestXLStorage case - 12.
+            // TestXLStorage case with invalid src volume name. Length should be atleast 3.
+            // Expecting to fail with `errInvalidArgument`.
+            (
+                "ab",
+                "dest-vol-non-existent",
+                "file4",
+                "new-path/",
+                Some(StorageError::VolumeNotFound.into()),
+            ),
+            // TestXLStorage case - 13.
+            // TestXLStorage case with invalid destination volume name. Length should be atleast 3.
+            // Expecting to fail with `errInvalidArgument`.
+            (
+                "abcd",
+                "ef",
+                "file4",
+                "new-path/",
+                Some(StorageError::VolumeNotFound.into()),
+            ),
+            // TestXLStorage case - 14.
+            // TestXLStorage case with invalid destination volume name. Length should be atleast 3.
+            // Expecting to fail with `errInvalidArgument`.
+            (
+                "abcd",
+                "ef",
+                "file4",
+                "new-path/",
+                Some(StorageError::VolumeNotFound.into()),
+            ),
+            // TestXLStorage case - 15.
+            // TestXLStorage case with the parent of the destination being a file.
+            // expected to fail with `errFileAccessDenied`.
+            (
+                "src-vol",
+                "dest-vol",
+                "file5",
+                "file-one/parent-is-file",
+                Some(StorageError::FileAccessDenied.into()),
+            ),
+            // TestXLStorage case - 16.
+            // TestXLStorage case with segment of source file name more than 255.
+            // expected not to fail.
+            (
+                "src-vol",
+                "dest-vol",
+                "path/to/my/object0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001",
+                "file-six",
+                Some(StorageError::FileNameTooLong.into()),
+            ),
+            // TestXLStorage case - 17.
+            // TestXLStorage case with segment of destination file name more than 255.
+            // expected not to fail.
+            (
+                "src-vol",
+                "dest-vol",
+                "file6",
+                "path/to/my/object0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001",
+                Some(StorageError::FileNameTooLong.into()),
+            ),
+        ];
+
+        for (src_vol, dest_vol, src_path, dest_path, expected_err) in cases.iter() {
+            let result = xl_storage
+                .rename_file(src_vol, src_path, dest_vol, dest_path)
+                .await;
+            match result {
+                Ok(_) => assert_eq!(None, *expected_err),
+                Err(err) => assert_eq!(err.to_string(), expected_err.as_ref().unwrap().to_string()),
+            }
+        }
+    }
+
+    // TestXLStorage xlStorage.CheckFile()
+    #[tokio::test]
+    async fn test_xl_storage_check_file() {
+        let xl_storages = new_xl_storage_test_setup().await;
+        let (xl_storage, path) = assert_ok!(xl_storages, "Unable to create xlStorage test setup.");
+        defer! {std::fs::remove_dir_all(path.as_std_path());}
+
+        assert_ok!(
+            xl_storage.make_volume("success-vol").await,
+            "Unable to create a volume"
+        );
+        assert_ok!(
+            xl_storage
+                .append_file(
+                    "success-vol",
+                    &path_join(&["success-file", XL_STORAGE_FORMAT_FILE]),
+                    b"Hello, world"
+                )
+                .await,
+            "Unable to create file"
+        );
+        assert_ok!(
+            xl_storage
+                .append_file(
+                    "success-vol",
+                    &path_join(&["path/to/success-file", XL_STORAGE_FORMAT_FILE]),
+                    b"Hello, world"
+                )
+                .await,
+            "Unable to create file"
+        );
+        assert_ok!(
+            xl_storage
+                .make_volume(&path_join(&[
+                    "success-vol/path/to/",
+                    XL_STORAGE_FORMAT_FILE
+                ]))
+                .await,
+            "Unable to create a volume"
+        );
+
+        let cases: [(&str, &str, Option<StorageError>); 7] = [
+            // TestXLStorage case - 1.
+            // TestXLStorage case with valid inputs, expected to pass.
+            ("success-vol", "success-file", None),
+            // TestXLStorage case - 2.
+            // TestXLStorage case with valid inputs, expected to pass.
+            ("success-vol", "path/to/success-file", None),
+            // TestXLStorage case - 3.
+            // TestXLStorage case with non-existent file.
+            (
+                "success-vol",
+                "nonexistent-file",
+                Some(StorageError::PathNotFound.into()),
+            ),
+            // TestXLStorage case - 4.
+            // TestXLStorage case with non-existent file path.
+            (
+                "success-vol",
+                "path/2/success-file",
+                Some(StorageError::PathNotFound.into()),
+            ),
+            // TestXLStorage case - 5.
+            // TestXLStorage case with path being a directory.
+            (
+                "success-vol",
+                "path",
+                Some(StorageError::PathNotFound.into()),
+            ),
+            // TestXLStorage case - 6.
+            // TestXLStorage case with non existent volume.
+            (
+                "non-existent-vol",
+                "success-file",
+                Some(StorageError::PathNotFound.into()),
+            ),
+            // TestXLStorage case - 7.
+            // TestXLStorage case with file with directory.
+            (
+                "success-vol",
+                "path/to",
+                Some(StorageError::FileNotFound.into()),
+            ),
+        ];
+
+        for (src_vol, src_path, expected_err) in cases.iter() {
+            let result = xl_storage.check_file(src_vol, src_path).await;
+            match result {
+                Ok(_) => assert_eq!(None, *expected_err),
+                Err(err) => assert_eq!(err.to_string(), expected_err.as_ref().unwrap().to_string()),
+            }
+        }
+    }
+
+    // Test xlStorage.VerifyFile()
+    #[tokio::test]
+    async fn test_xl_storage_verify_file() {
+        // We test 4 cases:
+        // 1) Whole-file bitrot check on proper file
+        // 2) Whole-file bitrot check on corrupted file
+        // 3) Streaming bitrot check on proper file
+        // 4) Streaming bitrot check on corrupted file
+
+        let xl_storages = new_xl_storage_test_setup().await;
+        let (xl_storage, path) = assert_ok!(xl_storages, "Unable to create xlStorage test setup.");
+        defer! {std::fs::remove_dir_all(path.as_std_path());}
+
+        let vol_name = "testvol";
+        let file_name = "testfile";
+        assert_ok!(
+            xl_storage.make_volume(vol_name).await,
+            "Unable to create a volume"
+        );
+
+        // 1) Whole-file bitrot check on proper file
+        let size: u64 = 4 * 1024 * 1024 + 100 * 1024; // 4.1 MB
+        let mut data = fs::AlignedBlock::new(size as usize);
+        utils::rng_seed_now().fill(&mut *data);
+        assert_ok!(
+            xl_storage
+                .write_all(vol_name, file_name, data.as_ref())
+                .await
+        );
+
+        let algo = BitrotAlgorithm::HighwayHash256;
+        let mut h = algo.hasher();
+        h.append(&data);
+        let hash_bytes = h.finish();
+
+        // TODO fail
+        // let file = assert_ok!(
+        //     fs::OpenOptions::new()
+        //         .read(true)
+        //         .open(&path_join(&[path.to_str().unwrap(), vol_name, file_name]))
+        //         .await
+        // );
+        // let file_size = assert_ok!(file.metadata().await).len();
+        // assert_ok!(crate::bitrot::bitrot_verify(file, file_size, size, algo, hash_bytes, 0).await);
+
+        // 2) Whole-file bitrot check on corrupted file
+        assert_ok!(
+            xl_storage.append_file(vol_name, file_name, b"a").await,
+            "Unable to append file"
+        );
+
+        // Check if VerifyFile reports the incorrect file length (the correct length is `size+1`)
+
+        let file = assert_ok!(
+            fs::OpenOptions::new()
+                .read(true)
+                .open(&path_join(&[path.to_str().unwrap(), vol_name, file_name]))
+                .await
+        );
+        let file_size = assert_ok!(file.metadata().await).len();
+        assert_err!(
+            crate::bitrot::bitrot_verify(file, file_size, size, algo, hash_bytes, 0).await,
+            "expected to fail bitrot check"
+        );
+
+        // Check if bitrot fails
+        let file = assert_ok!(
+            fs::OpenOptions::new()
+                .read(true)
+                .open(&path_join(&[path.to_str().unwrap(), vol_name, file_name]))
+                .await
+        );
+        let file_size = assert_ok!(file.metadata().await).len();
+        assert_err!(
+            crate::bitrot::bitrot_verify(file, file_size, (size + 1), algo, hash_bytes, 0).await,
+            "expected to fail bitrot check"
+        );
+
+        assert_ok!(xl_storage.delete(vol_name, file_name, false).await);
+
+        // 3) Streaming bitrot check on proper file
+        let algo = BitrotAlgorithm::HighwayHash256S;
+        let shard_size: u64 = 1024 * 1024;
+        let mut shard = fs::AlignedBlock::new(shard_size as usize);
+
+        let bitrot_sums_size =
+            crate::utils::ceil_frac(size, shard_size) * (std::mem::size_of::<[u64; 4]>() as u64);
+        let total_size = Some(bitrot_sums_size + size);
+        let writer = assert_ok!(
+            xl_storage
+                .create_file_writer(vol_name, file_name, total_size)
+                .await
+        );
+
+        let mut w = crate::bitrot::HighwayBitrotWriter::new(writer);
+        for byte in data.bytes() {
+            match byte {
+                Ok(n) => {
+                    w.write(&[n]);
+                }
+                Err(err) => {
+                    assert!(false, "Error: {}", err);
+                }
+            }
+        }
+        w.flush();
+
+        // TODO fail
+        // let file = assert_ok!(
+        //     fs::OpenOptions::new()
+        //         .read(true)
+        //         .open(&path_join(&[path.to_str().unwrap(), vol_name, file_name]))
+        //         .await
+        // );
+        // let file_size = assert_ok!(file.metadata().await).len();
+        // assert_ok!(
+        //     crate::bitrot::bitrot_verify(file, file_size, size, algo, b"", shard_size).await,
+        //     "expected to fail bitrot check"
+        // );
+
+        // 4) Streaming bitrot check on corrupted file
+        let mut f = assert_ok!(
+            fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(&path_join(&[path.to_str().unwrap(), vol_name, file_name]))
+                .await
+        );
+
+        // Replace first 256 with 'a'.
+        let replace_chars = [b'a'; 256];
+        assert_ok!(f.seek(SeekFrom::Start(0)).await);
+        assert_ok!(f.write_all(&replace_chars).await);
+
+        let file = assert_ok!(
+            fs::OpenOptions::new()
+                .read(true)
+                .open(&path_join(&[path.to_str().unwrap(), vol_name, file_name]))
+                .await
+        );
+        let file_size = assert_ok!(file.metadata().await).len();
+        assert_err!(
+            crate::bitrot::bitrot_verify(file, file_size, size, algo, b"", shard_size).await,
+            "expected to fail bitrot check"
+        );
+
+        let file = assert_ok!(
+            fs::OpenOptions::new()
+                .read(true)
+                .open(&path_join(&[path.to_str().unwrap(), vol_name, file_name]))
+                .await
+        );
+        let file_size = assert_ok!(file.metadata().await).len();
+        assert_err!(
+            crate::bitrot::bitrot_verify(file, file_size, (size + 1), algo, b"", shard_size).await,
+            "expected to fail bitrot check"
+        );
     }
 }

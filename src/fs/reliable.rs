@@ -13,6 +13,10 @@ pub async fn reliable_mkdir_all(path: impl AsRef<Path>, mode: u32) -> anyhow::Re
             Err(StorageError::FileAccessDenied.into())
         } else if err_not_found(&err) {
             Err(StorageError::FileAccessDenied.into())
+        } else if err_already_exists(&err) {
+            Err(StorageError::FileAccessDenied.into())
+        } else if err_permission(&err) {
+            Err(StorageError::DiskAccessDenied.into())
         } else {
             match StorageError::try_from(err) {
                 Ok(err) => Err(err.into()),
@@ -56,7 +60,7 @@ pub async fn reliable_rename(
         } else if err_cross_device(&err) {
             Err(StorageError::CrossDeviceLink(src_path.to_string(), dst_path.to_string()).into())
         } else if err_already_exists(&err) {
-            Err(StorageError::IsNotRegular.into())
+            Err(StorageError::FileAccessDenied.into())
         } else {
             Err(err.into())
         };

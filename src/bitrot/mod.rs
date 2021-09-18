@@ -14,9 +14,17 @@ pub fn bitrot_self_test() {}
 
 pub const DEFAULT_BITROT_ALGORITHM: BitrotAlgorithm = BitrotAlgorithm::HighwayHash256;
 
+// BitrotAlgorithm specifies a algorithm used for bitrot protection.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum BitrotAlgorithm {
+    // SHA256 represents the SHA-256 hash function
+    SHA256,
+    // HighwayHash256 represents the HighwayHash-256 hash function
     HighwayHash256,
+    // HighwayHash256S represents the Streaming HighwayHash-256 hash function
+    HighwayHash256S,
+    // BLAKE2b512 represents the BLAKE2b-512 hash function
+    BLAKE2b512,
 }
 
 pub trait BitrotHasher {
@@ -48,12 +56,14 @@ impl BitrotAlgorithm {
     pub fn hasher(&self) -> Box<dyn BitrotHasher + Unpin> {
         Box::new(match self {
             BitrotAlgorithm::HighwayHash256 => HighwayHasher::default(),
+            _ => HighwayHasher::default(), // TODO: impl
         })
     }
 
     pub const fn output_size(&self) -> usize {
         match self {
             BitrotAlgorithm::HighwayHash256 => HighwayHasher::output_size(),
+            _ => HighwayHasher::output_size(), // TODO: impl
         }
     }
 }

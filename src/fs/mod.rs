@@ -14,7 +14,7 @@ mod reliable;
 mod root_disk;
 mod same_file;
 
-pub use std::fs::Metadata;
+pub use std::fs::{Metadata, Permissions};
 
 pub use aligned_reader::*;
 pub use aligned_writer::*;
@@ -31,4 +31,4 @@ pub use readdir::*;
 pub use reliable::*;
 pub use root_disk::*;
 pub use same_file::*;
-pub use tokio::fs::File;
+pub use tokio::fs::{set_permissions, File};

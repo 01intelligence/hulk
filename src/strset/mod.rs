@@ -173,3 +173,356 @@ macro_rules! string_set {
         set
     }};
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::assert::*;
+
+    #[test]
+    fn new_string_set() {
+        let ss = StringSet::new();
+        assert!(ss.is_empty(), "expected: true, got: false");
+    }
+
+    #[test]
+    fn create_string_set() {
+        let ss = string_set!("foo".to_string());
+        assert_eq!(
+            ss.to_string(),
+            "[foo]",
+            "expected: {}, got: {}",
+            r#"["foo"]"#,
+            ss
+        );
+    }
+
+    #[test]
+    fn string_set_add() {
+        let cases = [
+            ("foo", string_set!("foo".to_string())),
+            ("foo", string_set!("foo".to_string())),
+            ("bar", string_set!("bar".to_string(), "foo".to_string())),
+        ];
+
+        let mut ss = StringSet::new();
+        for (value, expected_result) in cases {
+            ss.add(value.to_string());
+
+            assert_eq!(
+                ss, expected_result,
+                "expected: {}, got: {}",
+                expected_result, ss
+            );
+        }
+    }
+
+    #[test]
+    fn string_set_remove() {
+        let cases = [
+            ("baz", string_set!("foo".to_string(), "bar".to_string())),
+            ("foo", string_set!("bar".to_string())),
+            ("foo", string_set!("bar".to_string())),
+            ("bar", StringSet::new()),
+        ];
+
+        let mut ss = string_set!("foo".to_string(), "bar".to_string());
+        for (value, expected_result) in cases {
+            ss.remove(value);
+
+            assert_eq!(
+                ss, expected_result,
+                "expected: {}, got: {}",
+                expected_result, ss
+            );
+        }
+    }
+
+    #[test]
+    fn string_set_contains() {
+        let cases = [("bar", false), ("foo", true), ("Foo", false)];
+
+        let ss = string_set!("foo".to_string());
+        for (value, expected_result) in cases {
+            let result = ss.contains(value);
+
+            assert_eq!(
+                result, expected_result,
+                "expected: {}; got: {}",
+                expected_result, result
+            );
+        }
+    }
+
+    #[test]
+    fn string_set_func_match() {
+        let ss = string_set!("foo".to_string(), "bar".to_string());
+
+        let cases: [(Box<dyn FnMut(&str, &str) -> bool>, &str, StringSet); 2] = [
+            (
+                Box::new(|value: &str, compare_value: &str| {
+                    value.eq_ignore_ascii_case(compare_value)
+                }),
+                "Bar",
+                string_set!("bar".to_string()),
+            ),
+            (
+                Box::new(|value: &str, compare_value: &str| compare_value.starts_with(value)),
+                "foobar",
+                string_set!("foo".to_string()),
+            ),
+        ];
+
+        for (mut func, value, expected_result) in cases {
+            let result = ss.match_fn(|s| func(s, value));
+
+            assert_eq!(
+                result, expected_result,
+                "expected: {}, got: {}",
+                expected_result, result
+            );
+        }
+    }
+
+    #[test]
+    fn string_set_apply_func() {
+        let ss = string_set!("foo".to_string(), "bar".to_string());
+
+        let cases: [(Box<dyn Fn(&str) -> String>, StringSet); 2] = [
+            (
+                Box::new(|v| format!("mybucket/{}", v)),
+                string_set!("mybucket/bar".to_string(), "mybucket/foo".to_string()),
+            ),
+            (
+                Box::new(|v| String::from(v.split_at(1).1)),
+                string_set!("ar".to_string(), "oo".to_string()),
+            ),
+        ];
+
+        for (func, expected_result) in cases {
+            let result = ss.apply_fn(func);
+
+            assert_eq!(
+                result, expected_result,
+                "expected: {}, got: {}",
+                expected_result, result
+            );
+        }
+    }
+
+    #[test]
+    fn string_set_equals() {
+        let cases = [
+            (
+                string_set!("foo".to_string(), "bar".to_string()),
+                string_set!("foo".to_string(), "bar".to_string()),
+                true,
+            ),
+            (
+                string_set!("foo".to_string(), "bar".to_string()),
+                string_set!("foo".to_string(), "bar".to_string(), "baz".to_string()),
+                false,
+            ),
+            (
+                string_set!("foo".to_string(), "bar".to_string()),
+                string_set!("bar".to_string()),
+                false,
+            ),
+        ];
+
+        for (set1, set2, expected_result) in cases {
+            let result = set1 == set2;
+
+            assert_eq!(
+                result, expected_result,
+                "expected: {}, got: {}",
+                expected_result, result
+            );
+        }
+    }
+
+    #[test]
+    fn string_set_intersection() {
+        let cases = [
+            (
+                string_set!("foo".to_string(), "bar".to_string()),
+                string_set!("foo".to_string(), "bar".to_string()),
+                string_set!("foo".to_string(), "bar".to_string()),
+            ),
+            (
+                string_set!("foo".to_string(), "bar".to_string(), "baz".to_string()),
+                string_set!("foo".to_string(), "bar".to_string()),
+                string_set!("foo".to_string(), "bar".to_string()),
+            ),
+            (
+                string_set!("foo".to_string(), "baz".to_string()),
+                string_set!("baz".to_string(), "bar".to_string()),
+                string_set!("baz".to_string()),
+            ),
+            (
+                string_set!("foo".to_string(), "baz".to_string()),
+                string_set!("poo".to_string(), "bar".to_string()),
+                string_set!(),
+            ),
+        ];
+
+        for (set1, set2, expected_result) in cases {
+            let result = set1.intersection(&set2);
+
+            assert_eq!(
+                result, expected_result,
+                "expected: {}, got: {}",
+                expected_result, result
+            );
+        }
+    }
+
+    #[test]
+    fn string_set_difference() {
+        let cases = [
+            (
+                string_set!("foo".to_string(), "bar".to_string()),
+                string_set!("foo".to_string(), "bar".to_string()),
+                StringSet::new(),
+            ),
+            (
+                string_set!("foo".to_string(), "bar".to_string(), "baz".to_string()),
+                string_set!("foo".to_string(), "bar".to_string()),
+                string_set!("baz".to_string()),
+            ),
+            (
+                string_set!("foo".to_string(), "baz".to_string()),
+                string_set!("baz".to_string(), "bar".to_string()),
+                string_set!("foo".to_string()),
+            ),
+            (
+                string_set!("foo".to_string(), "baz".to_string()),
+                string_set!("poo".to_string(), "bar".to_string()),
+                string_set!("foo".to_string(), "baz".to_string()),
+            ),
+        ];
+
+        for (set1, set2, expected_result) in cases {
+            let result = set1.difference(&set2);
+
+            assert_eq!(
+                result, expected_result,
+                "expected: {}, got: {}",
+                expected_result, result
+            );
+        }
+    }
+
+    #[test]
+    fn string_set_union() {
+        let cases = [
+            (
+                string_set!("foo".to_string(), "bar".to_string()),
+                string_set!("foo".to_string(), "bar".to_string()),
+                string_set!("foo".to_string(), "bar".to_string()),
+            ),
+            (
+                string_set!("foo".to_string(), "bar".to_string(), "baz".to_string()),
+                string_set!("foo".to_string(), "bar".to_string()),
+                string_set!("foo".to_string(), "bar".to_string(), "baz".to_string()),
+            ),
+            (
+                string_set!("foo".to_string(), "baz".to_string()),
+                string_set!("baz".to_string(), "bar".to_string()),
+                string_set!("foo".to_string(), "baz".to_string(), "bar".to_string()),
+            ),
+            (
+                string_set!("foo".to_string(), "baz".to_string()),
+                string_set!("poo".to_string(), "bar".to_string()),
+                string_set!(
+                    "foo".to_string(),
+                    "baz".to_string(),
+                    "poo".to_string(),
+                    "bar".to_string()
+                ),
+            ),
+        ];
+
+        for (set1, set2, expected_result) in cases {
+            let result = set1.union(&set2);
+
+            assert_eq!(
+                result, expected_result,
+                "expected: {}, got: {}",
+                expected_result, result
+            );
+        }
+    }
+
+    #[test]
+    fn string_set_serialize_json() {
+        let cases = [
+            (
+                string_set!("foo".to_string(), "bar".to_string()),
+                r#"["foo","bar"]"#,
+            ),
+            (StringSet::new(), r#"[]"#),
+        ];
+
+        for (set, expected_result) in cases {
+            let result = assert_ok!(serde_json::to_string(&set));
+            let result_de: StringSet = assert_ok!(serde_json::from_str(&result));
+            let expected_result_de: StringSet = assert_ok!(serde_json::from_str(expected_result));
+
+            assert_eq!(
+                result_de, expected_result_de,
+                "expected: {}, got: {}",
+                expected_result, result
+            );
+        }
+    }
+
+    #[test]
+    fn string_set_deserialize_json() {
+        let cases = [
+            (
+                r#"["bar","foo"]"#,
+                string_set!("bar".to_string(), "foo".to_string()),
+            ),
+            (
+                r#"["bar","foo"]"#,
+                string_set!("bar".to_string(), "foo".to_string()),
+            ),
+            (r#"[]"#, StringSet::new()),
+            (r#""""#, string_set!("".to_string())),
+        ];
+
+        for (data, expected_result) in cases {
+            let result: StringSet = assert_ok!(serde_json::from_str(data));
+
+            assert_eq!(
+                result, expected_result,
+                "expected: {}, got: {}",
+                expected_result, result
+            );
+        }
+    }
+
+    #[test]
+    fn string_set_to_vec() {
+        let cases = [
+            (StringSet::new(), vec![]),
+            (string_set!("".to_string()), vec!["".to_string()]),
+            (string_set!("foo".to_string()), vec!["foo".to_string()]),
+            (
+                string_set!("foo".to_string(), "bar".to_string()),
+                vec!["bar".to_string(), "foo".to_string()],
+            ),
+        ];
+
+        for (set, expected_result) in cases {
+            let result = set.to_vec();
+
+            assert_eq!(
+                result, expected_result,
+                "expected: {:?}, got: {:?}",
+                expected_result, result
+            );
+        }
+    }
+}

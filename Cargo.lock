@@ -1878,7 +1878,6 @@ dependencies = [
  "tempfile",
  "term",
  "thiserror",
- "time 0.2.26",
  "tokio",
  "tokio-stream",
  "tokio-test",

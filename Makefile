@@ -8,12 +8,16 @@ export HULK_BUILD_GIT_HASH ?= $(shell git rev-parse HEAD 2> /dev/null || echo ${
 export HULK_BUILD_GIT_TAG ?= $(shell git describe --tag 2> /dev/null || echo ${BUILD_INFO_GIT_FALLBACK})
 export HULK_BUILD_GIT_BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD 2> /dev/null || echo ${BUILD_INFO_GIT_FALLBACK})
 
+export CARGO_BUILD_PIPELINING=true
+
 # Almost all the rules in this Makefile are PHONY
 # Declaring a rule as PHONY could improve correctness
 # But probably instead just improves performance by a little bit
-.PHONY: clean all build check
+.PHONY: clean all build build-allow-warnings test test-allow-warnings
+.PHONY: bench bench-allow-warnings fmt fmt-check check
+.PHONY: doc download-libs
 
-default: build
+default: build-allow-warnings
 
 clean:
 	cargo +nightly clean

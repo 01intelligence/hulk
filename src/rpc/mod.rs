@@ -1,8 +1,10 @@
 mod client;
+mod server;
 mod storage_client;
 mod storage_server;
 
 pub use client::*;
+pub use server::*;
 pub use storage_client::*;
 pub use storage_server::*;
 use tonic::{Request, Status};

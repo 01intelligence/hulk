@@ -16,7 +16,9 @@ pub struct CliContext {
     pub json: bool,
     pub quiet: bool,
     pub anonymous: bool,
-    pub address: String,
+    pub host: String,
+    pub http_port: u16,
+    pub rpc_port: u16,
     pub strict_s3_compatibility: bool,
 }
 
@@ -44,9 +46,11 @@ pub struct Globals {
     pub server_region: Arc<Mutex<String>>,
 
     // Local server address (in `host:port` format)
-    pub addr: Arc<Mutex<String>>,
+    pub http_addr: Arc<Mutex<String>>,
+    pub rpc_addr: Arc<Mutex<String>>,
     // Default port, can be changed through command line.
-    pub port: Arc<Mutex<String>>,
+    pub http_port: Arc<Mutex<String>>,
+    pub rpc_port: Arc<Mutex<String>>,
     // Holds the host that was passed using --address
     pub host: Arc<Mutex<String>>,
     // Holds the possible host endpoint.
@@ -62,6 +66,8 @@ pub struct Globals {
     pub trace: Arc<PubSub<TraceInfo>>,
 
     pub http_stats: Arc<HttpStats>,
+
+    pub endpoints: Arc<Mutex<crate::endpoint::EndpointServerPools>>,
 
     pub local_node_name: Arc<Mutex<String>>,
 

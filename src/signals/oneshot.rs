@@ -1,6 +1,5 @@
 use std::future::Future;
 use std::pin::Pin;
-use std::string::ToString;
 use std::task::{Context, Poll};
 
 use strum::Display;
@@ -16,7 +15,7 @@ pub trait FromSignal {
 
 impl<T: FromSignal + 'static> Signaller for UnboundedSender<T> {
     fn signal(&self, sig: Signal) {
-        let _ = self.send(T::from(sig));
+        let _ = self.send(T::from(sig)); // ignore error
     }
 }
 

@@ -5,6 +5,9 @@ authors = ["01Intelligence, Inc."]
 edition = "2018"
 resolver = "2"
 
+[features]
+default = []
+
 [dependencies]
 clap = "3.0.0-beta.2"
 lazy_static = "1.4.0"
@@ -129,17 +132,6 @@ git = 'https://github.com/actix/actix-extras'
 branch = 'master'
 package = 'actix-cors'
 
-[patch.crates-io]
-jsonwebtoken = { git = 'https://github.com/01intelligence/jsonwebtoken', branch = 'master' }
-reed-solomon-erasure = { git = 'https://github.com/01intelligence/reed-solomon-erasure', branch = 'master' }
-actix-web = { git = 'https://github.com/01intelligence/actix-web', branch = 'master' }
-quick-xml = { git = 'https://github.com/01intelligence/quick-xml', branch = 'golang_xml' }
-mime = { git = 'https://github.com/01intelligence/mime', branch = '0.3.x' }
-camino = { git = 'https://github.com/01intelligence/camino', branch = 'master' }
-slog-term = { git = 'https://github.com/01intelligence/term', branch = 'master' }
-chrono = { git = 'https://github.com/01intelligence/chrono', branch = 'v0.4.19' }
-rmp = { git = 'https://github.com/01intelligence/msgpack-rust', branch = 'rmp/v0.8.10' }
-
 [target.'cfg(unix)'.dependencies]
 pprof = "0.4.3"
 
@@ -151,8 +143,19 @@ windows = "0.18.0"
 winbinding = { path = "winbinding" }
 
 [build-dependencies]
-time = "0.2.26"
+chrono = { version = "0.4.19", default-features = false, features = ["std", "clock", "serde", "datetime_default"] }
 tonic-build = "0.5.1"
 
 [dev-dependencies]
 criterion = "0.3.5"
+
+[patch.crates-io]
+jsonwebtoken = { git = 'https://github.com/01intelligence/jsonwebtoken', branch = 'master' }
+reed-solomon-erasure = { git = 'https://github.com/01intelligence/reed-solomon-erasure', branch = 'master' }
+actix-web = { git = 'https://github.com/01intelligence/actix-web', branch = 'master' }
+quick-xml = { git = 'https://github.com/01intelligence/quick-xml', branch = 'golang_xml' }
+mime = { git = 'https://github.com/01intelligence/mime', branch = '0.3.x' }
+camino = { git = 'https://github.com/01intelligence/camino', branch = 'master' }
+slog-term = { git = 'https://github.com/01intelligence/term', branch = 'master' }
+chrono = { git = 'https://github.com/01intelligence/chrono', branch = 'v0.4.19' }
+rmp = { git = 'https://github.com/01intelligence/msgpack-rust', branch = 'rmp/v0.8.10' }

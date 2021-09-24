@@ -125,7 +125,7 @@ pub fn get_api_endpoints() -> Vec<String> {
     } else {
         ip_list = vec![global_host.clone()];
     }
-    let global_port = GLOBALS.port.guard().parse::<u16>().unwrap();
+    let global_port = GLOBALS.rpc_port.guard().parse::<u16>().unwrap();
     ip_list
         .iter()
         .map(|ip| {

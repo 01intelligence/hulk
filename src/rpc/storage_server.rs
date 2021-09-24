@@ -17,7 +17,7 @@ pub struct StorageService {
 }
 
 impl StorageService {
-    pub async fn new(endpoint_server_pools: &EndpointServerPools) -> StorageService {
+    pub async fn new(endpoint_server_pools: EndpointServerPools) -> StorageService {
         let mut handles = Vec::new();
         for ep in endpoint_server_pools.iter() {
             for endpoint in ep.endpoints.iter() {

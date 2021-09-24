@@ -33,16 +33,17 @@ pub enum Endpoint {
     Url(url::Url, bool),
 }
 
-#[derive(Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct Endpoints(Vec<Endpoint>);
 
+#[derive(Default, Debug, Clone)]
 pub struct PoolEndpoints {
     pub set_count: usize,
     pub drives_per_set: usize,
     pub endpoints: Endpoints,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug, Clone)]
 pub struct EndpointServerPools(Vec<PoolEndpoints>);
 
 impl Endpoint {
@@ -169,7 +170,7 @@ impl Endpoint {
                 *is_local = is_local_host(
                     url.host_str().unwrap(),
                     &url.port().map(|p| p.to_string()).unwrap_or_default(),
-                    &*GLOBALS.port.guard(),
+                    &*GLOBALS.rpc_port.guard(),
                 )
                 .await?;
             }
@@ -378,7 +379,7 @@ impl EndpointServerPools {
                 let peer = crate::net::Host::new(host, Some(port)).to_string();
                 all.add(peer.clone());
                 if e.is_local() {
-                    if port.to_string() == *GLOBALS.port.guard() {
+                    if port.to_string() == *GLOBALS.rpc_port.guard() {
                         local = Some(peer);
                     }
                 }
@@ -566,7 +567,7 @@ pub async fn update_domain_ips(endpoints: &StringSet) {
     for e in endpoints.iter() {
         if let Ok((host, mut port)) = split_host_port(e) {
             if port.is_empty() {
-                port = GLOBALS.port.guard().clone();
+                port = GLOBALS.rpc_port.guard().clone();
             };
             match host.parse::<IpAddr>() {
                 Ok(_) => ip_list.add(join_host_port(&host, &port)),
@@ -862,8 +863,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_domain_ips() {
-        let temp_global_port = GLOBALS.port.guard().clone();
-        *GLOBALS.port.guard() = "9000".to_string();
+        let temp_global_port = GLOBALS.rpc_port.guard().clone();
+        *GLOBALS.rpc_port.guard() = "9000".to_string();
         let temp_global_domain_ips = GLOBALS.domain_ips.guard().clone();
 
         let cases = vec![
@@ -924,7 +925,7 @@ mod tests {
             )
         }
 
-        *GLOBALS.port.guard() = temp_global_port;
+        *GLOBALS.rpc_port.guard() = temp_global_port;
         *GLOBALS.domain_ips.guard() = temp_global_domain_ips;
     }
 }

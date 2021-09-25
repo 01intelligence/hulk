@@ -4,8 +4,8 @@ use crate::utils::{Duration, HOUR, MIB, MINUTE};
 
 // Configuration related constants.
 pub const GLOBAL_DEFAULT_HOST: &str = "::";
-pub const GLOBAL_DEFAULT_HTTP_PORT: u16 = 9000;
-pub const GLOBAL_DEFAULT_RPC_PORT: u16 = 9001;
+pub const GLOBAL_DEFAULT_CLIENT_PORT: &str = "9000";
+pub const GLOBAL_DEFAULT_PEER_PORT: &str = "9001";
 
 pub const GLOBAL_DEFAULT_REGION: &str = "";
 // This is a sha256 output of ``arn:aws:iam::hulk:user/admin``,

@@ -10,7 +10,9 @@ pub async fn serve<F: Future<Output = ()>>(
     shutdown: F,
 ) -> anyhow::Result<()> {
     let _ = tonic::transport::Server::builder()
-        .add_service(proto::StorageServiceServer::new(StorageService::new(endpoints).await))
+        .add_service(proto::StorageServiceServer::new(
+            StorageService::new(endpoints).await,
+        ))
         .serve_with_shutdown(addr, shutdown)
         .await?;
     Ok(())

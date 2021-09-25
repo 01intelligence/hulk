@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
-use hulk::{config, globals, logger};
+use hulk::globals::{self, Get};
+use hulk::{config, logger};
 
 use super::*;
 

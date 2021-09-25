@@ -2,9 +2,8 @@ use clap::{crate_authors, App, Arg};
 use common::*;
 use config::*;
 use event::*;
-use hulk::globals::*;
 use hulk::router::middlewares::*;
-use hulk::*;
+use hulk::{globals, *};
 use lazy_static::lazy_static;
 use server::*;
 
@@ -51,7 +50,8 @@ async fn main() -> std::io::Result<()> {
             Arg::new("certs-dir")
                 .short('s')
                 .long("certs-dir")
-                .about("Sets the certs directory"),
+                .about("Sets the certs directory")
+                .default_value(DEFAULT_CERTS_DIR.as_str()),
         )
         .arg(
             Arg::new("quiet")
@@ -81,6 +81,24 @@ async fn main() -> std::io::Result<()> {
         .subcommand(App::new("server")
             .about("Run object storage server")
             .ext()
+            .arg(
+                Arg::new("host")
+                    .long("host")
+                    .about("Listens on the specified IP or hostname")
+                    .default_value(globals::GLOBAL_DEFAULT_HOST),
+            )
+            .arg(
+                Arg::new("client-port")
+                    .long("client-port")
+                    .about("Listens on the specified port for external client traffic")
+                    .default_value(globals::GLOBAL_DEFAULT_CLIENT_PORT),
+            )
+            .arg(
+                Arg::new("peer-port")
+                    .long("peer-port")
+                    .about("Listens on the specified port for inter peer traffic")
+                    .default_value(globals::GLOBAL_DEFAULT_PEER_PORT),
+            )
         )
         .subcommand(App::new("gateway")
             .about("Run object storage gateway")

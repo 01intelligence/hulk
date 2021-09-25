@@ -7,10 +7,12 @@ use super::*;
 
 mod config;
 mod current;
+mod dir;
 mod migrate;
 
 pub use config::*;
 pub use current::*;
+pub use dir::*;
 pub use migrate::*;
 
 pub struct ConfigSys {}

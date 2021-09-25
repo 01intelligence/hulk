@@ -2,17 +2,17 @@ use std::sync::Arc;
 
 use actix_web::{web, App, HttpResponse, HttpServer};
 use clap::ArgMatches;
-use hulk::globals::{self, GLOBALS};
+use hulk::globals::{self, Guard, GLOBALS};
 use rustls::{NoClientAuth, ResolvesServerCertUsingSNI, ServerConfig};
 
 use super::*;
 
-pub fn handle_server_cli_args(m: &ArgMatches) {
-    handle_common_cli_args(m);
+pub async fn handle_server_cli_args(m: &ArgMatches) {
+    handle_common_cli_args(m).await;
 
     *GLOBALS.host.guard() = GLOBALS.cli_context.guard().host.clone();
-    *GLOBALS.http_port.guard() = GLOBALS.cli_context.guard().http_port.to_string();
-    *GLOBALS.rpc_port.guard() = GLOBALS.cli_context.guard().rpc_port.to_string();
+    *GLOBALS.http_port.guard() = GLOBALS.cli_context.guard().client_port.to_string();
+    *GLOBALS.rpc_port.guard() = GLOBALS.cli_context.guard().peer_port.to_string();
     *GLOBALS.http_addr.guard() = hulk::endpoint::join_host_port(
         GLOBALS.host.guard().as_str(),
         GLOBALS.http_port.guard().as_str(),
@@ -37,7 +37,7 @@ impl Server {
         erasure::erasure_self_test();
         object::compress_self_test();
 
-        handle_server_cli_args(m);
+        handle_server_cli_args(m).await;
 
         let mut config = ServerConfig::new(NoClientAuth::new());
         // config.set_single_cert();

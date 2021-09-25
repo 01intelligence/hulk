@@ -17,8 +17,8 @@ pub struct CliContext {
     pub quiet: bool,
     pub anonymous: bool,
     pub host: String,
-    pub http_port: u16,
-    pub rpc_port: u16,
+    pub client_port: u16,
+    pub peer_port: u16,
     pub strict_s3_compatibility: bool,
 }
 

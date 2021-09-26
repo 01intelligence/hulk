@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use lazy_static::lazy_static;
 
@@ -67,19 +67,22 @@ pub struct Globals {
 
     pub http_stats: Arc<HttpStats>,
 
-    pub endpoints: Arc<Mutex<crate::endpoint::EndpointServerPools>>,
+    pub endpoints: Arc<RwLock<crate::endpoint::EndpointServerPools>>,
 
     pub local_node_name: Arc<Mutex<String>>,
 
-    pub active_cred: Arc<Mutex<crate::auth::Credentials>>,
+    pub active_cred: Arc<RwLock<crate::auth::Credentials>>,
 
     // Root domains for virtual host style requests.
-    pub domain_names: Arc<Mutex<Vec<String>>>,
+    pub domain_names: Arc<RwLock<Vec<String>>>,
     // Root domain IP addresses.
     pub domain_ips: Arc<Mutex<StringSet>>,
 
     // Deployment ID, unique per deployment.
     pub deployment_id: Arc<Mutex<String>>,
+
+    // If writes to FS backend should be O_SYNC.
+    pub fs_osync: Arc<AtomicBool>,
 }
 
 lazy_static! {
@@ -96,6 +99,21 @@ impl<T: ?Sized> Guard<T> for Arc<Mutex<T>> {
     }
 }
 
+pub trait ReadWriteGuard<T: ?Sized> {
+    fn read_guard(&self) -> RwLockReadGuard<'_, T>;
+    fn write_guard(&self) -> RwLockWriteGuard<'_, T>;
+}
+
+impl<T: ?Sized> ReadWriteGuard<T> for Arc<RwLock<T>> {
+    fn read_guard(&self) -> RwLockReadGuard<'_, T> {
+        self.as_ref().read().unwrap()
+    }
+
+    fn write_guard(&self) -> RwLockWriteGuard<'_, T> {
+        self.as_ref().write().unwrap()
+    }
+}
+
 pub trait Get<T: Copy> {
     fn get(&self) -> T;
 }
@@ -109,6 +127,16 @@ impl<T: Copy> Get<T> for Arc<Mutex<T>> {
 impl Get<bool> for Arc<AtomicBool> {
     fn get(&self) -> bool {
         self.load(Ordering::Relaxed)
+    }
+}
+
+pub trait Set<T> {
+    fn set(&self, val: T);
+}
+
+impl Set<bool> for Arc<AtomicBool> {
+    fn set(&self, val: bool) {
+        self.store(val, Ordering::Relaxed);
     }
 }
 

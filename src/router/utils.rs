@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use actix_web::HttpRequest;
 
-use crate::globals::{self, Guard, GLOBALS};
+use crate::globals::{self, Guard, ReadWriteGuard, GLOBALS};
 
 // Returns "/<bucket>/<object>" for path-style or virtual-host-style requests.
 pub fn get_resource<'a>(
@@ -38,7 +38,7 @@ pub fn request_to_bucket_object(req: &HttpRequest) -> (Cow<'_, str>, Cow<'_, str
     let path = get_resource(
         req.path(),
         req.uri().host().unwrap(),
-        &(*GLOBALS.domain_names.guard())[..],
+        &(*GLOBALS.domain_names.read_guard())[..],
     )
     .unwrap(); // TODO: unwrap?
     match path {

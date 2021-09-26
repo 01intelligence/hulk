@@ -70,8 +70,8 @@ pub fn parse_bool(s: &str) -> anyhow::Result<bool> {
 
 pub fn parse_bool_ext(s: &str) -> anyhow::Result<bool> {
     match s {
-        "on" | "ON" | "On" | "enabled" => Ok(true),
-        "off" | "OFF" | "Off" | "disabled" => Ok(false),
+        "on" | "ON" | "On" | "enabled" | "ENABLED" | "Enabled" => Ok(true),
+        "off" | "OFF" | "Off" | "disabled" | "DISABLED" | "Disabled" => Ok(false),
         _ => parse_bool(s),
     }
 }

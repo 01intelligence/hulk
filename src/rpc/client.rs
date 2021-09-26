@@ -14,7 +14,7 @@ use tonic::Code;
 use tower::Service;
 
 use crate::errors::AsError;
-use crate::globals::{Guard, GLOBALS};
+use crate::globals::{Guard, ReadWriteGuard, GLOBALS};
 use crate::utils;
 use crate::utils::{DateTimeExt, DateTimeFormatExt};
 
@@ -72,7 +72,7 @@ pub fn set_inter_node_client_builder(ca_certs: Option<&[u8]>) -> anyhow::Result<
 }
 
 pub fn new_auth_token() -> String {
-    let active_cred = GLOBALS.active_cred.guard();
+    let active_cred = GLOBALS.active_cred.read_guard();
     crate::http::authenticate_node(active_cred.access_key.clone(), &active_cred.secret_key).unwrap()
 }
 

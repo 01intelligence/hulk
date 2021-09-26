@@ -9,7 +9,7 @@ pub use storage_client::*;
 pub use storage_server::*;
 use tonic::{Request, Status};
 
-use crate::globals::{Guard, GLOBALS};
+use crate::globals::{Guard, ReadWriteGuard, GLOBALS};
 use crate::utils::{self, DateTimeExt, DateTimeFormatExt};
 
 const DEFAULT_SKEW_TIME: utils::Duration = utils::minutes(15);
@@ -35,7 +35,7 @@ pub fn validate_request(req: Request<()>) -> Result<Request<()>, Status> {
     };
 
     let token = get_str("authorization")?;
-    let active_cred = GLOBALS.active_cred.guard();
+    let active_cred = GLOBALS.active_cred.read_guard();
     let claims = crate::jwt::parse_with_standard_claims(token, active_cred.secret_key.as_bytes())
         .map_err(|_| Status::unauthenticated(NO_AUTH_TOKEN))?;
 

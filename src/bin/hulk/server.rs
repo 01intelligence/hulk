@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use actix_web::{web, App, HttpResponse, HttpServer};
 use clap::ArgMatches;
-use hulk::globals::{self, Guard, GLOBALS};
+use hulk::globals::{self, Guard, ReadWriteGuard, GLOBALS};
 use rustls::{NoClientAuth, ResolvesServerCertUsingSNI, ServerConfig};
 
 use super::*;
@@ -23,6 +23,10 @@ pub async fn handle_server_cli_args(m: &ArgMatches) {
     );
 }
 
+pub async fn handle_server_env_vars() {
+    handle_common_env_vars().await;
+}
+
 pub struct Server {
     pub server: actix_web::dev::Server,
 }
@@ -38,6 +42,7 @@ impl Server {
         object::compress_self_test();
 
         handle_server_cli_args(m).await;
+        handle_server_env_vars().await;
 
         let mut config = ServerConfig::new(NoClientAuth::new());
         // config.set_single_cert();
@@ -54,7 +59,7 @@ impl Server {
         let (rpc_tx, rpc_rx) = tokio::sync::oneshot::channel();
         let rpc_server = hulk::rpc::serve(
             GLOBALS.http_addr.guard().as_str().parse().unwrap(),
-            GLOBALS.endpoints.guard().clone(),
+            GLOBALS.endpoints.read_guard().clone(),
             async {
                 let _ = rpc_rx.await;
             },

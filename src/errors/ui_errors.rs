@@ -174,8 +174,6 @@ pub enum UiError {
     InvalidCredentials,
     MissingEnvCredentialRootUser,
     MissingEnvCredentialRootPassword,
-    MissingEnvCredentialAccessKey,
-    MissingEnvCredentialSecretKey,
     InvalidErasureEndpoints,
     InvalidNumberOfErasureEndpoints,
     StorageClassValue,
@@ -227,8 +225,6 @@ impl UiError {
             UiError::InvalidCredentials => &INVALID_CREDENTIALS,
             UiError::MissingEnvCredentialRootUser => &MISSING_ENV_CREDENTIAL_ROOT_USER,
             UiError::MissingEnvCredentialRootPassword => &MISSING_ENV_CREDENTIAL_ROOT_PASSWORD,
-            UiError::MissingEnvCredentialAccessKey => &MISSING_ENV_CREDENTIAL_ACCESS_KEY,
-            UiError::MissingEnvCredentialSecretKey => &MISSING_ENV_CREDENTIAL_SECRET_KEY,
             UiError::InvalidErasureEndpoints => &INVALID_ERASURE_ENDPOINTS,
             UiError::InvalidNumberOfErasureEndpoints => &INVALID_NUMBER_OF_ERASURE_ENDPOINTS,
             UiError::StorageClassValue => &STORAGE_CLASS_VALUE,
@@ -377,18 +373,6 @@ const MISSING_ENV_CREDENTIAL_ROOT_USER: UiErrorItemConst = UiErrorItemConst::new
 const MISSING_ENV_CREDENTIAL_ROOT_PASSWORD: UiErrorItemConst = UiErrorItemConst::new(
     formatcp!("Missing credential environment variable, \"{}\"", ENV_ROOT_PASSWORD),
     formatcp!("Environment variable \"{}\" is missing", ENV_ROOT_PASSWORD),
-    "Root user name (access key) and root password (secret key) are expected to be specified via environment variables HULK_ROOT_USER and HULK_ROOT_PASSWORD respectively",
-);
-
-const MISSING_ENV_CREDENTIAL_ACCESS_KEY: UiErrorItemConst = UiErrorItemConst::new(
-    formatcp!("Missing credential environment variable, \"{}\"", ENV_ACCESS_KEY),
-    formatcp!("Environment variables \"{}\" and \"{}\" are deprecated", ENV_ACCESS_KEY, ENV_SECRET_KEY),
-    "Root user name (access key) and root password (secret key) are expected to be specified via environment variables HULK_ROOT_USER and HULK_ROOT_PASSWORD respectively",
-);
-
-const MISSING_ENV_CREDENTIAL_SECRET_KEY: UiErrorItemConst = UiErrorItemConst::new(
-    formatcp!("Missing credential environment variable, \"{}\"", ENV_SECRET_KEY),
-    formatcp!("Environment variables \"{}\" and \"{}\" are deprecated", ENV_SECRET_KEY, ENV_ACCESS_KEY),
     "Root user name (access key) and root password (secret key) are expected to be specified via environment variables HULK_ROOT_USER and HULK_ROOT_PASSWORD respectively",
 );
 

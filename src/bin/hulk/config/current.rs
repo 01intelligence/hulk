@@ -15,7 +15,7 @@ pub fn init_help() {
         REGION_SUB_SYS.to_owned() => DEFAULT_REGION_KVS.clone(),
         API_SUB_SYS.to_owned() => api::DEFAULT_KVS.clone(),
         CREDENTIALS_SUB_SYS.to_owned() => DEFAULT_CREDENTIAL_KVS.clone(),
-        LOGGER_WEBHOOK_SUB_SYS.to_owned() => logger::DEFAULT_KVS.clone(),
+        LOGGER_WEBHOOK_SUB_SYS.to_owned() => logger::DEFAULT_LOGGER_KVS.clone(),
         AUDIT_WEBHOOK_SUB_SYS.to_owned() => logger::DEFAULT_AUDIT_KVS.clone(),
         HEAL_SUB_SYS.to_owned() => heal::DEFAULT_KVS.clone(),
         SCANNER_SUB_SYS.to_owned() => scanner::DEFAULT_KVS.clone(),

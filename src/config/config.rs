@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::ops::Index;
+use std::ops::{Deref, Index};
 use std::sync::{Arc, RwLock};
 
 use anyhow::{anyhow, bail};
@@ -308,6 +308,14 @@ pub struct Target {
 
 #[derive(Default)]
 pub struct Targets(pub Vec<Target>);
+
+impl Deref for Config {
+    type Target = HashMap<String, HashMap<String, KVS>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 impl Config {
     pub fn new() -> Self {

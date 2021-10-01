@@ -4,7 +4,10 @@ use slog::{Drain, Duplicate};
 lazy_static! {
     static ref GLOBAL_LOG_GUARD: (slog_scope::GlobalLoggerGuard, ()) = {
         let decorator = slog_term::TermDecorator::new().build();
-        let drain = slog_term::FullFormat::new(decorator).build().fuse();
+        let drain = slog_term::FullFormat::new(decorator)
+            .use_file_location()
+            .build()
+            .fuse();
         let drain = slog_async::Async::new(drain).build().fuse();
         let logger = slog::Logger::root(drain, slog::slog_o!());
 

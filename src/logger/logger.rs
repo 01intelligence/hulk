@@ -9,7 +9,8 @@ use opentelemetry::Context;
 
 use crate::logger::backtrace::Backtrace;
 use crate::logger::backtrace::Inner::*;
-use crate::logger::entry::{Api, Args, Entry, ErrKind, Trace};
+use crate::logger::entry::log::{Api, Args, Entry, Trace};
+use crate::logger::entry::ErrKind;
 use crate::logger::reqinfo::ReqInfoContextExt;
 use crate::utils;
 use crate::utils::DateTimeFormatExt;
@@ -54,7 +55,7 @@ fn hash_string(input: &str) -> String {
 }
 
 fn log_if<Err: std::error::Error>(ctx: Context, err: Err, err_kind: Option<ErrKind>) {
-    let err_kind = err_kind.unwrap_or(ErrKind::Hulk);
+    let err_kind = err_kind.unwrap_or(ErrKind::System);
     let req = ctx.req_info();
 
     let api = if req.api.is_empty() {
@@ -78,7 +79,7 @@ fn log_if<Err: std::error::Error>(ctx: Context, err: Err, err_kind: Option<ErrKi
     let mut entry = Entry {
         deployment_id,
         level: Level::Error.to_string(),
-        log_kind: err_kind.to_string(),
+        kind: err_kind,
         time: utils::now().rfc3339_nano(),
         api: Some(Api {
             name: api,
@@ -93,7 +94,7 @@ fn log_if<Err: std::error::Error>(ctx: Context, err: Err, err_kind: Option<ErrKi
         request_id: "".to_string(),
         user_agent: "".to_string(),
         message: "".to_string(),
-        trace: Some(Trace {
+        error: Some(Trace {
             message,
             source: trace,
             variables: tags,

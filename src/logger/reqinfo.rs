@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use opentelemetry::Context;
 
-use crate::logger::entry::Value;
+use crate::logger::entry::log::Value;
 
 lazy_static::lazy_static! {
     static ref NOOP_REQ_INFO: ReqInfo = ReqInfo::default();
@@ -52,11 +52,12 @@ impl ReqInfo {
         }
     }
 
-    pub fn append_tag(&mut self, key: String, val: Value) {
+    pub fn append_tag(&mut self, key: String, val: Value) -> &mut Self {
         self.tags.push(KeyValue { key, val });
+        self
     }
 
-    pub fn set_tag(&mut self, key: String, val: Value) {
+    pub fn set_tag(&mut self, key: String, val: Value) -> &mut Self {
         // Search of tag key already exists in tags
         if let Some(kv) = self.tags.iter_mut().find(|kv| kv.key == key) {
             kv.val = val;
@@ -64,6 +65,7 @@ impl ReqInfo {
             // Append to the end of tags list
             self.append_tag(key, val);
         }
+        self
     }
 
     pub fn get_tags(&self) -> &Vec<KeyValue> {

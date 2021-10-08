@@ -1,18 +1,139 @@
-// {{{ Imports & meta
-
 use std::cell::RefCell;
-use std::fmt::Write;
+use std::fmt::{Arguments, Write};
 use std::{fmt, io, result};
 
 use serde::ser::SerializeMap;
 use serde::serde_if_integer128;
-use slog::{o, FnValue, Key, OwnedKVList, PushFnValue, Record, SendSyncRefUnwindSafeKV, KV};
+use slog::{
+    o, FnValue, Key, OwnedKVList, PushFnValue, Record, SendSyncRefUnwindSafeKV, SerdeValue, KV,
+};
 
-// }}}
-
-// {{{ Serialize
 thread_local! {
-    static TL_BUF: RefCell<String> = RefCell::new(String::with_capacity(128))
+    static TL_BUF: RefCell<String> = RefCell::new(String::with_capacity(128));
+}
+
+use reqwest::{Error, Response};
+use tokio::sync::mpsc::{channel, Receiver, Sender};
+use typetag::erased_serde;
+use typetag::erased_serde::Serialize;
+
+use super::Entry;
+use crate::utils;
+
+pub struct WebhookDrain {
+    tx: Sender<Vec<u8>>,
+    endpoint: String,
+}
+
+impl WebhookDrain {
+    pub fn new(endpoint: String, user_agent: String, auth_token: Option<String>) -> Self {
+        let (tx, mut rx) = channel(10000);
+        let client = reqwest::Client::builder().build().unwrap(); // TODO
+        let drain = WebhookDrain {
+            tx,
+            endpoint: endpoint.clone(),
+        };
+
+        tokio::spawn(async move {
+            use http::{header, HeaderValue, StatusCode};
+            while let Some(json) = rx.recv().await {
+                let mut req = client
+                    .post(&endpoint)
+                    .timeout(utils::seconds(5))
+                    .header(
+                        header::CONTENT_TYPE,
+                        HeaderValue::from_static("application/json"),
+                    )
+                    .header(
+                        header::USER_AGENT,
+                        HeaderValue::from_str(&user_agent).unwrap(),
+                    )
+                    .body(json);
+                if let Some(auth_token) = &auth_token {
+                    req = req.header(
+                        header::AUTHORIZATION,
+                        HeaderValue::from_str(auth_token).unwrap(),
+                    );
+                }
+                match req.send().await {
+                    Ok(rep) => match rep.status() {
+                        StatusCode::OK => {}
+                        StatusCode::FORBIDDEN => {
+                            println!("{} returned '{}', please check if your auth token is correctly set", endpoint, rep.status());
+                        }
+                        status => {
+                            println!(
+                                "{} returned '{}', please check your endpoint configuration",
+                                endpoint, status,
+                            );
+                        }
+                    },
+                    Err(err) => {
+                        println!(
+                            "{} returned '{}', please check your endpoint configuration",
+                            endpoint, err,
+                        );
+                    }
+                }
+            }
+        });
+
+        drain
+    }
+
+    fn log_impl(&self, record: &Record, values: &OwnedKVList) -> std::io::Result<()> {
+        let mut buf = Vec::with_capacity(128);
+        {
+            let mut ser = serde_json::Serializer::pretty(&mut buf);
+            let mut serializer = WebhookSerializer {
+                ser: Box::new(<dyn erased_serde::Serializer>::erase(&mut ser)),
+            };
+
+            // values.serialize(record, &mut serializer)?;
+            record.kv().serialize(record, &mut serializer)?;
+        }
+
+        tokio::task::block_in_place(move || {
+            let _ = self.tx.blocking_send(buf);
+        });
+        Ok(())
+    }
+}
+
+impl slog::Drain for WebhookDrain {
+    type Ok = ();
+    type Err = slog::Never;
+
+    fn log(&self, record: &Record, values: &OwnedKVList) -> Result<Self::Ok, Self::Err> {
+        if let Err(err) = self.log_impl(record, values) {
+            println!("WebhookDrain log: {}", err);
+        }
+        Ok(())
+    }
+}
+
+struct WebhookSerializer<'a> {
+    ser: Box<dyn erased_serde::Serializer + 'a>,
+}
+
+impl<'a> slog::Serializer for WebhookSerializer<'a> {
+    fn emit_arguments(&mut self, key: Key, val: &Arguments) -> slog::Result {
+        // Deny any value, excluding `SerdeValue`.
+        Err(slog::Error::Other)
+    }
+
+    fn emit_serde(&mut self, key: Key, value: &SerdeValue) -> slog::Result {
+        value
+            .as_serde()
+            .erased_serialize(&mut self.ser)
+            .map_err(|e| {
+                io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("serde serialization error: {}", e),
+                )
+            })?;
+        Ok(())
+    }
 }
 
 /// `slog::Serializer` adapter for `serde::Serializer`
@@ -131,12 +252,11 @@ where
     }
 
     fn emit_serde(&mut self, key: Key, value: &dyn slog::SerdeValue) -> slog::Result {
+        self.ser_map.serialize_entry(key, value.as_serde());
         impl_m!(self, key, value.as_serde())
     }
 }
-// }}}
 
-// {{{ Json
 /// Json `Drain`
 ///
 /// Each record will be printed as a Json map
@@ -218,9 +338,6 @@ where
     }
 }
 
-// }}}
-
-// {{{ JsonBuilder
 /// Json `Drain` builder
 ///
 /// Create with `Json::new`.
@@ -305,5 +422,56 @@ where
         ))
     }
 }
-// }}}
-// vim: foldmethod=marker foldmarker={{{,}}}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[actix_rt::test]
+    async fn test_logger_webhook() {
+        use actix_web::{web, App, HttpRequest, HttpServer, Responder};
+        use slog::{info, Drain};
+
+        async fn index(json: String) -> impl Responder {
+            println!("Request body: '{}'", json);
+            json
+        }
+
+        actix_rt::spawn(async {
+            HttpServer::new(|| App::new().route("/", web::post().to(index)))
+                .bind(("127.0.0.1", 8080))
+                .unwrap()
+                .run()
+                .await;
+        });
+
+        let drain = WebhookDrain::new("http://127.0.0.1:8080".to_owned(), "".to_owned(), None);
+        let drain = slog_async::Async::new(drain).build().fuse();
+        let log = slog::Logger::root(drain, slog::slog_o!());
+
+        use super::super::log;
+        let entry = log::Entry {
+            deployment_id: "deployment_id".to_string(),
+            level: "level".to_string(),
+            kind: super::super::ErrKind::System,
+            time: "time".to_string(),
+            api: Some(log::Api {
+                name: "name".to_string(),
+                args: Some(log::Args {
+                    bucket: "bucket".to_string(),
+                    object: "object".to_string(),
+                    metadata: Default::default(),
+                }),
+            }),
+            remote_host: "remote_host".to_string(),
+            host: "host".to_string(),
+            request_id: "request_id".to_string(),
+            user_agent: "user_agent".to_string(),
+            message: "message".to_string(),
+            error: None,
+        };
+        slog::info!(log, ""; entry);
+
+        tokio::time::sleep(utils::milliseconds(200)).await;
+    }
+}

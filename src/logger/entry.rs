@@ -81,7 +81,7 @@ pub mod log {
             key: Key,
             serializer: &mut Serializer,
         ) -> slog::Result {
-            Err(slog::Error::Other)
+            serializer.emit_serde(key, self)
         }
     }
 
@@ -155,7 +155,7 @@ pub mod audit {
             key: Key,
             serializer: &mut Serializer,
         ) -> slog::Result {
-            Err(slog::Error::Other)
+            serializer.emit_serde(key, self)
         }
     }
 

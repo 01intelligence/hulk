@@ -37,7 +37,7 @@ hex-literal = "0.3.1"
 byteorder = "1.4.3"
 hex = "0.4.3"
 slog-term = "2.8.0"
-slog-async = "2.6.0"
+slog-async = { version = "2.6.0", features = ["nested-values"] }
 slog-scope = "4.4.0"
 slog-stdlog = "4.1.0"
 dirs = "3.0.2"
@@ -71,7 +71,7 @@ actix-rt = "2.2.0"
 actix-server = "2.0.0-beta.5"
 const_format = "0.2.14"
 trust-dns-resolver = "0.20.3"
-reqwest = { version = "0.11.4", default-features = false, features = ["rustls-tls"] }
+reqwest = { version = "0.11.4", default-features = false, features = ["rustls-tls", "json"] }
 hyper = "0.14.9"
 ring = "0.16.20"
 md-5 = "0.9.1"

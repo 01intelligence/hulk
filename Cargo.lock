@@ -3573,8 +3573,7 @@ checksum = "c307a32c1c5c437f38c7fd45d753050587732ba8628319fbdf12a7e289ccc590"
 [[package]]
 name = "slog"
 version = "2.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8347046d4ebd943127157b94d63abb990fcf729dc4e9978927fdf4ac3c998d06"
+source = "git+https://github.com/01intelligence/slog?branch=master#dc2a1dba384289a14afe6904efe8bd36b106b13e"
 dependencies = [
  "erased-serde",
 ]

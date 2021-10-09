@@ -81,29 +81,28 @@ fn log_if<Err: std::error::Error>(ctx: Context, err: Err, err_kind: Option<ErrKi
         level: Level::Error.to_string(),
         kind: err_kind,
         time: utils::now().rfc3339_nano(),
-        api: Some(Api {
+        api: Api {
             name: api,
             args: Some(Args {
                 bucket: req.bucket_name.clone(),
                 object: req.object_name.clone(),
                 metadata: Default::default(),
             }),
-        }),
+        },
         remote_host: "".to_string(),
         host: "".to_string(),
         request_id: "".to_string(),
         user_agent: "".to_string(),
         message: "".to_string(),
-        error: Some(Trace {
+        trace: Trace {
             message,
             source: trace,
             variables: tags,
-        }),
+        },
     };
 
     if ANONYMOUS_FLAG.load(Ordering::Relaxed) {
-        let api = entry.api.as_mut().unwrap();
-        let args = api.args.as_mut().unwrap();
+        let args = entry.api.args.as_mut().unwrap();
         args.bucket = hash_string(&args.bucket);
         args.object = hash_string(&args.object);
         entry.remote_host = hash_string(&entry.remote_host);

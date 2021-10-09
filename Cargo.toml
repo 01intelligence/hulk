@@ -159,3 +159,4 @@ camino = { git = 'https://github.com/01intelligence/camino', branch = 'master' }
 slog-term = { git = 'https://github.com/01intelligence/term', branch = 'master' }
 chrono = { git = 'https://github.com/01intelligence/chrono', branch = 'v0.4.19' }
 rmp = { git = 'https://github.com/01intelligence/msgpack-rust', branch = 'rmp/v0.8.10' }
+slog = { git = 'https://github.com/01intelligence/slog', branch = 'master' }

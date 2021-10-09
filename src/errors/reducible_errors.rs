@@ -1,7 +1,6 @@
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
-use anyhow::private::kind::AdhocKind;
 use thiserror::Error;
 
 use super::StorageError;

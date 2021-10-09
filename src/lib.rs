@@ -17,6 +17,7 @@
 #![feature(async_closure)]
 #![feature(box_into_pin)]
 #![feature(is_sorted)]
+#![feature(trait_upcasting)]
 #![cfg_attr(windows, feature(windows_by_handle))]
 
 pub mod admin;

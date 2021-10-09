@@ -22,8 +22,7 @@ pub mod log {
         pub level: String,
         pub kind: ErrKind,
         pub time: String,
-        #[serde(skip_serializing_if = "Option::is_none", default)]
-        pub api: Option<Api>,
+        pub api: Api,
         #[serde(skip_serializing_if = "String::is_empty", default)]
         pub remote_host: String,
         #[serde(skip_serializing_if = "String::is_empty", default)]
@@ -34,8 +33,7 @@ pub mod log {
         pub user_agent: String,
         #[serde(skip_serializing_if = "String::is_empty", default)]
         pub message: String,
-        #[serde(skip_serializing_if = "Option::is_none", default)]
-        pub error: Option<Trace>,
+        pub trace: Trace,
     }
 
     #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -92,6 +90,10 @@ pub mod log {
 
         fn to_sendable(&self) -> Box<dyn SerdeValue + Send + 'static> {
             Box::new(self.clone())
+        }
+
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
         }
     }
 
@@ -166,6 +168,10 @@ pub mod audit {
 
         fn to_sendable(&self) -> Box<dyn SerdeValue + Send + 'static> {
             Box::new(self.clone())
+        }
+
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
         }
     }
 

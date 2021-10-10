@@ -1,12 +1,12 @@
 use clap::ArgMatches;
 use hulk::config;
-use hulk::globals::{Guard, ReadWriteGuard, Set, GLOBALS};
+use hulk::globals::{ReadWriteGuard, Set, GLOBALS};
 use hulk::utils::{PathAbsolutize, PathBuf};
 
 use super::*;
 
 pub async fn handle_common_cli_args(m: &ArgMatches) {
-    let mut global_cli_context = GLOBALS.cli_context.guard();
+    let mut global_cli_context = GLOBALS.cli_context.write_guard();
     global_cli_context.quiet = m
         .value_of("quiet")
         .map_or(false, |v| v.parse::<bool>().unwrap());
@@ -84,7 +84,7 @@ pub async fn handle_common_env_vars() {
         }
     } else {
         domain_ips = hulk::endpoint::get_local_ip4();
-        for endpoint in GLOBALS.endpoints.read_guard().host_names() {
+        for endpoint in GLOBALS.endpoints.guard().host_names() {
             domain_ips.add(endpoint);
         }
     }

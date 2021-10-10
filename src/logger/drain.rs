@@ -6,7 +6,9 @@ use slog::{Drain, OwnedKVList, Record};
 lazy_static! {
     pub static ref LOG_TARGETS: Vec<Target> = Default::default();
     pub static ref AUDIT_TARGETS: Vec<Target> = Default::default();
+    // Consumed after initialized.
     pub static ref LOG_DRAIN: Mutex<Option<MultipleDrain>> = Default::default();
+    // Consumed after initialized.
     pub static ref AUDIT_DRAIN: Mutex<Option<MultipleDrain>> = Default::default();
     pub static ref LOG_LOGGER: slog::Logger = {
         let drain = LOG_DRAIN.lock().unwrap().take().unwrap();
@@ -17,19 +19,6 @@ lazy_static! {
         let drain = AUDIT_DRAIN.lock().unwrap().take().unwrap();
         let drain = slog_async::Async::new(drain).build().fuse();
         slog::Logger::root(drain, slog::slog_o!())
-    };
-    static ref GLOBAL_LOG_GUARD: (slog_scope::GlobalLoggerGuard, ()) = {
-        let decorator = slog_term::TermDecorator::new().build();
-        let drain = slog_term::FullFormat::new(decorator)
-            .use_file_location()
-            .build()
-            .fuse();
-        let drain = slog_async::Async::new(drain).build().fuse();
-        let logger = slog::Logger::root(drain, slog::slog_o!());
-
-        let scope_guard = slog_scope::set_global_logger(logger);
-        let log_guard = slog_stdlog::init().unwrap();
-        (scope_guard, log_guard)
     };
 }
 

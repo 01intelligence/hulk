@@ -24,7 +24,7 @@ pub struct CliContext {
 
 #[derive(Default)]
 pub struct Globals {
-    pub cli_context: Arc<Mutex<CliContext>>,
+    pub cli_context: Arc<RwLock<CliContext>>,
 
     // Indicates if the running hulk server is distributed setup.
     pub is_dist_erasure: Arc<AtomicBool>,
@@ -79,7 +79,7 @@ pub struct Globals {
     pub domain_ips: Arc<Mutex<StringSet>>,
 
     // Deployment ID, unique per deployment.
-    pub deployment_id: Arc<Mutex<String>>,
+    pub deployment_id: Arc<RwLock<String>>,
 
     // If writes to FS backend should be O_SYNC.
     pub fs_osync: Arc<AtomicBool>,
@@ -100,12 +100,12 @@ impl<T: ?Sized> Guard<T> for Arc<Mutex<T>> {
 }
 
 pub trait ReadWriteGuard<T: ?Sized> {
-    fn read_guard(&self) -> RwLockReadGuard<'_, T>;
+    fn guard(&self) -> RwLockReadGuard<'_, T>;
     fn write_guard(&self) -> RwLockWriteGuard<'_, T>;
 }
 
 impl<T: ?Sized> ReadWriteGuard<T> for Arc<RwLock<T>> {
-    fn read_guard(&self) -> RwLockReadGuard<'_, T> {
+    fn guard(&self) -> RwLockReadGuard<'_, T> {
         self.as_ref().read().unwrap()
     }
 

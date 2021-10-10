@@ -59,7 +59,7 @@ impl Server {
         let (rpc_tx, rpc_rx) = tokio::sync::oneshot::channel();
         let rpc_server = hulk::rpc::serve(
             GLOBALS.http_addr.guard().as_str().parse().unwrap(),
-            GLOBALS.endpoints.read_guard().clone(),
+            GLOBALS.endpoints.guard().clone(),
             async {
                 let _ = rpc_rx.await;
             },

@@ -72,7 +72,7 @@ pub fn set_inter_node_client_builder(ca_certs: Option<&[u8]>) -> anyhow::Result<
 }
 
 pub fn new_auth_token() -> String {
-    let active_cred = GLOBALS.active_cred.read_guard();
+    let active_cred = GLOBALS.active_cred.guard();
     crate::http::authenticate_node(active_cred.access_key.clone(), &active_cred.secret_key).unwrap()
 }
 

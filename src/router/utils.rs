@@ -38,7 +38,7 @@ pub fn request_to_bucket_object(req: &HttpRequest) -> (Cow<'_, str>, Cow<'_, str
     let path = get_resource(
         req.path(),
         req.uri().host().unwrap(),
-        &(*GLOBALS.domain_names.read_guard())[..],
+        &(*GLOBALS.domain_names.guard())[..],
     )
     .unwrap(); // TODO: unwrap?
     match path {

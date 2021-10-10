@@ -56,6 +56,20 @@ impl<'a> slog::Serializer for ConsoleSerializer<'a> {
 
         self.decorator.start_whitespace()?;
 
+        if *super::JSON_FLAG {
+            write!(
+                self.decorator,
+                "{}",
+                serde_json::to_string(entry).map_err(|e| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("serde serialization error: {}", e),
+                    )
+                })?
+            )?;
+            return Ok(());
+        }
+
         write!(self.decorator, "API: {}(", entry.api.name)?;
         if let Some(args) = &entry.api.args {
             if !args.bucket.is_empty() {

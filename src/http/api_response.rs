@@ -9,7 +9,7 @@ use serde::Serialize;
 
 use super::*;
 use crate::errors;
-use crate::globals::{self, Guard, GLOBALS};
+use crate::globals::{self, Guard, ReadWriteGuard, GLOBALS};
 
 pub struct ApiResponse<B = AnyBody> {
     res: HttpResponse<B>,

@@ -3,14 +3,13 @@ use std::ops::Sub;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use log::error;
 use tokio::sync::Mutex;
 use tokio::time::{timeout_at, Duration, Instant};
 
 use super::*;
 use crate::dsync::{self, DRWLock, Dsync, NetLocker};
-use crate::object;
 use crate::object::path_join;
+use crate::{error, object};
 
 #[async_trait]
 pub trait RWLocker {

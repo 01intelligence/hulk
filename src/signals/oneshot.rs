@@ -73,7 +73,7 @@ impl<S: Signaller> OneshotSignals<S> {
                     unix::signal(*kind)
                         .map(|tokio_sig| (*sig, tokio_sig))
                         .map_err(|e| {
-                            log::error!(
+                            crate::error!(
                                 "Can not initialize stream handler for {:?} err: {}",
                                 sig,
                                 e

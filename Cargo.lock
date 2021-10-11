@@ -1828,7 +1828,6 @@ dependencies = [
  "jsonwebtoken",
  "lazy_static",
  "libc",
- "log",
  "maplit",
  "md-5",
  "memoffset",

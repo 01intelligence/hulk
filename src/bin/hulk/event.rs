@@ -1,5 +1,5 @@
+use hulk::info;
 use hulk::signals::{FromSignal, OneshotSignals, Signal};
-use log::info;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 
 pub enum Event {

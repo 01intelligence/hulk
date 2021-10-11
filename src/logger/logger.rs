@@ -35,18 +35,15 @@ enum Level {
     Fatal,
 }
 
-fn hash_string(input: &str) -> String {
-    let mut hasher = highway::HighwayHasher::new(*LOGGER_HIGHWAY_KEY);
-    hasher.append(input.as_bytes());
-    let hash = hasher.finalize256();
-    let mut wdr = std::io::Cursor::new(vec![0u8; 32]);
-    hash.iter().for_each(|item| {
-        wdr.write_u64::<LittleEndian>(*item).unwrap();
-    });
-    hex::encode(wdr.get_ref())
+pub fn log<Err: std::error::Error>(ctx: Context, err: Err) {
+    log_inner(ctx, err, None);
 }
 
-fn log_if<Err: std::error::Error>(ctx: Context, err: Err, err_kind: Option<ErrKind>) {
+pub fn log_with_kind<Err: std::error::Error>(ctx: Context, err: Err, err_kind: Option<ErrKind>) {
+    log_inner(ctx, err, err_kind);
+}
+
+fn log_inner<Err: std::error::Error>(ctx: Context, err: Err, err_kind: Option<ErrKind>) {
     let err_kind = err_kind.unwrap_or(ErrKind::System);
     let req = ctx.req_info();
 
@@ -58,7 +55,7 @@ fn log_if<Err: std::error::Error>(ctx: Context, err: Err, err_kind: Option<ErrKi
 
     let tags = req.get_tags_map();
 
-    let trace = get_trace(3);
+    let trace = get_trace(4);
 
     let message = format!("{} ({})", err, std::any::type_name_of_val(&err));
 
@@ -103,6 +100,17 @@ fn log_if<Err: std::error::Error>(ctx: Context, err: Err, err_kind: Option<ErrKi
     }
 
     slog::error!(super::LOG_LOGGER, ""; entry);
+}
+
+fn hash_string(input: &str) -> String {
+    let mut hasher = highway::HighwayHasher::new(*LOGGER_HIGHWAY_KEY);
+    hasher.append(input.as_bytes());
+    let hash = hasher.finalize256();
+    let mut wdr = std::io::Cursor::new(vec![0u8; 32]);
+    hash.iter().for_each(|item| {
+        wdr.write_u64::<LittleEndian>(*item).unwrap();
+    });
+    hex::encode(wdr.get_ref())
 }
 
 // Creates and returns stack trace
@@ -152,3 +160,39 @@ fn get_trace(trace_level: usize) -> Vec<String> {
     }
     trace
 }
+
+#[macro_export]
+macro_rules! trace(
+    ($($args:tt)*) => {
+        slog::trace!($crate::logger::INTRINSIC_LOGGER, $($args)*)
+    };
+);
+
+#[macro_export]
+macro_rules! info(
+    ($($args:tt)*) => {
+        slog::info!($crate::logger::INTRINSIC_LOGGER, $($args)*)
+    };
+);
+
+#[macro_export]
+macro_rules! warn(
+    ($($args:tt)*) => {
+        slog::warn!($crate::logger::INTRINSIC_LOGGER, $($args)*)
+    };
+);
+
+#[macro_export]
+macro_rules! error(
+    ($($args:tt)*) => {
+        slog::error!($crate::logger::INTRINSIC_LOGGER, $($args)*)
+    };
+);
+
+#[macro_export]
+macro_rules! fatal(
+    ($($args:tt)+) => {
+        slog::crit!($crate::logger::INTRINSIC_LOGGER, $($args)+);
+        std::process::exit(1)
+    };
+);

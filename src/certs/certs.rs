@@ -3,13 +3,13 @@ use std::io::BufReader;
 use std::sync::{Arc, RwLock};
 
 use anyhow::anyhow;
-use log::error;
 use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
 use rustls::internal::pemfile::{certs as extract_certs, pkcs8_private_keys};
 use rustls::sign::{any_supported_type, CertifiedKey};
 use rustls::{ClientHello, ResolvesServerCert};
 use tokio::io::AsyncReadExt;
 
+use crate::error;
 use crate::fs::File;
 use crate::utils::Path;
 

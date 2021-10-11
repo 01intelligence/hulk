@@ -6,17 +6,23 @@ use slog::{Drain, OwnedKVList, Record};
 lazy_static! {
     pub static ref LOG_TARGETS: Vec<Target> = Default::default();
     pub static ref AUDIT_TARGETS: Vec<Target> = Default::default();
-    // Consumed after initialized.
     pub static ref LOG_DRAIN: Mutex<Option<MultipleDrain>> = Default::default();
-    // Consumed after initialized.
     pub static ref AUDIT_DRAIN: Mutex<Option<MultipleDrain>> = Default::default();
     pub static ref LOG_LOGGER: slog::Logger = {
+        // Consumed `LOG_DRAIN` after initialized.
         let drain = LOG_DRAIN.lock().unwrap().take().unwrap();
         let drain = slog_async::Async::new(drain).build().fuse();
         slog::Logger::root(drain, slog::slog_o!())
     };
     pub static ref AUDIT_LOGGER: slog::Logger = {
+        // Consumed `AUDIT_DRAIN` after initialized.
         let drain = AUDIT_DRAIN.lock().unwrap().take().unwrap();
+        let drain = slog_async::Async::new(drain).build().fuse();
+        slog::Logger::root(drain, slog::slog_o!())
+    };
+    pub static ref INTRINSIC_LOGGER: slog::Logger = {
+        let decorator = slog_term::TermDecorator::new().build();
+        let drain = slog_term::FullFormat::new(decorator).use_file_location().build().fuse();
         let drain = slog_async::Async::new(drain).build().fuse();
         slog::Logger::root(drain, slog::slog_o!())
     };

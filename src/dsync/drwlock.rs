@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use anyhow::anyhow;
-use log::trace;
 use tokio::select;
 use tokio::sync::mpsc::channel;
 use tokio::sync::RwLock;
@@ -10,6 +9,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::*;
 use crate::dsync::Dsync;
+use crate::trace;
 use crate::utils::{rng_seed_now, sleep, sleep_until};
 
 // Tolerance limit to wait for lock acquisition before.

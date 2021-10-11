@@ -1,4 +1,4 @@
-use log::info;
+use hulk::info;
 
 fn log_config_migrate_msg(config_file: &str, src_version: &str, dst_version: &str) {
     info!(

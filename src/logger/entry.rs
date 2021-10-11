@@ -51,7 +51,7 @@ pub mod log {
         #[serde(skip_serializing_if = "Vec::is_empty")]
         pub source: Vec<String>,
         #[serde(skip_serializing_if = "HashMap::is_empty")]
-        pub variables: HashMap<String, Value>,
+        pub variables: HashMap<String, String>,
     }
 
     #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -107,6 +107,8 @@ pub mod log {
 pub mod audit {
     use super::*;
 
+    pub const VERSION: &str = "1";
+
     #[derive(Serialize, Deserialize, Clone, Debug)]
     pub struct Entry {
         pub version: String,
@@ -121,8 +123,8 @@ pub mod audit {
         pub request_id: String,
         #[serde(skip_serializing_if = "String::is_empty", default)]
         pub user_agent: String,
-        #[serde(skip_serializing_if = "HashMap::is_empty", default)]
-        pub request_claims: HashMap<String, String>,
+        #[serde(skip_serializing_if = "crate::jwt::MapClaims::is_null", default)]
+        pub request_claims: crate::jwt::MapClaims,
         #[serde(skip_serializing_if = "HashMap::is_empty", default)]
         pub request_query: HashMap<String, String>,
         #[serde(skip_serializing_if = "HashMap::is_empty", default)]

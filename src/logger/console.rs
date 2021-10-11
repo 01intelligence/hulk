@@ -113,15 +113,13 @@ impl<'a> slog::Serializer for ConsoleSerializer<'a> {
 
         let mut tag_started = false;
         for (key, val) in &entry.trace.variables {
-            if let super::log::Value::String(val) = val {
-                if !tag_started {
-                    write!(self.decorator, "\n       ")?;
-                } else {
-                    write!(self.decorator, ", ")?;
-                }
-                write!(self.decorator, "{}={}", key, val)?;
-                tag_started = true;
+            if !tag_started {
+                write!(self.decorator, "\n       ")?;
+            } else {
+                write!(self.decorator, ", ")?;
             }
+            write!(self.decorator, "{}={}", key, val)?;
+            tag_started = true;
         }
 
         for (i, source) in entry.trace.source.iter().enumerate() {
@@ -170,8 +168,8 @@ mod tests {
                 message: "message".to_string(),
                 source: vec!["source one".to_string(), "source two".to_string()],
                 variables: maplit::hashmap! {
-                    "k1".to_owned() => log::Value::String("v1".into()),
-                    "k2".to_owned() => log::Value::String("v2".into()),
+                    "k1".to_owned() => "v1".to_owned(),
+                    "k2".to_owned() => "v2".to_owned(),
                 },
             },
         };

@@ -107,13 +107,20 @@ where
             None
         };
 
-        if GLOBALS.trace.subscribers_num() == 0 {
+        let mut audit = if !crate::logger::AUDIT_TARGETS.is_empty() {
+            req.app_data::<crate::logger::Audit>().cloned()
+        } else {
+            None
+        };
+
+        if audit.is_none() && GLOBALS.trace.subscribers_num() == 0 {
             return RecordResponse {
                 fut: self.service.call(req),
                 inner: None,
                 rx: None,
-                _phantom: PhantomData,
                 stats_guard,
+                audit: None,
+                _phantom: PhantomData,
             };
         }
 
@@ -156,7 +163,7 @@ where
                 .realip_remote_addr()
                 .unwrap_or_default()
                 .to_owned(),
-            headers: Some(req.headers().clone()),
+            headers: req.headers().clone(),
             path: req.path().to_owned(),
             body: None,
         };
@@ -170,6 +177,12 @@ where
             ..Default::default()
         };
 
+        if let Some(audit) = audit.as_mut() {
+            audit.req_info = req.request().ctx().request_info.as_ref().unwrap().clone();
+            // TODO: audit get claims
+            // TODO: audit filter keys
+        }
+
         RecordResponse {
             fut: self.service.call(req),
             inner: Some(RecordResponseInner {
@@ -179,6 +192,7 @@ where
             }),
             rx: Some(rx),
             stats_guard,
+            audit,
             _phantom: PhantomData,
         }
     }
@@ -196,6 +210,7 @@ where
     #[pin]
     rx: Option<tokio::sync::oneshot::Receiver<(usize, Option<Bytes>)>>,
     stats_guard: Option<http::HttpApiStatsGuard<'static>>,
+    audit: Option<crate::logger::Audit>,
     _phantom: PhantomData<B>,
 }
 
@@ -273,6 +288,7 @@ where
         trace_info.resp_info = Some(rs);
 
         let stats_guard = this.stats_guard.take();
+        let audit = this.audit.take();
 
         Poll::Ready(Ok(res.map_body(move |_, body| RecordResponseBody {
             body,
@@ -285,6 +301,7 @@ where
                 record_error_only,
                 trace_info: Some(trace_info),
                 stats_guard,
+                audit,
             }),
         })))
     }
@@ -344,6 +361,7 @@ struct RecordResponseBodyInner {
     record_error_only: bool,
     trace_info: Option<admin::TraceInfo>,
     stats_guard: Option<http::HttpApiStatsGuard<'static>>,
+    audit: Option<crate::logger::Audit>,
 }
 
 impl<B> MessageBody for RecordResponseBody<B>
@@ -415,7 +433,13 @@ where
                     );
                 }
 
-                GLOBALS.trace.publish(trace_info);
+                if let Some(audit) = inner.audit.take() {
+                    audit.audit(&trace_info);
+                }
+
+                if GLOBALS.trace.subscribers_num() > 0 {
+                    GLOBALS.trace.publish(trace_info);
+                }
 
                 Poll::Ready(None)
             }

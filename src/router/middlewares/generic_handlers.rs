@@ -51,7 +51,10 @@ where
 {
     type Response = ServiceResponse<B>;
     type Error = Error;
-    type Future = Either<S::Future, Ready<Result<Self::Response, Self::Error>>>;
+    type Future = Either<
+        LocalBoxFuture<'static, Result<Self::Response, Self::Error>>,
+        Ready<Result<Self::Response, Self::Error>>,
+    >;
 
     forward_ready!(service);
 
@@ -175,7 +178,28 @@ where
             return Either::Right(ready(Err(res.into())));
         }
 
-        Either::Left(self.service.call(req))
+        // Sets x-amz-request-id header.
+        let amz_request_id: ::http::HeaderValue = format!("{:X}", utils::now().timestamp_nanos())
+            .try_into()
+            .unwrap();
+        let _ = request.special_headers_mut().insert(
+            http::AMZ_REQUEST_ID.try_into().unwrap(),
+            amz_request_id.clone(),
+        );
+
+        let res = self.service.call(req);
+        Either::Left(
+            async move {
+                let mut res = res.await;
+                if let Ok(res) = res.as_mut() {
+                    let _ = res
+                        .headers_mut()
+                        .insert(http::AMZ_REQUEST_ID.try_into().unwrap(), amz_request_id);
+                }
+                res
+            }
+            .boxed_local(),
+        )
     }
 }
 

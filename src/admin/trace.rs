@@ -38,7 +38,7 @@ pub struct TraceRequestInfo {
     pub method: String,
     pub path: String,
     pub raw_query: String,
-    pub headers: Option<HeaderMap>,
+    pub headers: HeaderMap,
     pub body: Option<bytes::Bytes>,
     pub client: String,
 }

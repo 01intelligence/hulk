@@ -10,6 +10,7 @@ pub struct RequestExtensions {
     pub handler_fn_name: Option<&'static str>,
     // Special headers which are added by some middlewares, for conveniently feeding into response.
     pub special_headers: Option<HeaderMap>,
+    pub request_info: Option<crate::logger::ReqInfo>,
     // Parsed query map.
     query: Option<Option<Query<HashMap<String, String>>>>,
     // Extra metadata.

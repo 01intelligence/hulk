@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -45,7 +47,7 @@ pub struct StandardClaims {
     pub subject: String, // Subject (whom token refers to)
 }
 
-#[derive(Serialize, Deserialize, Default, Debug)]
+#[derive(Serialize, Deserialize, Clone, Default, Debug)]
 pub struct MapClaims(serde_json::value::Value);
 
 impl StandardClaims {
@@ -94,9 +96,21 @@ impl StandardClaims {
     }
 }
 
+impl Deref for MapClaims {
+    type Target = serde_json::value::Value;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 impl MapClaims {
     pub fn lookup(&self, key: &str) -> &serde_json::value::Value {
         &self.0[key]
+    }
+
+    pub fn is_null(&self) -> bool {
+        self.0.is_null()
     }
 }
 

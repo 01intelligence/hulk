@@ -8,7 +8,7 @@ lazy_static::lazy_static! {
     static ref NOOP_REQ_INFO: ReqInfo = ReqInfo::default();
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Clone, Debug)]
 pub struct ReqInfo {
     pub remote_host: String,   // Client Host/IP
     pub host: String,          // Node Host/IP
@@ -19,13 +19,13 @@ pub struct ReqInfo {
     pub bucket_name: String,   // Bucket name
     pub object_name: String,   // Object name
     pub access_key: String,    // Access Key
-    tags: Vec<KeyValue>,       // Any additional info not accommodated by above fields
+    pub tags: Vec<KeyValue>,   // Any additional info not accommodated by above fields
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Clone, Debug)]
 pub struct KeyValue {
     key: String,
-    val: Value,
+    val: String,
 }
 
 impl ReqInfo {
@@ -52,12 +52,12 @@ impl ReqInfo {
         }
     }
 
-    pub fn append_tag(&mut self, key: String, val: Value) -> &mut Self {
+    pub fn append_tag(&mut self, key: String, val: String) -> &mut Self {
         self.tags.push(KeyValue { key, val });
         self
     }
 
-    pub fn set_tag(&mut self, key: String, val: Value) -> &mut Self {
+    pub fn set_tag(&mut self, key: String, val: String) -> &mut Self {
         // Search of tag key already exists in tags
         if let Some(kv) = self.tags.iter_mut().find(|kv| kv.key == key) {
             kv.val = val;
@@ -72,7 +72,7 @@ impl ReqInfo {
         &self.tags
     }
 
-    pub fn get_tags_map(&self) -> HashMap<String, Value> {
+    pub fn get_tags_map(&self) -> HashMap<String, String> {
         let mut map = HashMap::with_capacity(self.tags.len());
         for kv in &self.tags {
             map.insert(kv.key.clone(), kv.val.clone());
